@@ -28,12 +28,10 @@ This project implements a sophisticated backend for an AI Personal Assistant. Un
         Manager -->|2. Delegate| Planner[Planner Agent]
         Planner -->|3. Create Plan| Plan[Execution Plan]
 
-        subgraph Execution Loop
-            Plan -->|4. Next Step| Router{Agent Router}
-            Router -->|Assign| AgentA[Specialized Agent]
-            AgentA -->|5. Execute| Tools[Tools / API]
-            Tools -->|6. Result| Manager
-        end
+        Plan -->|4. Next Step| Router{Agent Router}
+        Router -->|Assign| AgentA[Specialized Agent]
+        AgentA -->|5. Execute| Tools[Tools / API]
+        Tools -->|6. Result| Manager
 
         Manager -->|7. Loop/Finish| Plan
         Manager -->|8. Final Response| User
