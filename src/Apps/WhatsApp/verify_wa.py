@@ -2,8 +2,8 @@
 import sys
 import os
 
-# Fix path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
+# Fix path to include src (two levels up from src/Apps/WhatsApp)
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from Apps.WhatsApp.contacts import resolve_to_number, save_contacts_local, load_contacts_local
 

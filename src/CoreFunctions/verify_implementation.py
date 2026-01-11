@@ -5,10 +5,10 @@ import os
 # Create a mock .env for testing if needed, or rely on existing
 # We just want to check if tools.py imports everything correctly without crashing
 
-sys.path.append(os.path.join(os.getcwd(), 'src'))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 try:
-    from src.CoreFunctions.tools import AVAILABLE_TOOLS
+    from CoreFunctions.tools import AVAILABLE_TOOLS
     print("✅ Successfully imported tools.py")
     
     expected_tools = [

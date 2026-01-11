@@ -2,7 +2,7 @@ import sys
 import os
 
 # Ensure src is in path
-sys.path.append(os.path.abspath("src"))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from Apps.SystemControl.execution import launch_app
 
