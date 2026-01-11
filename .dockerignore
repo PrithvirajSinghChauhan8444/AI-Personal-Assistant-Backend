@@ -1,0 +1,8 @@
+.git
+.venv
+__pycache__
+*.pyc
+.env
+Memory
+jarvis_usage.log
+jarvis_execution_logs.json
