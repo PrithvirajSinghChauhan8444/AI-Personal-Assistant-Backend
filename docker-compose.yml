@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  backend:
+    build: .
+    container_name: jarvis_backend
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persist Memory folder so data isn't lost
+      - ./Memory:/app/Memory
+      # Mount secrets
+      - ./.env:/app/.env
+      # Mount config if it changes often or contains secrets
+      - ./config:/app/config
+    environment:
+      - FLASK_ENV=development
+    restart: unless-stopped

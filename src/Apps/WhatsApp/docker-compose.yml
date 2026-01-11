@@ -1,0 +1,13 @@
+version: "3"
+
+services:
+  waha:
+    image: devlikeapro/waha
+    restart: unless-stopped
+    ports:
+      - "8085:3000"
+    # This single line tells Docker to load all variables from your .env file
+    env_file:
+      - .env
+    volumes:
+      - ./waha-data:/app/data

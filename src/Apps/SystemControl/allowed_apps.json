@@ -1,0 +1,11 @@
+{
+  "notepad": "notepad.exe",
+  "calc": "calc.exe",
+  "calculator": "calc.exe",
+  "explorer": "explorer.exe",
+  "cmd": "cmd.exe",
+  "powershell": "powershell.exe",
+  "chrome": "chrome.exe",
+  "spotify": "spotify.exe",
+  "code": "code"
+}
