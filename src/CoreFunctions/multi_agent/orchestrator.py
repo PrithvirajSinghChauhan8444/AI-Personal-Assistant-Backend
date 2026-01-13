@@ -10,7 +10,7 @@ class AgentManager:
     def __init__(self):
         self.agents: Dict[str, Agent] = {}
         # The Orchestrator model plans the workflow
-        self.planner_model = genai.GenerativeModel("gemini-2.0-flash-exp")
+        self.planner_model = genai.GenerativeModel("gemini-1.5-flash")
 
     def register_agent(self, agent: Agent):
         self.agents[agent.config.name] = agent
