@@ -1,10 +1,28 @@
 import os
 import sys
-import google.generativeai as genai
-from google.ai.generativelanguage_v1beta.types import content
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
+try:
+    from google.ai.generativelanguage_v1beta.types import content
+except ImportError:
+    # Key mock to keep code running for local provider
+    class MockContent:
+        class FunctionResponse:
+            def __init__(self, name, response):
+                self.name = name
+                self.response = response
+        
+        class Part:
+            def __init__(self, function_response=None):
+                self.function_response = function_response
+    content = MockContent()
 from dataclasses import dataclass, field
 from typing import List, Dict, Callable, Optional, Any
 from dotenv import load_dotenv
+
+from .local_llm import LocalClient
 
 # Ensure we can find CoreFunctions
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -13,7 +31,7 @@ from CoreFunctions.tools import AVAILABLE_TOOLS
 
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
-if api_key:
+if api_key and genai:
     genai.configure(api_key=api_key)
 
 @dataclass
@@ -23,6 +41,7 @@ class AgentConfig:
     system_instruction: str
     tools: List[str] = field(default_factory=list)
     temperature: float = 0.7
+    provider: str = "local" # Default to local as per request, or can be "google"
 
 class Agent:
     def __init__(self, config: AgentConfig):
@@ -48,14 +67,21 @@ class Agent:
             else:
                 print(f"⚠️ Warning: Agent '{self.config.name}' requested missing tool '{tool_name}'")
         
-        return genai.GenerativeModel(
-            model_name=self.config.model_name,
-            tools=selected_tools if selected_tools else None,
-            system_instruction=self.config.system_instruction,
-            generation_config=genai.types.GenerationConfig(
-                temperature=self.config.temperature
+        if self.config.provider == "local":
+            return LocalClient(
+                model_name=self.config.model_name,
+                system_instruction=self.config.system_instruction,
+                tools=selected_tools
             )
-        )
+        else:
+            return genai.GenerativeModel(
+                model_name=self.config.model_name,
+                tools=selected_tools if selected_tools else None,
+                system_instruction=self.config.system_instruction,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=self.config.temperature
+                )
+            )
 
     def process_message(self, message: str) -> str:
         """

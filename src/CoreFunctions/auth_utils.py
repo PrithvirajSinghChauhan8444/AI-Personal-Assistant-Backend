@@ -1,8 +1,13 @@
 import os
 from dotenv import load_dotenv
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+try:
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    from google_auth_oauthlib.flow import InstalledAppFlow
+except ImportError:
+    Request = None
+    Credentials = None
+    InstalledAppFlow = None
 
 # The permissions your app needs
 SCOPES = [

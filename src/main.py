@@ -12,7 +12,7 @@ from CoreFunctions.multi_agent import create_default_agency
 load_dotenv(get_config_path(".env"))
 
 def main():
-    print("🤖 AI Personal Assistant (Multi-Agent) — Gemini 2.5 Flash")
+    print("🤖 AI Personal Assistant (Multi-Agent) — Local Qwen 2.5 Coder")
     print("Initialize Agency...")
     try:
         agency = create_default_agency()

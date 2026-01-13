@@ -28,7 +28,11 @@ try:
 except ImportError as e:
     print(f"⚠️ Warning: Some modules could not be imported. {e}")
 from CoreFunctions.memory import store_memory, fetch_memory
-from CoreFunctions.vector_memory import store_vector, search_vector
+try:
+    from CoreFunctions.vector_memory import store_vector, search_vector
+except ImportError:
+    def store_vector(*args, **kwargs): pass
+    def search_vector(*args, **kwargs): return []
 from CoreFunctions.auth_utils import verify_password
 
 

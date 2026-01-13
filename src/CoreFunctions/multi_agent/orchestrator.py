@@ -1,7 +1,11 @@
 import json
-import google.generativeai as genai
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
 from typing import Dict, List, Optional
 from .base_agent import Agent
+from .local_llm import LocalClient
 
 class AgentManager:
     """
@@ -10,7 +14,9 @@ class AgentManager:
     def __init__(self):
         self.agents: Dict[str, Agent] = {}
         # The Orchestrator model plans the workflow
-        self.planner_model = genai.GenerativeModel("gemini-1.5-flash")
+        # Using local model as requested
+        self.planner_model = LocalClient("qwen2.5-coder:3b")
+        # self.planner_model = genai.GenerativeModel("gemini-1.5-flash")
 
     def register_agent(self, agent: Agent):
         self.agents[agent.config.name] = agent
@@ -49,7 +55,8 @@ class AgentManager:
         
         print("\n[ORCHESTRATOR] Planning...")
         try:
-            response = self.planner_model.generate_content(prompt)
+            # Using send_message with a fresh chat session for planning (stateless)
+            response = self.planner_model.start_chat().send_message(prompt)
             raw = response.text.replace("```json", "").replace("```", "").strip()
             # Clean up potentially messy JSON
             start = raw.find("{")
