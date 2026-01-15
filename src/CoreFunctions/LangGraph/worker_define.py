@@ -30,7 +30,7 @@ class WorkerAgent:
         self.agent_runnable = create_react_agent(
             model, 
             tools, 
-            state_modifier=system_prompt
+            messages_modifier=system_prompt
         )
 
     def create_node(self):
