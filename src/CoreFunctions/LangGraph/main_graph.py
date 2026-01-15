@@ -5,6 +5,7 @@ import operator
 
 # Ensure proper path ops
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))) # Add src to path for 'Apps' and 'CoreFunctions' imports
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import StateGraph, END
@@ -17,6 +18,16 @@ except ImportError:
     manager_node = None
     MEMBERS = []
 
+try:
+    from src.CoreFunctions.LangGraph.worker_declare import worker_nodes
+except ImportError:
+    worker_nodes = {}
+
+try:
+    from src.CoreFunctions.LangGraph.output_finaliser import output_finaliser_node
+except ImportError:
+    output_finaliser_node = None
+
 # ==========================================
 # 1. STATE DEFINITION
 # ==========================================
@@ -26,6 +37,7 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
     # The 'next' field records which agent should act next
     next: str
+    final_response: str # The final response from the manager/finaliser
 
 # ==========================================
 # 2. GRAPH CONSTRUCTION
@@ -39,6 +51,14 @@ def create_graph():
 
     # Add the Manager Node
     workflow.add_node("Manager", manager_node)
+    
+    # Add Worker Nodes
+    for name, node in worker_nodes.items():
+        workflow.add_node(name, node)
+    
+    # Add Output Finaliser Node
+    if output_finaliser_node:
+        workflow.add_node("output_finaliser", output_finaliser_node)
 
     # Set Entry Point
     workflow.set_entry_point("Manager")
@@ -49,8 +69,13 @@ def create_graph():
     # Since we ONLY have the Manager right now, we map everything to END
     # but we print what would have happened for debugging.
     
-    conditional_map = {k: END for k in MEMBERS}
-    conditional_map["FINISH"] = END
+    
+    
+    conditional_map = {k: k for k in MEMBERS if k in worker_nodes} # Route to actual worker if exists
+    # For members not implemented yet, we can keep them pointing to END or handle gracefully
+    # conditional_map["FINISH"] = END
+    # Route FINISH to output_finaliser
+    conditional_map["FINISH"] = "output_finaliser"
 
     def route_logic(state):
         next_agent = state.get("next")
@@ -62,6 +87,13 @@ def create_graph():
         route_logic,
         conditional_map
     )
+    
+    # Add Edges from Workers back to Manager
+    for name in worker_nodes:
+        workflow.add_edge(name, "Manager")
+    
+    # Add Edge from Finaliser to END
+    workflow.add_edge("output_finaliser", END)
 
     return workflow.compile()
 
