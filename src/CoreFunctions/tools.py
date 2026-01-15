@@ -270,6 +270,7 @@ def get_weather(location="Agra"):
         return f"Error fetching weather: {e}"
 
 def get_time():
+    """Returns the current system time."""
     print(f"\n[DEBUG] 🛠️ Calling Tool: get_time")
     return datetime.now().strftime("%I:%M %p, %A %d %B %Y")
 
