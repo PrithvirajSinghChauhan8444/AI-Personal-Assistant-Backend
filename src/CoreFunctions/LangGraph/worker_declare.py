@@ -25,7 +25,7 @@ if ChatGroq:
     # Using the same model as Manager for consistency, or as specialized.
     # Qwen 2.5 32b is good for tool use.
     llm = ChatGroq(
-        model="qwen/qwen-2.5-32b", 
+        model="qwen/qwen3-32b", 
         temperature=0
     )
 else:
