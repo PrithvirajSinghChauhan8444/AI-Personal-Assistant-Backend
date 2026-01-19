@@ -28,7 +28,8 @@ MEMBERS = [
     "CalendarWorker",
     "ProductivityWorker",  # Tasks, Notes
     "FileWorker",          # File Ops
-    "SystemWorker"         # Terminal, App Launching
+    "SystemWorker",        # Terminal, App Launching
+    "WhatsAppWorker"       # WhatsApp Ops
 ]
 
 # ==========================================

@@ -16,7 +16,11 @@ except ImportError:
     ChatGroq = None
 
 from src.CoreFunctions.LangGraph.worker_define import WorkerAgent
-from src.CoreFunctions.LangGraph.available_tools import system_control_tools
+from src.CoreFunctions.LangGraph.systemworker import create_system_worker
+from src.CoreFunctions.LangGraph.gmailworker import create_gmail_worker
+from src.CoreFunctions.LangGraph.memoryworker import create_memory_worker
+from src.CoreFunctions.LangGraph.whatsappworker import create_whatsapp_worker
+from src.CoreFunctions.LangGraph.calendarworker import create_calendar_worker
 
 # ==========================================
 # 1. INITIALIZE MODEL
@@ -32,27 +36,26 @@ else:
     llm = None
 
 # ==========================================
-# 2. DEFINE SYSTEM WORKER
+# 2. DEFINE WORKERS
 # ==========================================
-
-system_prompt = (
-    "You are the SystemWorker. "
-    "Your capabilities include running terminal commands, python scripts, and launching applications. "
-    "You should use the available tools to fulfill the user's request. "
-    "If you have completed the action, simply state what you did."
-)
 
 worker_nodes = {}
 
 if llm:
-    system_worker = WorkerAgent(
-        model=llm,
-        tools=system_control_tools,
-        system_prompt=system_prompt
-    )
+    # Create System Worker
+    worker_nodes["SystemWorker"] = create_system_worker(llm)
     
-    # The key implementation details:
-    # The node name MUST match the name in MEMBERS list in manager_declare.py
-    worker_nodes["SystemWorker"] = system_worker.create_node()
+    # Create Gmail Worker
+    worker_nodes["GmailWorker"] = create_gmail_worker(llm)
+
+    # Create Memory Worker
+    worker_nodes["MemoryWorker"] = create_memory_worker(llm)
+
+    # Create WhatsApp Worker
+    worker_nodes["WhatsAppWorker"] = create_whatsapp_worker(llm)
+
+    # Create Calendar Worker
+    worker_nodes["CalendarWorker"] = create_calendar_worker(llm)
+    
 else:
-    print("⚠️ SystemWorker could not be initialized (LLM missing).")
+    print("⚠️ Workers could not be initialized (LLM missing).")
