@@ -6,8 +6,10 @@ services:
     restart: unless-stopped
     ports:
       - "8085:3000"
-    # This single line tells Docker to load all variables from your .env file
     env_file:
       - .env
+    environment:
+      # This overrides whatever is in your .env file
+      - WHATSAPP_DEFAULT_ENGINE=NOWEB
     volumes:
       - ./waha-data:/app/data

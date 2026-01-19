@@ -117,10 +117,6 @@ def send_message(phone, message, session_name="default"):
         headers = get_headers()
         response = requests.post(url, json=payload, headers=headers)
         
-        # Success Case
-        if response.status_code == 201:
-            return f"✅ Message sent to {target_id}"
-        
         # Handle 'Session Stopped' Error automatically
         if "STOPPED" in response.text:
             print("[System] Session stopped. Restarting...")
@@ -130,7 +126,18 @@ def send_message(phone, message, session_name="default"):
             response = requests.post(url, json=payload, headers=headers)
             if response.status_code == 201:
                 return f"✅ Message sent (after restart) to {target_id}"
+
+        # Handle 500 Errors (often transient 'markedUnread' or 'evaluation' errors)
+        if response.status_code == 500:
+            print(f"[System] Internal Server Error (500). Retrying in 2 seconds... Error: {response.text[:100]}...")
+            time.sleep(2)
+            response = requests.post(url, json=payload, headers=headers)
+            if response.status_code == 201:
+                return f"✅ Message sent (after retry) to {target_id}"
         
+        if response.status_code == 201:
+             return f"✅ Message sent to {target_id}"
+
         return f"❌ Failed to send: {response.text}"
         
     except requests.exceptions.ConnectionError:

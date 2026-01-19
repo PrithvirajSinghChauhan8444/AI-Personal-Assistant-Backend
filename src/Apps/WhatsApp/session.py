@@ -4,14 +4,31 @@ import os
 from .config import BASE_URL, get_headers, API_KEY
 
 def start_session(session_name="default"):
-    """Starts the session if it is currently STOPPED."""
+    """
+    Starts the session if it is currently STOPPED.
+    Idempotent: Returns True immediately if already running or scanning.
+    """
     try:
+        # Check current status first
+        status_msg = get_status(session_name)
+        if "WORKING" in status_msg or "SCAN_QR_CODE" in status_msg:
+             print(f"[System] Session '{session_name}' is already active ({status_msg}).")
+             return True
+
+        print(f"[System] Starting session '{session_name}'...")
         url = f"{BASE_URL}/api/sessions/{session_name}/start"
-        # POST to /api/sessions creates or starts the session
         payload = {"name": session_name}
         requests.post(url, json=payload, headers=get_headers())
-        time.sleep(2) # Wait a moment for it to spin up
-        return True
+        
+        # Verify if it started
+        for i in range(5):
+            time.sleep(2)
+            new_status = get_status(session_name)
+            if "WORKING" in new_status or "SCAN_QR_CODE" in new_status:
+                 return True
+            print(f"[System] Waiting for session to start... (Attempt {i+1}/5)")
+        
+        return False
     except Exception as e:
         print(f"Error starting session: {e}")
         return False
