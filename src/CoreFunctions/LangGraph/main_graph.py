@@ -9,6 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
 
 # Import the manager node configuration
 try:
@@ -27,6 +28,11 @@ try:
     from src.CoreFunctions.LangGraph.output_finaliser import output_finaliser_node
 except ImportError:
     output_finaliser_node = None
+
+try:
+    from src.CoreFunctions.LangGraph.planner_declare import planner_node
+except ImportError:
+    planner_node = None
 
 # ==========================================
 # 1. STATE DEFINITION
@@ -60,8 +66,15 @@ def create_graph():
     if output_finaliser_node:
         workflow.add_node("output_finaliser", output_finaliser_node)
 
-    # Set Entry Point
-    workflow.set_entry_point("Manager")
+    # Add Planner Node
+    if planner_node:
+        print("✅ Planner Node Initialized")
+        workflow.add_node("Planner", planner_node)
+        workflow.set_entry_point("Planner")
+        workflow.add_edge("Planner", "Manager")
+    else:
+        print("⚠️ Planner Node Missing - Starting with Manager")
+        workflow.set_entry_point("Manager")
 
     # Define Conditional Edges
     # The manager outputs {"next": "..."}
@@ -95,7 +108,14 @@ def create_graph():
     # Add Edge from Finaliser to END
     workflow.add_edge("output_finaliser", END)
 
-    return workflow.compile()
+    # Add checkpointer for persistence (required for interrupts)
+    memory = MemorySaver()
+
+    # Compile with interrupt after Planner to allow user verification
+    return workflow.compile(
+        checkpointer=memory,
+        interrupt_after=["Planner"] if planner_node else []
+    )
 
 # ==========================================
 # 3. EXECUTION INTERFACE
@@ -121,30 +141,57 @@ def process_request_interactive():
         if not user_input:
             continue
 
-        # Create the initial state
-        state = {
-            "messages": [HumanMessage(content=user_input)],
-            # We don't necessarily need 'next' in input, but can init it
-        }
+        # Config for state persistence
+        thread_id = "interactive_session"
+        config = {"configurable": {"thread_id": thread_id}}
 
-        print("... Manager is thinking ...")
+        # Create the initial state
+        initial_input = {"messages": [HumanMessage(content=user_input)]}
+
+        print("... Processing ...")
         
-        # Invoke the graph
-        try:
-            for event in app.stream(state):
-                for key, value in event.items():
-                    print(f"\n📍 Node '{key}' Output:")
-                    print(value)
-                    
-                    # Check for final_response to display nicely
-                    if "final_response" in value and value["final_response"]:
-                        print(f"\n💬 Manager says: {value['final_response']}")
-                    
-                    # Update local history if needed (though stream handles state)
-                    # Ideally, we should persist 'messages' for multi-turn context
-                    # For this simple loop, we rely on the specific turn's state
-        except Exception as e:
-            print(f"❌ Execution Error: {e}")
+        # Function to run the graph stream
+        def run_stream(input_data):
+            try:
+                for event in app.stream(input_data, config=config):
+                    for key, value in event.items():
+                        print(f"\n📍 Node '{key}' Output:")
+                        
+                        # Pretty print message content if available
+                        if "messages" in value:
+                            for msg in value["messages"]:
+                                if hasattr(msg, "content"):
+                                    print(f"-- {msg.content}")
+
+                        # Check for final_response to display nicely
+                        if "final_response" in value and value["final_response"]:
+                            print(f"\n💬 Manager says: {value['final_response']}")
+            except Exception as e:
+                print(f"❌ Execution Error: {e}")
+
+        # 1. Run until interrupt or finish
+        run_stream(initial_input)
+
+        # 2. Check if we are paused at Planner (Verification Step)
+        snapshot = app.get_state(config)
+        if snapshot.next:
+            # We are paused. Check if it's after Planner.
+            # (In this simple graph, interrupt_after=['Planner'] is the only pause)
+            print("\n✋ Plan Created. Waiting for approval.")
+            
+            # The plan is in the last message of the state
+            # (We could print it again here if needed, but it was just printed by the stream)
+            
+            choice = input(">> Approve Plan? (y/n): ").strip().lower()
+            
+            if choice == 'y':
+                print("✅ Plan Approved. Resuming execution...")
+                # Resume with None (continues from current state)
+                run_stream(None)
+            else:
+                print("❌ Plan Rejected. Aborting.")
+                # We could potentially add logic to edit the plan or loop back, 
+                # but for now we stop. The usage loop continues so user can try again.
 
 if __name__ == "__main__":
     process_request_interactive()
