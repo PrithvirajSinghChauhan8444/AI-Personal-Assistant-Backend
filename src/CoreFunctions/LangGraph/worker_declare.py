@@ -20,7 +20,7 @@ from src.CoreFunctions.LangGraph.systemworker import create_system_worker
 from src.CoreFunctions.LangGraph.gmailworker import create_gmail_worker
 from src.CoreFunctions.LangGraph.memoryworker import create_memory_worker
 from src.CoreFunctions.LangGraph.whatsappworker import create_whatsapp_worker
-from src.CoreFunctions.LangGraph.calendarworker import create_calendar_worker
+from src.CoreFunctions.LangGraph.productivityworker import create_productivity_worker
 
 # ==========================================
 # 1. INITIALIZE MODEL
@@ -54,8 +54,8 @@ if llm:
     # Create WhatsApp Worker
     worker_nodes["WhatsAppWorker"] = create_whatsapp_worker(llm)
 
-    # Create Calendar Worker
-    worker_nodes["CalendarWorker"] = create_calendar_worker(llm)
+    # Create Productivity Worker (Replaces CalendarWorker)
+    worker_nodes["ProductivityWorker"] = create_productivity_worker(llm)
     
 else:
     print("⚠️ Workers could not be initialized (LLM missing).")
