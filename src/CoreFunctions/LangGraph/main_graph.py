@@ -10,6 +10,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
+from src.CoreFunctions.LangGraph.logger import GraphLogger
 
 # Import the manager node configuration
 try:
@@ -92,7 +93,7 @@ def create_graph():
 
     def route_logic(state):
         next_agent = state.get("next")
-        print(f"🔀 [Router Logic] Manager selected: {next_agent}")
+        GraphLogger.log_decision("Router", str(next_agent))
         return next_agent
 
     workflow.add_conditional_edges(
