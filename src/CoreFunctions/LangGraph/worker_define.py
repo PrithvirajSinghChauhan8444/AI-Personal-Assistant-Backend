@@ -33,24 +33,29 @@ class WorkerAgent:
             prompt=system_prompt
         )
 
-    def create_node(self):
+    def create_node(self, name: str = "Worker"):
         """
         Returns a function that can be used as a Node in the StateGraph.
         
         The node function receives the state, invokes the agent, 
         and returns the Update dict.
         """
-        
+        from src.CoreFunctions.LangGraph.logger import GraphLogger
+
         def worker_node(state: dict):
             """
             The actual node function executed by LangGraph.
             Input state is expected to have 'messages'.
             """
+            GraphLogger.log_node_start(name)
+            
             # We pass the state directly to the prebuilt agent
             result = self.agent_runnable.invoke(state)
             
             # The result from create_react_agent is usually a dict with 'messages'
             # encompassing the chain of thought.
+            
+            GraphLogger.log_node_end(name)
             
             # We return the new messages to append to the global state
             return {

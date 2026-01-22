@@ -44,7 +44,11 @@ class PlannerAgent:
         """
         Returns the node function for the graph.
         """
+        from src.CoreFunctions.LangGraph.logger import GraphLogger
+
         def planner_node(state: dict):
+            GraphLogger.log_node_start("Planner")
+            
             # Run the chain on the current state (message history)
             result = self.chain.invoke(state)
             
@@ -54,6 +58,8 @@ class PlannerAgent:
             # We wrap it in a SystemMessage or AIMessage to distinguish it as a plan
             # Let's use AIMessage with a specific prefix so the Manager knows it's a plan
             formatted_plan = f"PLAN:\n{plan_content}"
+            
+            GraphLogger.log_node_end("Planner")
             
             return {
                 "messages": [AIMessage(content=formatted_plan)]

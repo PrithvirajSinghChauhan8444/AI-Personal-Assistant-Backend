@@ -3,6 +3,7 @@ import sys
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
+from src.CoreFunctions.LangGraph.logger import GraphLogger
 
 # Ensure we can import from sibling modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
@@ -59,6 +60,8 @@ def output_finaliser_node(state: dict):
         ("human", "User Input: {user_input}\nRaw Response: {raw_response}")
     ])
 
+    GraphLogger.log_node_start("Output Finaliser")
+    
     chain = prompt | llm
 
     try:
@@ -69,6 +72,8 @@ def output_finaliser_node(state: dict):
     except Exception as e:
         formatted_response = f"{final_response} (Formatting failed: {e})"
 
+    GraphLogger.log_node_end("Output Finaliser")
+    
     return {
         "final_response": formatted_response
     }

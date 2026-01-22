@@ -22,4 +22,4 @@ def create_whatsapp_worker(model):
         system_prompt=system_prompt
     )
     
-    return worker.create_node()
+    return worker.create_node(name="WhatsAppWorker")

@@ -30,4 +30,4 @@ def create_productivity_worker(model):
         system_prompt=system_prompt
     )
     
-    return worker.create_node()
+    return worker.create_node(name="ProductivityWorker")
