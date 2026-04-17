@@ -26,16 +26,14 @@ MEMBERS = [
     "GmailWorker",
     "ProductivityWorker",
     "MemoryWorker",
-    "SystemWorker",
-    "WhatsAppWorker"
+    "SystemWorker"
 ]
 
 WORKER_INFO = {
     "GmailWorker": "Specialized in email management. Can read, search, and send emails via Gmail API.",
     "ProductivityWorker": "Manages productivity and planning. Capabilities include Calendar interactions, Google Tasks management, and checking Weather forecasts.",
     "MemoryWorker": "Handles long-term memory. Stores and recalls user preferences, facts, and context.",
-    "SystemWorker": "Interfaces with the OS. Can run terminal commands, manage files, and execute scripts.",
-    "WhatsAppWorker": "Handles WhatsApp messaging. Manages server/session connection and sends messages."
+    "SystemWorker": "Interfaces with the OS. Can run terminal commands, manage files, and execute scripts."
 }
 
 # ==========================================
@@ -44,7 +42,7 @@ WORKER_INFO = {
 # This forces the LLM to choose ONE valid next step.
 class RoutingDecision(BaseModel):
     """Result of the routing decision."""
-    next: Literal["GmailWorker", "ProductivityWorker", "MemoryWorker", "SystemWorker", "WhatsAppWorker", "FINISH"] = Field(
+    next: Literal["GmailWorker", "ProductivityWorker", "MemoryWorker", "SystemWorker", "FINISH"] = Field(
         description="The specific worker to route to, or 'FINISH' if the task is complete."
     )
     final_response: Optional[str] = Field(

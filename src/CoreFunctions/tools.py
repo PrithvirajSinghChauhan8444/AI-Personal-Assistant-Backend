@@ -20,11 +20,6 @@ try:
     # New Imports
     from Apps.FileOperations.file_manager import write_file as _write_file, read_file, list_files, create_directory as _create_dir, save_python_code as _save_code
     from Apps.SystemControl.execution import run_terminal_command as _run_term, run_python_script as _run_py, launch_app as _launch
-    from Apps.WhatsApp.sending_message import send_message as _send_wa
-    from Apps.WhatsApp.session import get_status as _wa_status, get_qr_code as _wa_qr, start_session as _wa_start
-    from Apps.WhatsApp.contacts import get_contact_by_name as _find_contact
-    from Apps.WhatsApp.reading_messages import read_messages as _read_messages
-    from Apps.WhatsApp.manage import start_waha, stop_waha
 except ImportError as e:
     print(f"⚠️ Warning: Some modules could not be imported. {e}")
 from CoreFunctions.memory import store_memory, fetch_memory
@@ -94,69 +89,8 @@ def recall(key):
 
 
 # ===========================
-# 2. COMMUNICATION TOOLS (Gmail & WhatsApp)
+# 2. COMMUNICATION TOOLS (Gmail)
 # ===========================
-
-def send_whatsapp_msg(to, message=None):
-    """
-    Sends a WhatsApp message via WAHA.
-    Args:
-      to: COMPULSORY. The specific target Phone number or ID (e.g. '919876543210@c.us') obtained from find_contact. Do NOT put the message text here.
-      message: COMPULSORY. The text content to send.
-    """
-    print(f"\n[DEBUG] 🛠️ Calling Tool: send_whatsapp_msg")
-    print(f"   Args: to={to}, message={message}")
-    if not message:
-         return "❌ Error: 'message' argument is required. Please specify what to send."
-    return _send_wa(to, message)
-
-def check_whatsapp_status():
-    """Checks WhatsApp connection status."""
-    print(f"\n[DEBUG] 🛠️ Calling Tool: check_whatsapp_status")
-    return _wa_status()
-
-def get_whatsapp_qr():
-    """Gets WhatsApp QR code for login."""
-    print(f"\n[DEBUG] 🛠️ Calling Tool: get_whatsapp_qr")
-    return _wa_qr()
-
-def start_whatsapp_session(session_name="default"):
-    """Starts a WhatsApp session."""
-    print(f"\n[DEBUG] 🛠️ Calling Tool: start_whatsapp_session")
-    print(f"   Args: session_name={session_name}")
-    return _wa_start(session_name)
-
-def manage_whatsapp_server(action="start"):
-    """Starts or stops the WAHA Docker server. Action: 'start' or 'stop'."""
-    print(f"\n[DEBUG] 🛠️ Calling Tool: manage_whatsapp_server")
-    print(f"   Args: action={action}")
-    if verify_password():
-        if action.lower() == "start":
-            return start_waha()
-        elif action.lower() == "stop":
-            return stop_waha()
-        return "Invalid action. Use 'start' or 'stop'."
-    return "❌ Action Cancelled: Incorrect Password."
-
-def find_whatsapp_contact(name):
-    """
-    Searches for a WhatsApp contact by name.
-    Returns Name and ID (Phone Number).
-    """
-    print(f"\n[DEBUG] 🛠️ Calling Tool: find_whatsapp_contact")
-    print(f"   Args: name={name}")
-    return _find_contact(name)
-
-def read_whatsapp_messages(chat_id_or_name, limit=10):
-    """
-    Reads recent messages from a WhatsApp chat.
-    Args:
-      chat_id_or_name: Name (e.g., 'Praveen') or ID to read from.
-      limit: Number of messages to retrieve (default 10).
-    """
-    print(f"\n[DEBUG] 🛠️ Calling Tool: read_whatsapp_messages")
-    print(f"   Args: chat_id_or_name={chat_id_or_name}, limit={limit}")
-    return _read_messages(chat_id_or_name, limit)
 
 def fetch_unread_mails(limit=5):
     """Fetches the latest unread emails."""
@@ -361,13 +295,6 @@ AVAILABLE_TOOLS = {
     # Communication
     "fetch_mails": fetch_unread_mails,
     "send_mail": send_gmail,
-    "send_whatsapp": send_whatsapp_msg,
-    "whatsapp_status": check_whatsapp_status,
-    "whatsapp_qr": get_whatsapp_qr,
-    "whatsapp_start": start_whatsapp_session,
-    "whatsapp_server": manage_whatsapp_server,
-    "find_contact": find_whatsapp_contact,
-    "read_whatsapp_messages": read_whatsapp_messages,
     
     # Productivity
     "add_task": add_google_task,

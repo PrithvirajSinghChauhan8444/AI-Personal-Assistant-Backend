@@ -4,7 +4,7 @@ This document contains complete technical and operational details of the AI Pers
 
 ## 1. Project Overview
 
-**Purpose**: A local, offline-capable (mostly) and secure AI personal assistant that can interact with the user's system, manage communications (WhatsApp, Email), and organize tasks.
+**Purpose**: A local, offline-capable (mostly) and secure AI personal assistant that can interact with the user's system, manage communications (Email), and organize tasks.
 
 **Core Philosophy**: "LLMs decide, Code executes." The AI plans actions, but Python functions perform the actual operations.
 
@@ -14,9 +14,8 @@ This document contains complete technical and operational details of the AI Pers
 - **AI Models**: Google Gemini (via `google-generativeai`).
   - `gemma-3-12b-it`: For routing and fast tasks.
   - `gemma-3-27b-it`: For complex reasoning and coding.
-- **WhatsApp Integration**: [WAHA (WhatsApp HTTP API)](https://waha.devlike.pro/) running in Docker.
 - **Database**:
-  - JSON files for lightweight storage (`Memory/user_info.json`, `src/Apps/WhatsApp/contacts.json`).
+  - JSON files for lightweight storage (`Memory/user_info.json`).
   - ChromaDB (implied in `vector_memory.py`) for semantic search.
 - **Environment**: `.env` for secrets management.
 
@@ -25,14 +24,12 @@ This document contains complete technical and operational details of the AI Pers
 ```text
 AI-Personal-Assistant-Backend/
 ├── .env                # API Keys (Gemini) and Secrets
-├── docker-compose.yml  # WAHA Service configuration
 ├── Dockerfile          # For containerizing the backend (optional)
 ├── requirements.txt    # Python dependencies
 ├── src/
 │   ├── Apps/           # Functional Modules
 │   │   ├── Calendar/   # Google Calendar integration
 │   │   ├── Gmail/      # Gmail API integration
-│   │   ├── WhatsApp/   # WAHA integration
 │   │   ├── System/     # System stats (CPU/RAM)
 │   │   └── FileOperations/ # Read/Write/List files
 │   ├── CoreFunctions/  # The Brain
@@ -51,10 +48,10 @@ AI-Personal-Assistant-Backend/
 
 The system uses an **Orchestrator** pattern:
 
-1.  **AgentManager**: Receives user input (e.g., "Check RAM and WhatsApp me").
+1.  **AgentManager**: Receives user input (e.g., "Check RAM and email me").
 2.  **Planner**: Breaks the request into steps:
     - Step 1: Get RAM (assigned to `SystemEngineer`).
-    - Step 2: Send WhatsApp (assigned to `Communicator`).
+    - Step 2: Send Email (assigned to `Communicator`).
 3.  **Agents**:
     - `GeneralAssistant`: Chit-chat.
     - `SystemEngineer`: File & System Ops.
@@ -62,22 +59,15 @@ The system uses an **Orchestrator** pattern:
 
 ### B. Tools Registry (`src/CoreFunctions/tools.py`)
 
-A massive dictionary `AVAILABLE_TOOLS` mapping string keys (e.g., "send_whatsapp") to actual Python functions. This is the interface the LLM uses.
+A massive dictionary `AVAILABLE_TOOLS` mapping string keys (e.g., "send_mail") to actual Python functions. This is the interface the LLM uses.
 
-### C. WhatsApp Service
-
-Uses **WAHA** (WhatsApp HTTP API) running on port `3000`.
-
-- **Status**: Managed via `docker-compose.yml`.
-- **Interaction**: `src/Apps/WhatsApp/sending_message.py` sends HTTP POST requests to the local WAHA container.
 
 ## 5. Setup & Installation Guide
 
 ### Prerequisites
 
 1.  **Python 3.10+** installed.
-2.  **Docker Desktop** installed (for WhatsApp).
-3.  **Google Gemini API Key**.
+2.  **Google Gemini API Key**.
 
 ### Step 1: Clone & Environment
 
@@ -98,13 +88,6 @@ GEMINI_API_KEY=your_gemini_api_key_here
 SYSTEM_PASSWORD=your_secure_password  # For dangerous actions like deleting files
 ```
 
-### Step 3: Start WhatsApp Service
-
-```bash
-docker-compose up -d
-```
-
-- Visit `http://localhost:3000/dashboard` to scan the QR code.
 
 ### Step 4: Run the Assistant
 
@@ -132,5 +115,4 @@ python src/CoreFunctions/vvv.py
 ## 7. Troubleshooting
 
 - **Import Errors**: Always run python from the root directory: `python src/CoreFunctions/...`. The scripts include `sys.path.append` fixes but root execution is safest.
-- **WhatsApp Fails**: Ensure Docker is running (`docker ps`) and the phone is connected via `http://localhost:3000`.
 - **Gemini Error**: Check `GEMINI_API_KEY` validity.

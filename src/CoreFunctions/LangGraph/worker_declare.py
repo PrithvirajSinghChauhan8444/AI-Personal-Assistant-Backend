@@ -19,7 +19,6 @@ from src.CoreFunctions.LangGraph.worker_define import WorkerAgent
 from src.CoreFunctions.LangGraph.systemworker import create_system_worker
 from src.CoreFunctions.LangGraph.gmailworker import create_gmail_worker
 from src.CoreFunctions.LangGraph.memoryworker import create_memory_worker
-from src.CoreFunctions.LangGraph.whatsappworker import create_whatsapp_worker
 from src.CoreFunctions.LangGraph.productivityworker import create_productivity_worker
 
 # ==========================================
@@ -50,9 +49,6 @@ if llm:
 
     # Create Memory Worker
     worker_nodes["MemoryWorker"] = create_memory_worker(llm)
-
-    # Create WhatsApp Worker
-    worker_nodes["WhatsAppWorker"] = create_whatsapp_worker(llm)
 
     # Create Productivity Worker (Replaces CalendarWorker)
     worker_nodes["ProductivityWorker"] = create_productivity_worker(llm)

@@ -6,13 +6,13 @@ A powerful, secure, and extensible local AI assistant designed to interact with 
 
 ## 🚀 Project Overview
 
-This project implements a sophisticated backend for an AI Personal Assistant. Unlike simple chatbots, this system is capable of performing real-world actions on your computer—managing files, checking system stats, sending WhatsApp messages, and controlling applications—all while adhering to a strict security policy.
+This project implements a sophisticated backend for an AI Personal Assistant. Unlike simple chatbots, this system is capable of performing real-world actions on your computer—managing files, checking system stats, and controlling applications—all while adhering to a strict security policy.
 
 ### Key Philosophies
 
 - **Safety First**: Critical actions (like file deletion or execution) are password-protected.
 - **Modular Design**: Specialized agents handle specific domains (System, Communication, etc.).
-- **Local Control**: Uses local tools and APIs (like WAHA for WhatsApp) to keep dependencies efficient.
+- **Local Control**: Uses local tools and APIs to keep dependencies efficient.
 
 ## ✨ Current Features
 
@@ -43,7 +43,6 @@ This project implements a sophisticated backend for an AI Personal Assistant. Un
 
 - **🔌 Integrations**
 
-  - **WhatsApp**: Full sending/receiving capabilities via [WAHA](https://waha.devlike.pro/).
   - **System Control**: Check CPU/RAM usage, launch applications, and manage processes.
   - **File Operations**: Safe read/write/list capabilities within a sandboxed environment.
   - **Spotify**: Basic playback control (launch and interaction).
@@ -58,7 +57,7 @@ This project implements a sophisticated backend for an AI Personal Assistant. Un
 ```text
 src/
 ├── CoreFunctions/  # The "Brain" (Orchestrator, Tools Registry, Memory)
-└── Apps/           # The "Hands" (WhatsApp, System, FileOperations, Spotify)
+└── Apps/           # The "Hands" (System, FileOperations, Spotify)
 ```
 
 ## 🏁 Getting Started
@@ -102,11 +101,6 @@ src/
     SYSTEM_PASSWORD=your_secure_password
     ```
 
-5.  **Start Services (WhatsApp)**
-    ```bash
-    docker-compose up -d
-    # Scan QR code at http://localhost:3000/dashboard
-    ```
 
 ### Usage
 

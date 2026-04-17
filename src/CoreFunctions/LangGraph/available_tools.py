@@ -13,9 +13,6 @@ from src.CoreFunctions.tools import (
     
     # Communication
     fetch_unread_mails, send_gmail,
-    send_whatsapp_msg, check_whatsapp_status, get_whatsapp_qr, 
-    start_whatsapp_session, manage_whatsapp_server, 
-    find_whatsapp_contact, read_whatsapp_messages,
     
     # Productivity
     add_google_task, check_calendar_events, add_calendar_event,
@@ -47,15 +44,6 @@ gmail_tools = [
     StructuredTool.from_function(send_gmail),
 ]
 
-whatsapp_tools = [
-    StructuredTool.from_function(send_whatsapp_msg),
-    StructuredTool.from_function(check_whatsapp_status),
-    StructuredTool.from_function(get_whatsapp_qr),
-    StructuredTool.from_function(start_whatsapp_session),
-    StructuredTool.from_function(manage_whatsapp_server),
-    StructuredTool.from_function(find_whatsapp_contact),
-    StructuredTool.from_function(read_whatsapp_messages),
-]
 
 # --- Productivity ---
 calendar_tools = [
@@ -100,13 +88,6 @@ TOOL_MAP = {
     # Communication
     "fetch_unread_mails": gmail_tools[0],
     "send_gmail": gmail_tools[1],
-    "send_whatsapp_msg": whatsapp_tools[0],
-    "check_whatsapp_status": whatsapp_tools[1],
-    "get_whatsapp_qr": whatsapp_tools[2],
-    "start_whatsapp_session": whatsapp_tools[3],
-    "manage_whatsapp_server": whatsapp_tools[4],
-    "find_whatsapp_contact": whatsapp_tools[5],
-    "read_whatsapp_messages": whatsapp_tools[6],
 
     # Productivity
     "add_google_task": calendar_tools[0],
@@ -135,7 +116,6 @@ TOOL_MAP = {
 ALL_TOOLS = (
     memory_tools + 
     gmail_tools + 
-    whatsapp_tools + 
     calendar_tools + 
     system_info_tools + 
     file_management_tools + 
