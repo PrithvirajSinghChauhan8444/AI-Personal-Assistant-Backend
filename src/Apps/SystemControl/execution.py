@@ -5,7 +5,14 @@ import json
 import sys
 
 
-from AppOpener import open as open_app
+import platform
+
+open_app = None
+if os.name == "nt":
+    try:
+        from AppOpener import open as open_app
+    except Exception:
+        open_app = None
 
 # --- Helper to load JSON configs ---
 def load_json_config(filename):
@@ -71,53 +78,61 @@ def run_python_script(path):
 
 def launch_app(app_name, arguments=None):
     """
-    Launches an application.
-    1. If arguments are provided (e.g. file path), use subprocess.
-    2. If app_name is a path alias (e.g. 'projects'), use subprocess (explorer).
-    3. Determine if we use AppOpener or Subprocess:
-       - If no arguments and not a path alias: Use AppOpener for smart matching.
-       - Else: Use subprocess (requires allowed_apps.json mapping).
+    Launches an application cross-platform.
     """
-    # 1. Check for Path Aliases (treat as opening a folder/file directly without app name)
+    is_windows = platform.system().lower() == "windows"
     resolved_path = resolve_path_alias(app_name)
+
+    # 1. Handle Path Aliases (Folders/Files)
     if resolved_path != app_name:
-        # It was an alias! Treat it as "explorer <path>"
         try:
-            cmd = ["explorer.exe", resolved_path]
-            subprocess.Popen(cmd, shell=True)
+            if is_windows:
+                subprocess.Popen(["explorer.exe", resolved_path], shell=True)
+            else:
+                # Linux: xdg-open for folders/files
+                subprocess.Popen(["xdg-open", resolved_path])
             return f"🚀 Launched Path: {resolved_path}"
         except Exception as e:
             return f"❌ Error launching path: {e}"
 
-    # 2. Hybrid Logic
+    # 2. Launch Application
     if not arguments:
-        # --- AppOpener Mode ---
-        # Logic: User said "open spotify", "open calculator"
+        # --- App Launch (No args) ---
+        if is_windows and open_app:
+            try:
+                open_app(app_name, match_closest=True, output=False)
+                return f"🚀 Launched (AppOpener): {app_name}"
+            except Exception:
+                pass # Fallback to subprocess
+
+        # Universal/Linux Subprocess Launch
         try:
-            print(f"🤖 Application '{app_name}' launching via AppOpener...")
-            # match_closest=True helps with 'calc' -> 'calculator', etc.
-            open_app(app_name, match_closest=True, output=False) 
-            return f"🚀 Launched (AppOpener): {app_name}"
+            # On Linux/Unix, we try to run it as a detached process
+            subprocess.Popen([app_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return f"🚀 Launched: {app_name}"
         except Exception as e:
-            return f"❌ AppOpener Failed: {e}"
+            # Try searching in allowed_apps
+            apps = load_json_config("allowed_apps.json")
+            executable = apps.get(app_name.lower())
+            if executable:
+                try:
+                    subprocess.Popen([executable])
+                    return f"🚀 Launched (Config): {executable}"
+                except Exception as e2:
+                    return f"❌ Error: {e2}"
+            return f"❌ Could not launch '{app_name}': {e}"
     
     else:
-        # --- Subprocess Mode (Files/Args) ---
-        # Logic: User said "open notepad context.txt"
+        # --- Launch with Arguments ---
         apps = load_json_config("allowed_apps.json")
-        executable = apps.get(app_name.lower())
-        
-        if not executable:
-            # Fallback: try using the name as executable
-            executable = app_name
-
-        # Resolve arg alias
+        executable = apps.get(app_name.lower(), app_name)
         real_arg = resolve_path_alias(arguments)
-        cmd = [executable, real_arg]
 
         try:
-            # Use Popen to launch without blocking (detached process)
-            subprocess.Popen(cmd, shell=True)
-            return f"🚀 Launched (Subprocess): {cmd}"
+            if is_windows:
+                subprocess.Popen([executable, real_arg], shell=True)
+            else:
+                subprocess.Popen([executable, real_arg])
+            return f"🚀 Launched: {executable} {real_arg}"
         except Exception as e:
-            return f"❌ Error launching app: {e}"
+            return f"❌ Error: {e}"

@@ -13,15 +13,15 @@ config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../
 load_dotenv(config_path)
 
 try:
-    from langchain_groq import ChatGroq
+    from langchain_ollama import ChatOllama
 except ImportError:
-    print("❌ Critical: 'langchain_groq' not installed. Please install it.")
-    ChatGroq = None
+    print("❌ Critical: 'langchain_ollama' not installed.")
+    ChatOllama = None
 
 # Initialize LLM (Reuse configuration)
-if ChatGroq:
-    llm = ChatGroq(
-        model="qwen/qwen3-32b", 
+if ChatOllama:
+    llm = ChatOllama(
+        model="gemma4:e4b", 
         temperature=0.7 # Slightly higher temperature for more natural conversation
     )
 else:

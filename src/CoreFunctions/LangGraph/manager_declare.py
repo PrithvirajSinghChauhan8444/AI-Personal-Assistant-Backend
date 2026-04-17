@@ -14,10 +14,10 @@ config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../
 load_dotenv(config_path)
 
 try:
-    from langchain_groq import ChatGroq
+    from langchain_ollama import ChatOllama
 except ImportError:
-    print("❌ Critical: 'langchain_groq' not installed. Please install it.")
-    ChatGroq = None
+    print("❌ Critical: 'langchain_ollama' not installed.")
+    ChatOllama = None
 
 # ==========================================
 # 1. DEFINE MEMBERS
@@ -54,27 +54,29 @@ class RoutingDecision(BaseModel):
 # ==========================================
 SUPERVISOR_PROMPT = (
     "### ROLE & IDENTITY\n"
-    "You are the **Orchestrator/Manager**. Your sole responsibility is to analyze requests and delegate tasks. "
-    "You are the master decision-maker; you do not execute the work yourself.\n\n"
+    "You are the **Orchestrator/Manager**. Your sole responsibility is to analyze requests and delegate tasks to specialized workers. "
+    "You are a coordinator; you NEVER execute work or provide data yourself.\n\n"
     "### AVAILABLE WORKERS\n"
     "{worker_info}\n\n"
     "### STRICT RESTRICTIONS (MUST FOLLOW)\n"
-    "1. **Closed Worker Set:** You must **ONLY** select from the specifically provided list of workers above. "
-    "**NEVER** assume the existence of, hallucinate, or route to a worker that is not explicitly defined in your registry.\n"
-    "2. **Delegation Only:** You are **strictly prohibited** from calling tools or executing functions yourself. "
-    "Do not attempt to answer the query directly if it requires a tool. Your job is only to select the correct worker and let them handle the task.\n"
-    "3. **Manager Authority:** You manage the workflow. If a task requires action, route it. "
-    "If a task requires multiple steps, route to the first logical worker (Worker Chaining).\n\n"
+    "1. **NO PLACEHOLDERS:** NEVER provide responses like '[list of info]' or 'Here is the data' if you haven't received it from a worker first.\n"
+    "2. **Delegation Mandatory:** If a user asks for information, you MUST route to the relevant worker.\n"
+    "3. **Manager Authority:** You manage the workflow. If a task is not yet done by a worker, your only valid action is to route to that worker.\n\n"
     "### OPERATIONAL WORKFLOW\n"
-    "1. **Receive & Analyze:** Receive the user's request. Analyze which worker from the **available list** is best suited to handle the immediate next step based on their defined capabilities.\n"
-    "2. **Route:** Route the conversation to that selected worker.\n"
-    "   - *Note on Chaining:* The output of one worker is added to the history for the next. You do not need to manually pass data; just route effectively.\n"
-    "3. **Finish Condition:** If (and ONLY if) the task is fully completed or requires user input that you do not have:\n"
-    "   - You **MUST** output the 'FINISH' signal.\n"
-    "   - You **MUST** wrap your friendly closing message inside the `final_response` field of your output schema.\n"
-    "   - **DO NOT** write raw text outside of the JSON/Schema structure.\n"
-    "4. **Chitchat Handling:** If the user just says 'hello' or chatty things that require no worker action, "
-    "behave like a helpful assistant and route to FINISH, providing a friendly `final_response`."
+    "1. **Analyze History:** Look at the conversation. Has a worker already provided the requested data?\n"
+    "2. **Route or Finish:** \n"
+    "   - If NO: Route to the worker responsible for that data.\n"
+    "   - If YES: Summarize the data received and route to 'FINISH'.\n\n"
+    "### EXAMPLES\n"
+    "Example 1: Routing to Worker\n"
+    "Context: User asks 'What is my CPU usage?'\n"
+    "Response: {\"next\": \"SystemWorker\", \"final_response\": \"\"}\n\n"
+    "Example 2: Finishing Task\n"
+    "Context: SystemWorker just reported 'CPU usage is 15%'.\n"
+    "Response: {\"next\": \"FINISH\", \"final_response\": \"Your current CPU usage is 15%.\"}\n\n"
+    "Example 3: Multi-step Progress\n"
+    "Context: User wants to check email and save it. GmailWorker just provided email content.\n"
+    "Response: {\"next\": \"SystemWorker\", \"final_response\": \"\"}"
 )
 
 formatted_system_prompt = SUPERVISOR_PROMPT.format(
@@ -84,9 +86,9 @@ formatted_system_prompt = SUPERVISOR_PROMPT.format(
 # ==========================================
 # 4. INITIALIZE MANAGER NODE
 # ==========================================
-if ChatGroq:
-    llm = ChatGroq(
-        model="qwen/qwen3-32b",
+if ChatOllama:
+    llm = ChatOllama(
+        model="gemma4:e4b",
         temperature=0
     )
     

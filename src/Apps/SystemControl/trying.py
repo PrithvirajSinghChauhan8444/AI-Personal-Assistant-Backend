@@ -5,7 +5,16 @@ import json
 import sys
 
 
-from AppOpener import open as open_app
+import os
+import platform
+import subprocess
+
+open_app = None
+if os.name == "nt":
+    try:
+        from AppOpener import open as open_app
+    except Exception:
+        open_app = None
 
 # --- Helper to load JSON configs ---
 def load_json_config(filename):

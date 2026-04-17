@@ -10,10 +10,10 @@ config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../
 load_dotenv(config_path)
 
 try:
-    from langchain_groq import ChatGroq
+    from langchain_ollama import ChatOllama
 except ImportError:
-    print("❌ Critical: 'langchain_groq' not installed.")
-    ChatGroq = None
+    print("❌ Critical: 'langchain_ollama' not installed.")
+    ChatOllama = None
 
 from src.CoreFunctions.LangGraph.planner_define import PlannerAgent
 # Reuse MEMBERS from manager_declare to ensure consistency
@@ -23,24 +23,34 @@ from src.CoreFunctions.LangGraph.manager_declare import MEMBERS, WORKER_INFO
 # 1. SYSTEM PROMPT
 # ==========================================
 PLANNER_PROMPT = (
-    "You are the Planner of an advanced AI Personal Assistant system.\n"
-    "Your goal is to break down the user's request into a logical sequence of steps.\n"
-    "You have access to the following workers request to be performed by Manager/Supervisor:\n"
-    "{worker_info}\n"
-    "Each step should specify which worker (if any) is best suited for it.\n"
-    "Your output will be used by the Manager to coordinate the execution.\n"
-    "Be specific and tactical.\n"
-    "Do not use any tools. You are only planning the steps for the Manager to execute.\n"
-    "IMPORTANT: Output ONLY the step-by-step plan. Do NOT include any 'Thinking' blocks, internal monologue, or reasoning. "
-    "Start directly with the plan steps."
+    "You are the Planner. Create a direct, technical plan for the Manager.\n"
+    "Available workers:\n"
+    "{worker_info}\n\n"
+    "### RULES\n"
+    "1. Keep it simple. One worker per step.\n"
+    "2. Be technical. Specify exactly what tool the worker should use if possible.\n"
+    "3. DO NOT hallucinate work. Only plan for what the user asked.\n"
+    "4. Output ONLY the numbered list of steps.\n\n"
+    "### EXAMPLES\n"
+    "User: 'Check my RAM usage and email it to boss@company.com'\n"
+    "Plan:\n"
+    "1. SystemWorker: get_system_stats (RAM)\n"
+    "2. GmailWorker: send_mail (recipient='boss@company.com', body='RAM Stats...')\n\n"
+    "User: 'Search my emails for flight tickets and save the details to travel.txt'\n"
+    "Plan:\n"
+    "1. GmailWorker: search_emails (query='flight ticket')\n"
+    "2. SystemWorker: write_file (filename='travel.txt', content='...') \n\n"
+    "User: 'What is the weather in London?'\n"
+    "Plan:\n"
+    "1. ProductivityWorker: get_weather (location='London')"
 )
 
 # ==========================================
 # 2. INITIALIZE MODEL & AGENT
 # ==========================================
-if ChatGroq:
-    llm = ChatGroq(
-        model="qwen/qwen3-32b", 
+if ChatOllama:
+    llm = ChatOllama(
+        model="gemma4:e4b", 
         temperature=0
     )
     

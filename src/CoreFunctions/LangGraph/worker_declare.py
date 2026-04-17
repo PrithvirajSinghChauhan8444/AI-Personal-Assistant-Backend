@@ -10,10 +10,10 @@ config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../
 load_dotenv(config_path)
 
 try:
-    from langchain_groq import ChatGroq
+    from langchain_ollama import ChatOllama
 except ImportError:
-    print("❌ Critical: 'langchain_groq' not installed. Please install it.")
-    ChatGroq = None
+    print("❌ Critical: 'langchain_ollama' not installed.")
+    ChatOllama = None
 
 from src.CoreFunctions.LangGraph.worker_define import WorkerAgent
 from src.CoreFunctions.LangGraph.systemworker import create_system_worker
@@ -24,11 +24,10 @@ from src.CoreFunctions.LangGraph.productivityworker import create_productivity_w
 # ==========================================
 # 1. INITIALIZE MODEL
 # ==========================================
-if ChatGroq:
-    # Using the same model as Manager for consistency, or as specialized.
-    # Qwen 2.5 32b is good for tool use.
-    llm = ChatGroq(
-        model="qwen/qwen3-32b", 
+if ChatOllama:
+    # Using llama3 for workers as well
+    llm = ChatOllama(
+        model="gemma4:e4b", 
         temperature=0
     )
 else:

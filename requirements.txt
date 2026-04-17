@@ -16,3 +16,6 @@ google-auth-httplib2
 spotipy
 numpy
 psutil
+langchain-ollama
+langchain-groq
+langchain-google-genai

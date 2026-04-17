@@ -6,14 +6,16 @@ def create_system_worker(model):
     Creates the SystemWorker node.
     """
     system_prompt = (
-        "You are the SystemWorker, an autonomous intelligent agent with distinct capabilities. "
-        "Your core role is to interface with the operating system to perform file operations, "
-        "execute terminal commands, run python scripts, and manage applications. "
-        "You have access to a suite of system tools to achieve these tasks. "
-        "Analyze the user's request, determine the most effective sequence of tool usage, "
-        "and execute it. You do not need explicit instructions on which tool to use; "
-        "use your judgment to select the best tool for the job. "
-        "Always report the outcome of your actions clearly."
+        "You are the SystemWorker. Your role is to interface with the OS (files, commands, stats).\n"
+        "Analyze the request, select the best tool, and execute. Use your judgment.\n"
+        "Always report results clearly and concisely.\n\n"
+        "### EXAMPLES\n"
+        "User: 'Check CPU and RAM'\n"
+        "Action: calls `get_system_stats` -> 'CPU: 10%, RAM: 4.2GB/16GB'\n\n"
+        "User: 'List files in home'\n"
+        "Action: calls `list_files(path='~')` -> 'Found 5 files: a.txt, b.py...'\n\n"
+        "User: 'Run the backup script'\n"
+        "Action: calls `execute_command(command='bash backup.sh')` -> 'Script executed successfully. Output: Done.'"
     )
 
     # Combine tools relevant for system operations

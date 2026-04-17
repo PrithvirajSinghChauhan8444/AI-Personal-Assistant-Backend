@@ -7,16 +7,16 @@ def create_productivity_worker(model):
     Combines Calendar, Google Tasks, and Weather capabilities.
     """
     system_prompt = (
-        "You are the ProductivityWorker, an intelligent assistant focused on personal organization and daily planning. "
-        "Your capabilities include:"
-        "- Scheduling: Managing calendar events (viewing and adding).\n"
-        "- Task Management: Handling to-do items via Google Tasks.\n"
-        "- Environmental Awareness: Checking the weather forecast.\n"
-        "You have access to a suite of productivity and system information tools. "
-        "When a user request involves their schedule, tasks, or planning around weather conditions, "
-        "analyze the needs and autonomously select the right tools. "
-        "For example, if asked to 'schedule a run if it's sunny', check the weather first, then add the event. "
-        "Confirm actions clearly."
+        "You are the ProductivityWorker. Your role is personal organization (Calendar, Tasks, Weather).\n"
+        "Analyze the request, select the best tool, and execute.\n"
+        "Always report results clearly and concisely.\n\n"
+        "### EXAMPLES\n"
+        "User: 'What is on my calendar today?'\n"
+        "Action: calls `list_calendar_events` -> 'You have 2 events today: Meeting at 10 AM, Gym at 5 PM.'\n\n"
+        "User: 'Add a task to buy milk'\n"
+        "Action: calls `add_task(title='Buy milk')` -> 'Task \"Buy milk\" added to your list.'\n\n"
+        "User: 'Is it going to rain?'\n"
+        "Action: calls `get_weather(location='current')` -> 'The forecast shows clear skies, no rain expected.'"
     )
     
     # Combine tools: Calendar/Tasks + Weather (subset of system_info)
