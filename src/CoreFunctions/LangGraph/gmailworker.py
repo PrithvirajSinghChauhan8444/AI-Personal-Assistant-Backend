@@ -15,7 +15,7 @@ def create_gmail_worker(model):
         "User: 'Search for flight tickets'\n"
         "Action: calls `search_emails(query='flight ticket')` -> 'Found 2 emails regarding flights.'\n\n"
         "User: 'Email boss@co.com that I am late'\n"
-        "Action: calls `send_mail(...)` -> 'Email sent successfully to boss@co.com.'"
+        "Action: calls `send_mail(...)` -> 'Emeail sent successfully to boss@co.com.'"
     )
 
     worker = WorkerAgent(

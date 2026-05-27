@@ -70,13 +70,13 @@ SUPERVISOR_PROMPT = (
     "### EXAMPLES\n"
     "Example 1: Routing to Worker\n"
     "Context: User asks 'What is my CPU usage?'\n"
-    "Response: {\"next\": \"SystemWorker\", \"final_response\": \"\"}\n\n"
+    "Response: {{\"next\": \"SystemWorker\", \"final_response\": \"\"}}\n\n"
     "Example 2: Finishing Task\n"
     "Context: SystemWorker just reported 'CPU usage is 15%'.\n"
-    "Response: {\"next\": \"FINISH\", \"final_response\": \"Your current CPU usage is 15%.\"}\n\n"
+    "Response: {{\"next\": \"FINISH\", \"final_response\": \"Your current CPU usage is 15%.\"}}\n\n"
     "Example 3: Multi-step Progress\n"
     "Context: User wants to check email and save it. GmailWorker just provided email content.\n"
-    "Response: {\"next\": \"SystemWorker\", \"final_response\": \"\"}"
+    "Response: {{\"next\": \"SystemWorker\", \"final_response\": \"\"}}"
 )
 
 formatted_system_prompt = SUPERVISOR_PROMPT.format(

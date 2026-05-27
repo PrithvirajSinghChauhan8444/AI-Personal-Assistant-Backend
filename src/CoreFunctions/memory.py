@@ -2,7 +2,9 @@ import json
 import os
 from datetime import datetime
 
-MEMORY_DIR = "Memory"
+# Absolute path relative to project root
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+MEMORY_DIR = os.path.join(BASE_DIR, "Memory")
 
 FILES = {
     "current": os.path.join(MEMORY_DIR, "current_chat.json"),

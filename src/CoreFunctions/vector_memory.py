@@ -6,10 +6,11 @@ import json
 MODEL = SentenceTransformer("all-MiniLM-L6-v2")
 DIM = 384
 
-INDEX_PATH = "memory/vector_store/index.faiss"
-DATA_PATH = "memory/vector_store/data.json"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+INDEX_PATH = os.path.join(BASE_DIR, "Memory", "vector_store", "index.faiss")
+DATA_PATH = os.path.join(BASE_DIR, "Memory", "vector_store", "data.json")
 
-os.makedirs("memory/vector_store", exist_ok=True)
+os.makedirs(os.path.join(BASE_DIR, "Memory", "vector_store"), exist_ok=True)
 
 def _load_index():
     if os.path.exists(INDEX_PATH):

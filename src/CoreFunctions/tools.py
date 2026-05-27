@@ -28,10 +28,11 @@ from CoreFunctions.auth_utils import verify_password
 
 
 # --- FILE PATHS FOR MEMORY ---
-USER_INFO_PATH = "Memory/user_info.json"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+USER_INFO_PATH = os.path.join(BASE_DIR, "Memory", "user_info.json")
 
 # Ensure memory directory exists
-os.makedirs("Memory", exist_ok=True)
+os.makedirs(os.path.join(BASE_DIR, "Memory"), exist_ok=True)
 if not os.path.exists(USER_INFO_PATH):
     with open(USER_INFO_PATH, "w") as f:
         json.dump({"name": "User", "preferences": []}, f)
