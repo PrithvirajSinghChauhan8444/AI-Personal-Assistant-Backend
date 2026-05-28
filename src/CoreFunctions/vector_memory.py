@@ -1,9 +1,9 @@
-from sentence_transformers import SentenceTransformer
-import faiss
 import os
+import sys
 import json
 
-MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+# Global placeholders for lazy-loaded dependencies
+MODEL = None
 DIM = 384
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12,7 +12,31 @@ DATA_PATH = os.path.join(BASE_DIR, "Memory", "vector_store", "data.json")
 
 os.makedirs(os.path.join(BASE_DIR, "Memory", "vector_store"), exist_ok=True)
 
+def _get_model():
+    """Lazily loads the SentenceTransformer model on first call, keeping CLI startup instant."""
+    global MODEL
+    if MODEL is None:
+        import warnings
+        import logging
+        import contextlib
+        
+        # Suppress warnings & logs
+        warnings.filterwarnings("ignore")
+        os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+        os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+        logging.getLogger("transformers").setLevel(logging.ERROR)
+        logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+        logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+        
+        with open(os.devnull, "w") as f:
+            with contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
+                from sentence_transformers import SentenceTransformer
+                MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+    return MODEL
+
 def _load_index():
+    """Lazily loads FAISS library and reads the index file."""
+    import faiss
     if os.path.exists(INDEX_PATH):
         return faiss.read_index(INDEX_PATH)
     return faiss.IndexFlatL2(DIM)
@@ -24,6 +48,7 @@ def _load_data():
     return []
 
 def _save(index, data):
+    import faiss
     faiss.write_index(index, INDEX_PATH)
     with open(DATA_PATH, "w") as f:
         json.dump(data, f, indent=2)
@@ -32,7 +57,8 @@ def store_vector(text):
     index = _load_index()
     data = _load_data()
 
-    vec = MODEL.encode([text])
+    model = _get_model()
+    vec = model.encode([text])
     index.add(vec)
     data.append(text)
 
@@ -44,6 +70,7 @@ def search_vector(query, k=3):
     if index.ntotal == 0:
         return []
 
-    q = MODEL.encode([query])
+    model = _get_model()
+    q = model.encode([query])
     _, idx = index.search(q, k)
     return [data[i] for i in idx[0] if i < len(data)]
