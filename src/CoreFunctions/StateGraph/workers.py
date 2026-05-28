@@ -13,7 +13,26 @@ from src.CoreFunctions.LangGraph.available_tools import (
 )
 
 # LLM for workers. Using Gemini for stability.
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0)
+
+# Define prompts
+SYSTEM_PROMPT_SYSTEM = "You are SystemWorker. You manage OS tasks, files, commands, and health metrics."
+SYSTEM_PROMPT_GMAIL = "You are GmailWorker. You manage email fetching, searching, and sending."
+SYSTEM_PROMPT_PRODUCTIVITY = "You are ProductivityWorker. You manage calendars, tasks, scheduling, and weather/time checks."
+SYSTEM_PROMPT_MEMORY = "You are MemoryWorker. You save and retrieve long-term user preferences."
+
+# Pre-compile the agents ONCE globally at load time
+SYSTEM_AGENT = create_react_agent(llm, system_control_tools + file_management_tools + system_info_tools, prompt=SYSTEM_PROMPT_SYSTEM)
+GMAIL_AGENT = create_react_agent(llm, gmail_tools, prompt=SYSTEM_PROMPT_GMAIL)
+PRODUCTIVITY_AGENT = create_react_agent(llm, calendar_tools + system_info_tools, prompt=SYSTEM_PROMPT_PRODUCTIVITY)
+MEMORY_AGENT = create_react_agent(llm, memory_tools, prompt=SYSTEM_PROMPT_MEMORY)
+
+AGENT_MAP = {
+    "SystemWorker": SYSTEM_AGENT,
+    "GmailWorker": GMAIL_AGENT,
+    "ProductivityWorker": PRODUCTIVITY_AGENT,
+    "MemoryWorker": MEMORY_AGENT
+}
 
 def _get_active_task(state: AgentState):
     """Finds the task currently marked 'in_progress'"""
@@ -22,9 +41,9 @@ def _get_active_task(state: AgentState):
             return task
     return None
 
-def _run_ephemeral_agent(worker_name: str, tools: list, system_prompt: str, task_desc: str, working_memory: dict):
-    """Runs a ReAct agent in complete isolation, returning only the final answer."""
-    agent = create_react_agent(llm, tools, prompt=system_prompt)
+def _run_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict):
+    """Runs a pre-compiled ReAct agent in complete isolation, returning only the final answer."""
+    agent = AGENT_MAP[worker_name]
     
     # Compress working memory to give context without polluting
     memory_str = json.dumps(working_memory, indent=2)
@@ -66,38 +85,26 @@ def system_worker_node(state: AgentState):
     task = _get_active_task(state)
     if not task: return {}
     
-    tools = system_control_tools + file_management_tools + system_info_tools
-    sys_prompt = "You are SystemWorker. You manage OS tasks, files, commands, and health metrics."
-    
-    final_data = _run_ephemeral_agent("SystemWorker", tools, sys_prompt, task["description"], state.get("working_memory", {}))
+    final_data = _run_ephemeral_agent("SystemWorker", task["description"], state.get("working_memory", {}))
     return _update_state_completed(state, task["id"], final_data)
 
 def gmail_worker_node(state: AgentState):
     task = _get_active_task(state)
     if not task: return {}
     
-    tools = gmail_tools
-    sys_prompt = "You are GmailWorker. You manage email fetching, searching, and sending."
-    
-    final_data = _run_ephemeral_agent("GmailWorker", tools, sys_prompt, task["description"], state.get("working_memory", {}))
+    final_data = _run_ephemeral_agent("GmailWorker", task["description"], state.get("working_memory", {}))
     return _update_state_completed(state, task["id"], final_data)
 
 def productivity_worker_node(state: AgentState):
     task = _get_active_task(state)
     if not task: return {}
     
-    tools = calendar_tools + system_info_tools # Needs weather and time
-    sys_prompt = "You are ProductivityWorker. You manage calendars, tasks, and scheduling."
-    
-    final_data = _run_ephemeral_agent("ProductivityWorker", tools, sys_prompt, task["description"], state.get("working_memory", {}))
+    final_data = _run_ephemeral_agent("ProductivityWorker", task["description"], state.get("working_memory", {}))
     return _update_state_completed(state, task["id"], final_data)
 
 def memory_worker_node(state: AgentState):
     task = _get_active_task(state)
     if not task: return {}
     
-    tools = memory_tools
-    sys_prompt = "You are MemoryWorker. You save and retrieve long-term user preferences."
-    
-    final_data = _run_ephemeral_agent("MemoryWorker", tools, sys_prompt, task["description"], state.get("working_memory", {}))
+    final_data = _run_ephemeral_agent("MemoryWorker", task["description"], state.get("working_memory", {}))
     return _update_state_completed(state, task["id"], final_data)

@@ -39,7 +39,7 @@ def task_router_node(state: AgentState):
     primary_goal = state.get("primary_goal", "")
     
     # Use a robust model for structured JSON parsing
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0)
+    llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0)
     structured_llm = llm.with_structured_output(TaskPlan)
     
     plan: TaskPlan = structured_llm.invoke([

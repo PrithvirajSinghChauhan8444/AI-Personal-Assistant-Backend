@@ -68,8 +68,14 @@ def read_memory(key):
 
 
 
-def remember(key, value, category="past"):
-    """Store important information for future use."""
+def remember(key: str, value: str, category: str = "past") -> str:
+    """Store important information for future use.
+
+    Args:
+        key (str): The unique identifier or topic name for the memory (e.g., 'user_name').
+        value (str): The actual details or context to remember (e.g., 'John').
+        category (str): The grouping category for the memory. Defaults to 'past'.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: remember")
     print(f"   Args: key={key}, value={value}, category={category}")
     store_memory(category, key, value)
@@ -77,9 +83,11 @@ def remember(key, value, category="past"):
     return f"Saved memory: {key}"
 
 
-def recall(key):
-    """
-    Recall memory by key using smart lookup.
+def recall(key: str) -> str:
+    """Recall memory by key using smart lookup.
+
+    Args:
+        key (str): The unique identifier or topic name of the memory to fetch.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: recall")
     print(f"   Args: key={key}")
@@ -93,8 +101,12 @@ def recall(key):
 # 2. COMMUNICATION TOOLS (Gmail)
 # ===========================
 
-def fetch_unread_mails(limit=5):
-    """Fetches the latest unread emails."""
+def fetch_unread_mails(limit: int = 5) -> str:
+    """Fetches the latest unread emails.
+
+    Args:
+        limit (int): The maximum number of emails to fetch. Defaults to 5.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_unread_mails")
     print(f"   Args: limit={limit}")
     try:
@@ -105,8 +117,14 @@ def fetch_unread_mails(limit=5):
     except Exception as e:
         return f"Error fetching mails: {e}"
 
-def send_gmail(to, subject, body):
-    """Sends an email."""
+def send_gmail(to: str, subject: str, body: str) -> str:
+    """Sends an email to a specified recipient.
+
+    Args:
+        to (str): The email address of the recipient.
+        subject (str): The subject line of the email.
+        body (str): The main content or body of the email.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: send_gmail")
     print(f"   Args: to={to}, subject={subject}, body={body}")
     try:
@@ -119,8 +137,12 @@ def send_gmail(to, subject, body):
 # 3. PRODUCTIVITY TOOLS (Tasks & Calendar)
 # ===========================
 
-def add_google_task(title):
-    """Adds a task to Google Tasks."""
+def add_google_task(title: str) -> str:
+    """Adds a task to Google Tasks.
+
+    Args:
+        title (str): The title or name of the task to add.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: add_google_task")
     print(f"   Args: title={title}")
     try:
@@ -131,8 +153,12 @@ def add_google_task(title):
     except Exception as e:
         return f"Error adding task: {e}"
 
-def check_calendar_events(max_results=5):
-    """Checks upcoming calendar events."""
+def check_calendar_events(max_results: int = 5) -> str:
+    """Checks upcoming calendar events.
+
+    Args:
+        max_results (int): The maximum number of upcoming events to check. Defaults to 5.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: check_calendar_events")
     print(f"   Args: max_results={max_results}")
     try:
@@ -161,11 +187,13 @@ def check_calendar_events(max_results=5):
 
 
     
-def add_calendar_event(summary, start_time, duration=1):
-    """
-    Adds an event to the calendar.
-    start_time format expected: 'YYYY-MM-DDTHH:MM:SS' (ISO format)
-    duration in hours.
+def add_calendar_event(summary: str, start_time: str, duration: int = 1) -> str:
+    """Adds an event to the calendar.
+
+    Args:
+        summary (str): The title or description of the event.
+        start_time (str): The start time expected in ISO format (e.g., 'YYYY-MM-DDTHH:MM:SS').
+        duration (int): The duration of the event in hours. Defaults to 1.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: add_calendar_event")
     print(f"   Args: summary={summary}, start_time={start_time}, duration={duration}")
@@ -181,8 +209,12 @@ def add_calendar_event(summary, start_time, duration=1):
 # 4. SYSTEM & ENVIRONMENT
 # ===========================
 
-def get_system_health():
-    """Returns CPU, RAM, and Battery stats."""
+def get_system_health() -> str:
+    """Returns CPU, RAM, and Battery stats.
+
+    Returns:
+        str: A JSON formatted string containing system health metrics.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: get_system_health")
     try:
         stats = get_system_stats()
@@ -190,9 +222,11 @@ def get_system_health():
     except Exception as e:
         return f"Error reading system stats: {e}"
 
-def get_weather(location="Agra"):
-    """
-    Fetches current weather using wttr.in (No API key needed).
+def get_weather(location: str = "Agra") -> str:
+    """Fetches current weather using wttr.in (No API key needed).
+
+    Args:
+        location (str): The name of the city to get the weather for. Defaults to "Agra".
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: get_weather")
     print(f"   Args: location={location}")
@@ -204,8 +238,12 @@ def get_weather(location="Agra"):
     except Exception as e:
         return f"Error fetching weather: {e}"
 
-def get_time():
-    """Returns the current system time."""
+def get_time() -> str:
+    """Returns the current system time.
+
+    Returns:
+        str: The formatted current system time string.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: get_time")
     return datetime.now().strftime("%I:%M %p, %A %d %B %Y")
 
@@ -216,36 +254,58 @@ def run_code(code):
 # 6. FILE OPERATIONS (Protected)
 # ===========================
 
-def create_file_tool(path, content):
-    """Creates a file with content. PROTECTED."""
+def create_file_tool(path: str, content: str) -> str:
+    """Creates a file with content. PROTECTED.
+
+    Args:
+        path (str): The absolute or relative file path to write to.
+        content (str): The string content to write inside the file.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: create_file_tool")
     print(f"   Args: path={path}, content={content[:50]}...")
     if verify_password():
         return _write_file(path, content)
     return "❌ Action Cancelled: Incorrect Password."
 
-def read_file_tool(path):
-    """Reads a file."""
+def read_file_tool(path: str) -> str:
+    """Reads and returns the contents of a file.
+
+    Args:
+        path (str): The file path to read from.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: read_file_tool")
     print(f"   Args: path={path}")
     return read_file(path)
 
-def list_files_tool(path):
-    """Lists files in a directory."""
+def list_files_tool(path: str) -> str:
+    """Lists files and directories inside a path.
+
+    Args:
+        path (str): The directory path to list.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: list_files_tool")
     print(f"   Args: path={path}")
     return list_files(path)
 
-def create_dir_tool(path):
-    """Creates a directory. PROTECTED."""
+def create_dir_tool(path: str) -> str:
+    """Creates a new directory. PROTECTED.
+
+    Args:
+        path (str): The path of the directory to create.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: create_dir_tool")
     print(f"   Args: path={path}")
     if verify_password():
         return _create_dir(path)
     return "❌ Action Cancelled: Incorrect Password."
 
-def save_code_tool(content, suggested_name=None):
-    """Saves python code. PROTECTED."""
+def save_code_tool(content: str, suggested_name: str = None) -> str:
+    """Saves python code to a script. PROTECTED.
+
+    Args:
+        content (str): The python code script contents.
+        suggested_name (str, optional): The name of the file to save as. Defaults to None.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: save_code_tool")
     print(f"   Args: content={content[:50]}..., suggested_name={suggested_name}")
     if verify_password():
@@ -256,24 +316,37 @@ def save_code_tool(content, suggested_name=None):
 # 7. SYSTEM CONTROL (Protected)
 # ===========================
 
-def run_terminal_tool(command):
-    """Runs a terminal command. PROTECTED."""
+def run_terminal_tool(command: str) -> str:
+    """Runs a bash terminal command. PROTECTED.
+
+    Args:
+        command (str): The exact shell command string to execute.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: run_terminal_tool")
     print(f"   Args: command={command}")
     if verify_password():
         return _run_term(command)
     return "❌ Action Cancelled: Incorrect Password."
 
-def run_python_tool(path):
-    """Runs a python script. PROTECTED."""
+def run_python_tool(path: str) -> str:
+    """Runs a python script at the specified path. PROTECTED.
+
+    Args:
+        path (str): The path to the Python file (.py) to execute.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: run_python_tool")
     print(f"   Args: path={path}")
     if verify_password():
         return _run_py(path)
     return "❌ Action Cancelled: Incorrect Password."
 
-def launch_app_tool(app_name, arguments=None):
-    """Launches an app. PROTECTED."""
+def launch_app_tool(app_name: str, arguments: str = None) -> str:
+    """Launches an installed application. PROTECTED.
+
+    Args:
+        app_name (str): The name or path of the application.
+        arguments (str, optional): Arguments to pass to the application. Defaults to None.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: launch_app_tool")
     print(f"   Args: app_name={app_name}, arguments={arguments}")
     if verify_password():

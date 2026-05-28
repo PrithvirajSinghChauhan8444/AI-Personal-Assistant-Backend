@@ -15,7 +15,7 @@ def output_finalizer_node(state: AgentState):
     primary_goal = state.get("primary_goal", "")
     completed_tasks = state.get("completed_tasks", {})
     
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.7)
+    llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0.7)
     
     logs_str = json.dumps(completed_tasks, indent=2)
     
@@ -30,8 +30,18 @@ def output_finalizer_node(state: AgentState):
             HumanMessage(content=content)
         ]):
             if chunk.content:
-                full_response += chunk.content
-                print(chunk.content, end="", flush=True)
+                text_chunk = ""
+                if isinstance(chunk.content, str):
+                    text_chunk = chunk.content
+                elif isinstance(chunk.content, list):
+                    for item in chunk.content:
+                        if isinstance(item, dict) and "text" in item:
+                            text_chunk += item["text"]
+                        elif isinstance(item, str):
+                            text_chunk += item
+                
+                full_response += text_chunk
+                print(text_chunk, end="", flush=True)
         print("\n")
     except Exception as e:
         print(f"\n❌ Error during streaming: {e}")
@@ -40,7 +50,18 @@ def output_finalizer_node(state: AgentState):
             SystemMessage(content=FINALIZER_PROMPT),
             HumanMessage(content=content)
         ])
-        full_response = result.content
+        if isinstance(result.content, str):
+            full_response = result.content
+        elif isinstance(result.content, list):
+            text_parts = []
+            for item in result.content:
+                if isinstance(item, dict) and "text" in item:
+                    text_parts.append(item["text"])
+                elif isinstance(item, str):
+                    text_parts.append(item)
+            full_response = "".join(text_parts)
+        else:
+            full_response = str(result.content)
         print(full_response)
         print()
     

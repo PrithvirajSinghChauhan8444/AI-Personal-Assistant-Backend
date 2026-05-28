@@ -125,6 +125,15 @@ class CLIStatusVisualizer:
             i += 1
 
 def process_request_interactive():
+    # Check for missing/placeholder API key
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key or api_key == "your_gemini_api_key_here":
+        print("\n\033[1;31m⚠️  Gemini API Key Required\033[0m")
+        print("Please configure the \033[1;36m.env\033[0m file in the project root directory with a valid Google Gemini API Key.")
+        print("Format: \033[1;33mGEMINI_API_KEY=your_actual_api_key\033[0m")
+        print("You can get a free key from Google AI Studio: \033[4;34mhttps://aistudio.google.com/\033[0m\n")
+        return
+
     print("🤖 \033[1;32mAgent Manager (Dynamic State-Graph)\033[0m - Type 'exit' to quit.")
     
     while True:
@@ -139,6 +148,31 @@ def process_request_interactive():
             break
 
         if not user_input:
+            continue
+
+        # Fast-Path Semantic Router for pure greetings/chit-chat
+        GREETINGS = {"hi", "hello", "hey", "howdy", "hola", "yo", "greetings", "good morning", "good afternoon", "good evening"}
+        clean_input = "".join(c for c in user_input.lower() if c.isalnum() or c.isspace()).strip()
+        if clean_input in GREETINGS:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            print("\n\033[1;35m🤖 Assistant:\033[0m ", end="", flush=True)
+            fast_llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0.7)
+            try:
+                for chunk in fast_llm.stream(f"The user said '{user_input}'. Respond with a friendly, short greeting and ask how you can help today."):
+                    if chunk.content:
+                        text_chunk = ""
+                        if isinstance(chunk.content, str):
+                            text_chunk = chunk.content
+                        elif isinstance(chunk.content, list):
+                            for item in chunk.content:
+                                if isinstance(item, dict) and "text" in item:
+                                    text_chunk += item["text"]
+                                elif isinstance(item, str):
+                                    text_chunk += item
+                        print(text_chunk, end="", flush=True)
+                print("\n")
+            except Exception:
+                print("Hi there! How can I assist you today?\n")
             continue
 
         thread_id = "interactive_session"
