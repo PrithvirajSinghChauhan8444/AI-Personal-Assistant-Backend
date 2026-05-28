@@ -18,7 +18,7 @@ from src.CoreFunctions.tools import (
     add_google_task, check_calendar_events, add_calendar_event,
     
     # System info
-    get_system_health, get_weather, get_time,
+    get_system_health, get_weather, get_time, web_search,
     
     # File Ops
     create_file_tool, read_file_tool, list_files_tool, 
@@ -57,6 +57,7 @@ system_info_tools = [
     StructuredTool.from_function(get_system_health),
     StructuredTool.from_function(get_weather),
     StructuredTool.from_function(get_time),
+    StructuredTool.from_function(web_search),
 ]
 
 # --- File Operations ---
@@ -98,6 +99,7 @@ TOOL_MAP = {
     "get_system_health": system_info_tools[0],
     "get_weather": system_info_tools[1],
     "get_time": system_info_tools[2],
+    "web_search": system_info_tools[3],
 
     # File Ops
     "create_file_tool": file_management_tools[0],

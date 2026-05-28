@@ -13,13 +13,24 @@ Do not mention "subtasks" or the internal architecture. Just provide the final a
 def output_finalizer_node(state: AgentState):
     print("\n[Node: Output Finalizer] Synthesizing final response...")
     primary_goal = state.get("primary_goal", "")
-    completed_tasks = state.get("completed_tasks", {})
+    completed_tasks = state.get("completed_tasks", {}) or {}
+    chat_history = state.get("chat_history", []) or []
     
     llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0.7)
     
+    # 1. Format conversational history
+    history_str = ""
+    if chat_history:
+        history_str = "Conversation History:\n"
+        for msg in chat_history:
+            history_str += f"- {msg['role'].capitalize()}: {msg['content']}\n"
+            
     logs_str = json.dumps(completed_tasks, indent=2)
     
-    content = f"User Request: {primary_goal}\n\nExecution Logs:\n{logs_str}"
+    content = ""
+    if history_str:
+        content += history_str + "\n"
+    content += f"User Request: {primary_goal}\n\nExecution Logs:\n{logs_str}"
     
     print("\n\033[1;35m🤖 Assistant:\033[0m ", end="", flush=True)
     

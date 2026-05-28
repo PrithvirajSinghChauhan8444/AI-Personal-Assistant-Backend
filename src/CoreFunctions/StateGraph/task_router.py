@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 from typing import List, Literal
 from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -37,6 +38,33 @@ RULES:
 def task_router_node(state: AgentState):
     print("\n[Node: Task Router] Analyzing request...")
     primary_goal = state.get("primary_goal", "")
+    working_memory = state.get("working_memory", {}) or {}
+    chat_history = state.get("chat_history", []) or []
+    
+    user_profile = working_memory.get("user_profile", {})
+    relevant_memories = working_memory.get("relevant_memories", [])
+    
+    # 1. Build conversational history
+    history_str = ""
+    if chat_history:
+        history_str = "Conversation History:\n"
+        for msg in chat_history:
+            history_str += f"- {msg['role'].capitalize()}: {msg['content']}\n"
+            
+    # 2. Build user context profile
+    context_str = ""
+    if user_profile:
+        context_str += f"User Profile Details: {json.dumps(user_profile)}\n"
+    if relevant_memories:
+        context_str += "Relevant Stored Memories / Past Facts:\n"
+        for mem in relevant_memories:
+            context_str += f"- {mem}\n"
+            
+    input_content = f"User Request: {primary_goal}\n"
+    if context_str:
+        input_content = f"Injected Context:\n{context_str}\n\n" + input_content
+    if history_str:
+        input_content = history_str + "\n" + input_content
     
     # Use a robust model for structured JSON parsing
     llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0)
@@ -44,7 +72,7 @@ def task_router_node(state: AgentState):
     
     plan: TaskPlan = structured_llm.invoke([
         SystemMessage(content=ROUTER_PROMPT),
-        HumanMessage(content=primary_goal)
+        HumanMessage(content=input_content)
     ])
     
     active_subtasks = []
@@ -59,6 +87,7 @@ def task_router_node(state: AgentState):
         
     return {
         "active_subtasks": active_subtasks,
-        "working_memory": {},
+        "working_memory": working_memory,
         "completed_tasks": {}
     }
+

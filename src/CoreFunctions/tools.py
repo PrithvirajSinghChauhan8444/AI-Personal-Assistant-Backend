@@ -247,6 +247,30 @@ def get_time() -> str:
     print(f"\n[DEBUG] 🛠️ Calling Tool: get_time")
     return datetime.now().strftime("%I:%M %p, %A %d %B %Y")
 
+def web_search(query: str, max_results: int = 5) -> str:
+    """Search the web for real-time information or questions.
+
+    Args:
+        query (str): The search term or question to query.
+        max_results (int, optional): The maximum number of results to fetch. Defaults to 5.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: web_search")
+    print(f"   Args: query={query}")
+    try:
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            from duckduckgo_search import DDGS
+            results = []
+            with DDGS() as ddgs:
+                for r in ddgs.text(query, max_results=max_results):
+                    results.append(f"Title: {r['title']}\nURL: {r['href']}\nSnippet: {r['body']}\n")
+        if not results:
+            return "No search results found."
+        return "\n".join(results)[:3000] # Truncate for token safety
+    except Exception as e:
+        return f"Error executing web search: {e}"
+
 def run_code(code):
     code
 
@@ -379,6 +403,7 @@ AVAILABLE_TOOLS = {
     "system_health": get_system_health,
     "get_weather": get_weather,
     "get_time": get_time,
+    "web_search": web_search,
 
     # File Ops
     "write_file": create_file_tool,

@@ -31,7 +31,12 @@ def _get_model():
         with open(os.devnull, "w") as f:
             with contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
                 from sentence_transformers import SentenceTransformer
-                MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+                try:
+                    # Attempt instant offline load first to prevent remote network checks and hangs
+                    MODEL = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=True)
+                except Exception:
+                    # Fallback to online download/check only if not cached locally
+                    MODEL = SentenceTransformer("all-MiniLM-L6-v2")
     return MODEL
 
 def _load_index():

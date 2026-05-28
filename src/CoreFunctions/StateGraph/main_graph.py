@@ -20,11 +20,13 @@ from src.CoreFunctions.StateGraph.workers import (
     productivity_worker_node, memory_worker_node
 )
 from src.CoreFunctions.StateGraph.finalizer import output_finalizer_node
+from src.CoreFunctions.StateGraph.memory_nodes import memory_injector_node, reflection_node
 
 def create_graph():
     workflow = StateGraph(AgentState)
     
     # Add Nodes
+    workflow.add_node("MemoryInjector", memory_injector_node)
     workflow.add_node("TaskRouter", task_router_node)
     workflow.add_node("Orchestrator", orchestrator_node)
     workflow.add_node("SystemWorker", system_worker_node)
@@ -32,9 +34,13 @@ def create_graph():
     workflow.add_node("ProductivityWorker", productivity_worker_node)
     workflow.add_node("MemoryWorker", memory_worker_node)
     workflow.add_node("OutputFinalizer", output_finalizer_node)
+    workflow.add_node("Reflection", reflection_node)
     
     # Set Entry Point
-    workflow.set_entry_point("TaskRouter")
+    workflow.set_entry_point("MemoryInjector")
+    
+    # Memory Injector runs, then Task Router
+    workflow.add_edge("MemoryInjector", "TaskRouter")
     
     # Task Router goes to Orchestrator
     workflow.add_edge("TaskRouter", "Orchestrator")
@@ -58,14 +64,18 @@ def create_graph():
     workflow.add_edge("ProductivityWorker", "Orchestrator")
     workflow.add_edge("MemoryWorker", "Orchestrator")
     
-    # OutputFinalizer ends the graph
-    workflow.add_edge("OutputFinalizer", END)
+    # OutputFinalizer goes to Reflection node for passive self-learning
+    workflow.add_edge("OutputFinalizer", "Reflection")
+    
+    # Reflection node ends the graph
+    workflow.add_edge("Reflection", END)
     
     # Checkpointer for state persistence
     memory = MemorySaver()
     
     # Compile Graph
     return workflow.compile(checkpointer=memory)
+
 
 # Execute
 app = create_graph()
@@ -136,6 +146,7 @@ def process_request_interactive():
 
     print("🤖 \033[1;32mAgent Manager (Dynamic State-Graph)\033[0m - Type 'exit' to quit.")
     
+    chat_history = []
     while True:
         try:
             user_input = input("\nYou: ").strip()
@@ -183,7 +194,8 @@ def process_request_interactive():
             "active_subtasks": [],
             "working_memory": {},
             "completed_tasks": {},
-            "final_response": ""
+            "final_response": "",
+            "chat_history": chat_history
         }
 
         # Initialize and start visualizer
@@ -229,8 +241,28 @@ def process_request_interactive():
                             print(f"  \033[1;32m✔\033[0m {node_name} finished execution.")
                         visualizer.start("Evaluating next steps", "34") # Blue
                         
+                    elif node_name == "MemoryInjector":
+                        visualizer.update("Matching long-term memories & user profile", "36")
+                        
                     elif node_name == "OutputFinalizer":
                         visualizer.stop()
+                        
+                    elif node_name == "Reflection":
+                        # Reflection prints its own beautiful logs directly
+                        pass
+            
+            # Retrieve latest state from checkpointer to save for multi-turn conversational persistence
+            state_data = app.get_state(config)
+            final_resp = state_data.values.get("final_response", "")
+            
+            # Append exchange to local history
+            chat_history.append({"role": "user", "content": user_input})
+            if final_resp:
+                chat_history.append({"role": "assistant", "content": final_resp})
+                
+            # Keep history to last 10 messages (5 turns) for token safety
+            if len(chat_history) > 10:
+                chat_history = chat_history[-10:]
         except Exception as e:
             visualizer.stop()
             print(f"❌ Execution Error: {e}")

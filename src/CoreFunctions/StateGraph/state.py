@@ -14,3 +14,5 @@ class AgentState(TypedDict):
     error_logs: Optional[str]
     final_response: str
     next_node: str
+    chat_history: Optional[List[Dict[str, str]]]
+

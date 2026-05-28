@@ -29,6 +29,14 @@ def store_memory(category, key, value):
     """
     category: current | user | past
     """
+    # Normalize category mapping to prevent LLM parameter hallucinations from crashing the tool
+    category_str = str(category).lower()
+    if category_str not in FILES:
+        if "user" in category_str or "profile" in category_str:
+            category = "user"
+        else:
+            category = "past"
+            
     data = _load(FILES[category])
     data[key] = {
         "value": value,
@@ -70,6 +78,13 @@ def fetch_memory(category=None, key=None):
     # DIRECT CATEGORY MODE
     # -----------------------------
     if category and key:
+        category_str = str(category).lower()
+        if category_str not in FILES:
+            if "user" in category_str or "profile" in category_str:
+                category = "user"
+            else:
+                category = "past"
+                
         data = _load(FILES[category])
         value = data.get(key, {}).get("value")
         print(f"🔁 recalled [{category}] → {key} = {value}")
@@ -79,6 +94,13 @@ def fetch_memory(category=None, key=None):
     # FULL CATEGORY DUMP
     # -----------------------------
     if category:
+        category_str = str(category).lower()
+        if category_str not in FILES:
+            if "user" in category_str or "profile" in category_str:
+                category = "user"
+            else:
+                category = "past"
         return _load(FILES[category])
 
     return None
+
