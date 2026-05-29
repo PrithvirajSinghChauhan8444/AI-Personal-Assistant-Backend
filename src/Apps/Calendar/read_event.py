@@ -1,11 +1,11 @@
 from datetime import datetime, timezone
 from .calendar_service import get_service
 
-def list_upcoming_events(max_results=10):
+def list_upcoming_events(max_results=10, account: str = "personal"):
     """
-    Fetches the next 10 upcoming events.
+    Fetches the next upcoming events for a specific account.
     """
-    service = get_service()
+    service = get_service(account)
     if not service:
         return []
 
@@ -13,7 +13,7 @@ def list_upcoming_events(max_results=10):
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     
     try:
-        print(f"📅 Checking calendar for next {max_results} events...")
+        print(f"📅 Checking calendar for next {max_results} events on account '{account}'...")
         events_result = service.events().list(
             calendarId='primary', 
             timeMin=now,
@@ -37,16 +37,5 @@ def list_upcoming_events(max_results=10):
         return clean_events
 
     except Exception as e:
-        print(f"❌ Read Error: {e}")
+        print(f"❌ Read Error on account '{account}': {e}")
         return []
-
-# --- Test Block ---
-if __name__ == "__main__":
-    events = list_upcoming_events()
-    
-    if not events:
-        print("📭 No upcoming events found on your primary calendar.")
-    else:
-        print(f"\n✅ Found {len(events)} events:")
-        for e in events:
-            print(f"- {e['summary']} at {e['start']}")

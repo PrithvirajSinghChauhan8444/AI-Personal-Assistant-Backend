@@ -4,34 +4,41 @@ import json
 from langchain_core.messages import HumanMessage
 from langgraph.prebuilt import create_react_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_ollama import ChatOllama
 from src.CoreFunctions.StateGraph.state import AgentState
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 from src.CoreFunctions.LangGraph.available_tools import (
     system_control_tools, file_management_tools, system_info_tools,
-    gmail_tools, calendar_tools, memory_tools
+    gmail_tools, calendar_tools, memory_tools, classroom_tools
 )
 
 # LLM for workers. Using Gemini for stability.
 llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0)
+
+# Local LLM for Memory and lightweight workers.
+local_llm = ChatOllama(model="gemma4:e2b", temperature=0)
 
 # Define prompts
 SYSTEM_PROMPT_SYSTEM = "You are SystemWorker. You manage OS tasks, files, commands, and health metrics."
 SYSTEM_PROMPT_GMAIL = "You are GmailWorker. You manage email fetching, searching, and sending."
 SYSTEM_PROMPT_PRODUCTIVITY = "You are ProductivityWorker. You manage calendars, tasks, scheduling, and weather/time checks."
 SYSTEM_PROMPT_MEMORY = "You are MemoryWorker. You save and retrieve long-term user preferences."
+SYSTEM_PROMPT_CLASSROOM = "You are ClassroomWorker. You manage Google Classroom courses, assignments, announcements, and coursework details."
 
 # Pre-compile the agents ONCE globally at load time
 SYSTEM_AGENT = create_react_agent(llm, system_control_tools + file_management_tools + system_info_tools, prompt=SYSTEM_PROMPT_SYSTEM)
 GMAIL_AGENT = create_react_agent(llm, gmail_tools, prompt=SYSTEM_PROMPT_GMAIL)
 PRODUCTIVITY_AGENT = create_react_agent(llm, calendar_tools + system_info_tools, prompt=SYSTEM_PROMPT_PRODUCTIVITY)
-MEMORY_AGENT = create_react_agent(llm, memory_tools, prompt=SYSTEM_PROMPT_MEMORY)
+MEMORY_AGENT = create_react_agent(local_llm, memory_tools, prompt=SYSTEM_PROMPT_MEMORY)
+CLASSROOM_AGENT = create_react_agent(llm, classroom_tools, prompt=SYSTEM_PROMPT_CLASSROOM)
 
 AGENT_MAP = {
     "SystemWorker": SYSTEM_AGENT,
     "GmailWorker": GMAIL_AGENT,
     "ProductivityWorker": PRODUCTIVITY_AGENT,
-    "MemoryWorker": MEMORY_AGENT
+    "MemoryWorker": MEMORY_AGENT,
+    "ClassroomWorker": CLASSROOM_AGENT
 }
 
 def _get_active_task(state: AgentState):
@@ -107,4 +114,11 @@ def memory_worker_node(state: AgentState):
     if not task: return {}
     
     final_data = _run_ephemeral_agent("MemoryWorker", task["description"], state.get("working_memory", {}))
+    return _update_state_completed(state, task["id"], final_data)
+
+def classroom_worker_node(state: AgentState):
+    task = _get_active_task(state)
+    if not task: return {}
+    
+    final_data = _run_ephemeral_agent("ClassroomWorker", task["description"], state.get("working_memory", {}))
     return _update_state_completed(state, task["id"], final_data)

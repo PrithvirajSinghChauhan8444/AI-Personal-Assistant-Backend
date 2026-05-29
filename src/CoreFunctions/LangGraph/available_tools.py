@@ -12,10 +12,11 @@ from src.CoreFunctions.tools import (
     remember, recall,
     
     # Communication
-    fetch_unread_mails, send_gmail,
+    fetch_unread_mails, send_gmail, search_gmail, read_gmail_msg, trash_gmail_msg, mark_gmail_read, reply_to_gmail,
     
     # Productivity
     add_google_task, check_calendar_events, add_calendar_event,
+    fetch_classroom_courses, fetch_classroom_assignments, fetch_classroom_announcements, fetch_classroom_assignment_details,
     
     # System info
     get_system_health, get_weather, get_time, web_search,
@@ -42,6 +43,11 @@ memory_tools = [
 gmail_tools = [
     StructuredTool.from_function(fetch_unread_mails),
     StructuredTool.from_function(send_gmail),
+    StructuredTool.from_function(search_gmail),
+    StructuredTool.from_function(read_gmail_msg),
+    StructuredTool.from_function(trash_gmail_msg),
+    StructuredTool.from_function(mark_gmail_read),
+    StructuredTool.from_function(reply_to_gmail),
 ]
 
 
@@ -50,6 +56,14 @@ calendar_tools = [
     StructuredTool.from_function(add_google_task),
     StructuredTool.from_function(check_calendar_events),
     StructuredTool.from_function(add_calendar_event),
+]
+
+# --- Classroom ---
+classroom_tools = [
+    StructuredTool.from_function(fetch_classroom_courses),
+    StructuredTool.from_function(fetch_classroom_assignments),
+    StructuredTool.from_function(fetch_classroom_announcements),
+    StructuredTool.from_function(fetch_classroom_assignment_details),
 ]
 
 # --- System Info ---
@@ -89,11 +103,20 @@ TOOL_MAP = {
     # Communication
     "fetch_unread_mails": gmail_tools[0],
     "send_gmail": gmail_tools[1],
+    "search_gmail": gmail_tools[2],
+    "read_gmail_msg": gmail_tools[3],
+    "trash_gmail_msg": gmail_tools[4],
+    "mark_gmail_read": gmail_tools[5],
+    "reply_to_gmail": gmail_tools[6],
 
     # Productivity
     "add_google_task": calendar_tools[0],
     "check_calendar_events": calendar_tools[1],
     "add_calendar_event": calendar_tools[2],
+    "fetch_classroom_courses": classroom_tools[0],
+    "fetch_classroom_assignments": classroom_tools[1],
+    "fetch_classroom_announcements": classroom_tools[2],
+    "fetch_classroom_assignment_details": classroom_tools[3],
 
     # System Info
     "get_system_health": system_info_tools[0],
@@ -119,6 +142,7 @@ ALL_TOOLS = (
     memory_tools + 
     gmail_tools + 
     calendar_tools + 
+    classroom_tools + 
     system_info_tools + 
     file_management_tools + 
     system_control_tools

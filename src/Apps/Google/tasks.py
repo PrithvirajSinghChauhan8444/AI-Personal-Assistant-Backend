@@ -1,10 +1,11 @@
 from googleapiclient.discovery import build
 from CoreFunctions.auth_utils import get_valid_credentials
-def get_tasks():
+
+def get_tasks(account: str = "personal"):
     """
-    Fetches the top 10 tasks from the user's default task list.
+    Fetches the top 10 tasks from the user's default task list for a specific account.
     """
-    creds = get_valid_credentials()
+    creds = get_valid_credentials(account)
     if not creds:
         return []
 
@@ -40,16 +41,14 @@ def get_tasks():
         return clean_tasks
 
     except Exception as e:
-        print(f"⚠️ Tasks Error: {e}")
+        print(f"⚠️ Tasks Error on account '{account}': {e}")
         return []
-    
-# Add this to the bottom of src/Apps/Google/tasks.py
 
-def add_new_task(title):
+def add_new_task(title, account: str = "personal"):
     """
-    Adds a new task to the default task list.
+    Adds a new task to the default task list for a specific account.
     """
-    creds = get_valid_credentials()
+    creds = get_valid_credentials(account)
     if not creds:
         return False
 
@@ -73,5 +72,5 @@ def add_new_task(title):
         return True
 
     except Exception as e:
-        print(f"⚠️ Add Task Error: {e}")
+        print(f"⚠️ Add Task Error on account '{account}': {e}")
         return False

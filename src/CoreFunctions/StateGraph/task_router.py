@@ -14,7 +14,7 @@ from src.CoreFunctions.StateGraph.state import AgentState
 class SubTaskModel(BaseModel):
     id: str = Field(description="A unique identifier for the subtask, e.g., 'task_1'")
     description: str = Field(description="Clear instructions for the worker")
-    assigned_worker: Literal["SystemWorker", "GmailWorker", "ProductivityWorker", "MemoryWorker"] = Field(
+    assigned_worker: Literal["SystemWorker", "GmailWorker", "ProductivityWorker", "MemoryWorker", "ClassroomWorker"] = Field(
         description="The worker assigned to this task"
     )
 
@@ -25,6 +25,7 @@ ROUTER_PROMPT = """
 You are the Task Router. Your job is to decompose the user's mega-prompt into isolated sub-tasks.
 Available workers:
 - GmailWorker: Reads, searches, and sends emails.
+- ClassroomWorker: Manages Google Classroom courses, coursework, assignments, and announcements.
 - ProductivityWorker: Calendar events, Google Tasks, Weather.
 - MemoryWorker: Long-term memory storage and retrieval.
 - SystemWorker: OS terminal commands, file management, scripts, system health.

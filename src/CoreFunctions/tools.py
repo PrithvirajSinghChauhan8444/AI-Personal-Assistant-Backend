@@ -101,79 +101,162 @@ def recall(key: str) -> str:
 # 2. COMMUNICATION TOOLS (Gmail)
 # ===========================
 
-def fetch_unread_mails(limit: int = 5) -> str:
-    """Fetches the latest unread emails.
+def fetch_unread_mails(limit: int = 5, account: str = "personal") -> str:
+    """Fetches the latest unread emails for a specific Google account.
 
     Args:
         limit (int): The maximum number of emails to fetch. Defaults to 5.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_unread_mails")
-    print(f"   Args: limit={limit}")
+    print(f"   Args: limit={limit}, account={account}")
     try:
-        # Reusing your existing logic. 
-        # Note: handle_gmail_command usually returns a dict/list
-        mails = handle_gmail_command("check unread gmail")
-        return str(mails)[:2000] # Truncate to avoid overflowing LLM context
+        from Apps.Gmail.gmail_ops import search_gmail_emails
+        res = search_gmail_emails("is:unread", limit, account=account)
+        return json.dumps(res, indent=2)
     except Exception as e:
         return f"Error fetching mails: {e}"
 
-def send_gmail(to: str, subject: str, body: str) -> str:
-    """Sends an email to a specified recipient.
+def send_gmail(to: str, subject: str, body: str, account: str = "personal") -> str:
+    """Sends an email to a specified recipient from a specific Google account.
 
     Args:
         to (str): The email address of the recipient.
         subject (str): The subject line of the email.
         body (str): The main content or body of the email.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: send_gmail")
-    print(f"   Args: to={to}, subject={subject}, body={body}")
+    print(f"   Args: to={to}, subject={subject}, body={body}, account={account}")
     try:
-        result = send_email(to, subject, body)
+        from Apps.Gmail.gmail_ops import send_gmail_email
+        result = send_gmail_email(to, subject, body, account=account)
         return f"Email Status: {result}"
     except Exception as e:
         return f"Error sending email: {e}"
+
+def search_gmail(query: str, max_results: int = 10, account: str = "personal") -> str:
+    """Search for emails in the user's Gmail mailbox using query syntax.
+
+    Args:
+        query (str): The search query (e.g. 'from:example@gmail.com', 'subject:meeting', 'is:unread').
+        max_results (int): The maximum number of results to return. Defaults to 10.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: search_gmail")
+    print(f"   Args: query={query}, max_results={max_results}, account={account}")
+    try:
+        from Apps.Gmail.gmail_ops import search_gmail_emails
+        res = search_gmail_emails(query, max_results, account=account)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error searching emails: {e}"
+
+def read_gmail_msg(email_id: str, account: str = "personal") -> str:
+    """Retrieve the full detailed plain-text body of a specific email.
+
+    Args:
+        email_id (str): The unique ID of the Gmail message.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: read_gmail_msg")
+    print(f"   Args: email_id={email_id}, account={account}")
+    try:
+        from Apps.Gmail.gmail_ops import read_gmail_email
+        res = read_gmail_email(email_id, account=account)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error reading email: {e}"
+
+def trash_gmail_msg(email_id: str, account: str = "personal") -> str:
+    """Move a specific email message to the Trash folder.
+
+    Args:
+        email_id (str): The unique ID of the Gmail message.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: trash_gmail_msg")
+    print(f"   Args: email_id={email_id}, account={account}")
+    try:
+        from Apps.Gmail.gmail_ops import trash_gmail_email
+        return trash_gmail_email(email_id, account=account)
+    except Exception as e:
+        return f"Error trashing email: {e}"
+
+def mark_gmail_read(email_id: str, account: str = "personal") -> str:
+    """Mark an email message as read by removing the UNREAD label.
+
+    Args:
+        email_id (str): The unique ID of the Gmail message.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: mark_gmail_read")
+    print(f"   Args: email_id={email_id}, account={account}")
+    try:
+        from Apps.Gmail.gmail_ops import mark_gmail_as_read
+        return mark_gmail_as_read(email_id, account=account)
+    except Exception as e:
+        return f"Error marking email as read: {e}"
+
+def reply_to_gmail(email_id: str, body: str, account: str = "personal") -> str:
+    """Reply to a specific email, keeping it threaded correctly.
+
+    Args:
+        email_id (str): The ID of the email to reply to.
+        body (str): The content of your reply.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: reply_to_gmail")
+    print(f"   Args: email_id={email_id}, body={body[:50]}..., account={account}")
+    try:
+        from Apps.Gmail.gmail_ops import reply_to_gmail_email
+        return reply_to_gmail_email(email_id, body, account=account)
+    except Exception as e:
+        return f"Error replying to email: {e}"
 
 # ===========================
 # 3. PRODUCTIVITY TOOLS (Tasks & Calendar)
 # ===========================
 
-def add_google_task(title: str) -> str:
+def add_google_task(title: str, account: str = "personal") -> str:
     """Adds a task to Google Tasks.
 
     Args:
         title (str): The title or name of the task to add.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: add_google_task")
-    print(f"   Args: title={title}")
+    print(f"   Args: title={title}, account={account}")
     try:
-        success = add_new_task(title)
+        success = add_new_task(title, account=account)
         if success:
-            return f"Task '{title}' added successfully."
-        return "Failed to add task."
+            return f"Task '{title}' added successfully on account '{account}'."
+        return f"Failed to add task on account '{account}'."
     except Exception as e:
         return f"Error adding task: {e}"
 
-def check_calendar_events(max_results: int = 5) -> str:
+def check_calendar_events(max_results: int = 5, account: str = "personal") -> str:
     """Checks upcoming calendar events.
 
     Args:
         max_results (int): The maximum number of upcoming events to check. Defaults to 5.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: check_calendar_events")
-    print(f"   Args: max_results={max_results}")
+    print(f"   Args: max_results={max_results}, account={account}")
     try:
-        events = list_upcoming_events(max_results)
+        events = list_upcoming_events(max_results, account=account)
         
         # --- FIX: Handle if 'events' is None or an Error String ---
         if not events:
-            return "No upcoming events found."
+            return f"No upcoming events found on account '{account}'."
         
         if isinstance(events, str):
             return f"Calendar Error: {events}"
         # -----------------------------------------------------------
 
         # Format list into a readable string for the AI
-        event_str = "Upcoming Events:\n"
+        event_str = f"Upcoming Events ({account} account):\n"
         for e in events:
             # Safe .get() calls
             start = e.get('start', {}).get('dateTime', 'Unknown Time')
@@ -184,26 +267,88 @@ def check_calendar_events(max_results: int = 5) -> str:
         return f"Error reading calendar: {e}"
     
 
-
-
-    
-def add_calendar_event(summary: str, start_time: str, duration: int = 1) -> str:
+def add_calendar_event(summary: str, start_time: str, duration: int = 1, account: str = "personal") -> str:
     """Adds an event to the calendar.
 
     Args:
         summary (str): The title or description of the event.
         start_time (str): The start time expected in ISO format (e.g., 'YYYY-MM-DDTHH:MM:SS').
         duration (int): The duration of the event in hours. Defaults to 1.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: add_calendar_event")
-    print(f"   Args: summary={summary}, start_time={start_time}, duration={duration}")
+    print(f"   Args: summary={summary}, start_time={start_time}, duration={duration}, account={account}")
     try:
-        result = create_new_event(summary, start_time, duration)
+        result = create_new_event(summary, start_time, duration, account=account)
         if result:
-            return f"Event '{summary}' created. Link: {result.get('htmlLink')}"
-        return "Failed to create event."
+            return f"Event '{summary}' created on account '{account}'. Link: {result.get('htmlLink')}"
+        return f"Failed to create event on account '{account}'."
     except Exception as e:
         return f"Error creating event: {e}"
+
+def fetch_classroom_courses(account: str = "personal") -> str:
+    """Lists the Google Classroom courses that the user is enrolled in or teaching.
+
+    Args:
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_classroom_courses")
+    print(f"   Args: account={account}")
+    try:
+        from Apps.Classroom.classroom_ops import list_courses
+        res = list_courses(account=account)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error listing courses: {e}"
+
+def fetch_classroom_assignments(course_id: str, account: str = "personal") -> str:
+    """Lists coursework (assignments) for a specific Google Classroom course ID.
+
+    Args:
+        course_id (str): The unique course ID.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_classroom_assignments")
+    print(f"   Args: course_id={course_id}, account={account}")
+    try:
+        from Apps.Classroom.classroom_ops import list_coursework
+        res = list_coursework(course_id, account=account)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error listing coursework: {e}"
+
+def fetch_classroom_announcements(course_id: str, account: str = "personal") -> str:
+    """Lists announcements for a specific Google Classroom course ID.
+
+    Args:
+        course_id (str): The unique course ID.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_classroom_announcements")
+    print(f"   Args: course_id={course_id}, account={account}")
+    try:
+        from Apps.Classroom.classroom_ops import list_announcements
+        res = list_announcements(course_id, account=account)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error listing announcements: {e}"
+
+def fetch_classroom_assignment_details(course_id: str, coursework_id: str, account: str = "personal") -> str:
+    """Retrieves full details for a specific Google Classroom coursework (assignment) ID.
+
+    Args:
+        course_id (str): The Classroom course ID.
+        coursework_id (str): The specific assignment ID.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_classroom_assignment_details")
+    print(f"   Args: course_id={course_id}, coursework_id={coursework_id}, account={account}")
+    try:
+        from Apps.Classroom.classroom_ops import get_coursework_details
+        res = get_coursework_details(course_id, coursework_id, account=account)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error fetching coursework details: {e}"
 
 # ===========================
 # 4. SYSTEM & ENVIRONMENT
@@ -393,11 +538,20 @@ AVAILABLE_TOOLS = {
     # Communication
     "fetch_mails": fetch_unread_mails,
     "send_mail": send_gmail,
+    "search_gmail": search_gmail,
+    "read_gmail_msg": read_gmail_msg,
+    "trash_gmail_msg": trash_gmail_msg,
+    "mark_gmail_read": mark_gmail_read,
+    "reply_to_gmail": reply_to_gmail,
     
     # Productivity
     "add_task": add_google_task,
     "check_events": check_calendar_events,
     "add_event": add_calendar_event,
+    "list_classroom_courses": fetch_classroom_courses,
+    "list_classroom_assignments": fetch_classroom_assignments,
+    "list_classroom_announcements": fetch_classroom_announcements,
+    "get_classroom_assignment_details": fetch_classroom_assignment_details,
     
     # System / Env
     "system_health": get_system_health,

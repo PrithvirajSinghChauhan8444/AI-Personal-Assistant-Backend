@@ -16,7 +16,8 @@ def output_finalizer_node(state: AgentState):
     completed_tasks = state.get("completed_tasks", {}) or {}
     chat_history = state.get("chat_history", []) or []
     
-    llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0.7)
+    from langchain_ollama import ChatOllama
+    llm = ChatOllama(model="gemma4:e2b", temperature=0.7)
     
     # 1. Format conversational history
     history_str = ""

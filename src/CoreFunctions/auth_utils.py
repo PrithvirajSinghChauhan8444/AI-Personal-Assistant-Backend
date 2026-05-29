@@ -9,7 +9,10 @@ SCOPES = [
     'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/calendar',
-    'https://www.googleapis.com/auth/tasks'
+    'https://www.googleapis.com/auth/tasks',
+    'https://www.googleapis.com/auth/classroom.courses.readonly',
+    'https://www.googleapis.com/auth/classroom.coursework.me',
+    'https://www.googleapis.com/auth/classroom.announcements.readonly'
 ]
 
 def get_config_dir():
@@ -36,7 +39,7 @@ def get_config_dir():
     
     return config_dir
 
-def get_valid_credentials():
+def get_valid_credentials(account: str = "personal"):
     """
     The Master Auth Function.
     1. Checks if token exists and is valid.
@@ -44,14 +47,18 @@ def get_valid_credentials():
     3. Auto-launches Browser Login if token is missing/dead.
     """
     config_dir = get_config_dir()
-    print(config_dir)
     
     # Ensure config dir exists (sanity check)
     if not os.path.exists(config_dir):
         print(f"❌ Error: Config folder not found at: {config_dir}")
         return None
 
-    token_path = os.path.join(config_dir, 'token.json')
+    # Load from account specific token file (e.g. token_personal.json or token_college.json)
+    token_path = os.path.join(config_dir, f'token_{account}.json')
+    # Backward compatibility fallback
+    if account == "personal" and not os.path.exists(token_path) and os.path.exists(os.path.join(config_dir, 'token.json')):
+        token_path = os.path.join(config_dir, 'token.json')
+
     credentials_path = os.path.join(config_dir, 'credentials.json')
 
     creds = None

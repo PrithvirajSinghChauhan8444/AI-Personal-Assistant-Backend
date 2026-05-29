@@ -17,7 +17,8 @@ from src.CoreFunctions.StateGraph.task_router import task_router_node
 from src.CoreFunctions.StateGraph.orchestrator import orchestrator_node, orchestrator_router
 from src.CoreFunctions.StateGraph.workers import (
     system_worker_node, gmail_worker_node, 
-    productivity_worker_node, memory_worker_node
+    productivity_worker_node, memory_worker_node,
+    classroom_worker_node
 )
 from src.CoreFunctions.StateGraph.finalizer import output_finalizer_node
 from src.CoreFunctions.StateGraph.memory_nodes import memory_injector_node, reflection_node
@@ -33,6 +34,7 @@ def create_graph():
     workflow.add_node("GmailWorker", gmail_worker_node)
     workflow.add_node("ProductivityWorker", productivity_worker_node)
     workflow.add_node("MemoryWorker", memory_worker_node)
+    workflow.add_node("ClassroomWorker", classroom_worker_node)
     workflow.add_node("OutputFinalizer", output_finalizer_node)
     workflow.add_node("Reflection", reflection_node)
     
@@ -54,6 +56,7 @@ def create_graph():
             "GmailWorker": "GmailWorker",
             "ProductivityWorker": "ProductivityWorker",
             "MemoryWorker": "MemoryWorker",
+            "ClassroomWorker": "ClassroomWorker",
             "OutputFinalizer": "OutputFinalizer"
         }
     )
@@ -63,6 +66,7 @@ def create_graph():
     workflow.add_edge("GmailWorker", "Orchestrator")
     workflow.add_edge("ProductivityWorker", "Orchestrator")
     workflow.add_edge("MemoryWorker", "Orchestrator")
+    workflow.add_edge("ClassroomWorker", "Orchestrator")
     
     # OutputFinalizer goes to Reflection node for passive self-learning
     workflow.add_edge("OutputFinalizer", "Reflection")
@@ -228,7 +232,7 @@ def process_request_interactive():
                                     break
                             visualizer.update(f"Running {next_node}{task_desc}", "33") # Yellow
                     
-                    elif node_name in ["SystemWorker", "GmailWorker", "ProductivityWorker", "MemoryWorker"]:
+                    elif node_name in ["SystemWorker", "GmailWorker", "ProductivityWorker", "MemoryWorker", "ClassroomWorker"]:
                         visualizer.stop()
                         subtasks = state_update.get("active_subtasks", [])
                         completed_desc = ""

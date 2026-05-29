@@ -126,7 +126,8 @@ def reflection_node(state: AgentState):
         return {}
         
     try:
-        llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0)
+        from langchain_ollama import ChatOllama
+        llm = ChatOllama(model="gemma4:e2b", temperature=0)
         structured_llm = llm.with_structured_output(MemoryReflection)
         
         completed_tasks_str = json.dumps(completed_tasks, indent=2)

@@ -3,29 +3,22 @@ import os
 from googleapiclient.discovery import build
 
 # --- PATH FIX ---
-# 1. Get the folder of this file (.../src/Apps/Calendar)
 current_dir = os.path.dirname(os.path.abspath(__file__))
-
-# 2. Go up two levels to reach 'src'
-#    Level 1: .../src/Apps
-#    Level 2: .../src
 src_dir = os.path.dirname(os.path.dirname(current_dir))
 
-# 3. Add 'src' to the system path so we can import CoreFunctions
 if src_dir not in sys.path:
     sys.path.append(src_dir)
 
-# --- IMPORTS ---
 from CoreFunctions.auth_utils import get_valid_credentials
 
-def get_service():
+def get_service(account: str = "personal"):
     """
-    Connects to Google Calendar and returns the service object.
+    Connects to Google Calendar and returns the service object for a specific account.
     """
-    creds = get_valid_credentials()
+    creds = get_valid_credentials(account)
     
     if not creds:
-        print("❌ Auth failed: No credentials found.")
+        print(f"❌ Auth failed: No credentials found for account '{account}'.")
         return None
 
     try:
