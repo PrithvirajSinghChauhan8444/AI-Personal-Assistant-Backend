@@ -48,30 +48,63 @@ def resolve_path_alias(path_or_alias):
 
 
 def run_terminal_command(command):
-    """Executes a shell command."""
+    """Executes a shell command with live real-time output streaming."""
     try:
-        # Check if the command involves a path alias that needs resolving
-        # Simple heuristic: split by space and check args? 
-        # For now, let's keep it simple as aliases are mostly for arguments, 
-        # but complex commands might be hard to parse here.
+        import sys
+        process = subprocess.Popen(
+            command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
         
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-        output = result.stdout + result.stderr
+        output_chunks = []
+        while True:
+            line = process.stdout.readline()
+            if not line and process.poll() is not None:
+                break
+            if line:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                output_chunks.append(line)
+                
+        process.wait()
+        output = "".join(output_chunks)
         return f"Output:\n{output}"
     except Exception as e:
         return f"❌ Error executing command: {e}"
 
 def run_python_script(path):
-    """Executes a Python script in the current environment."""
+    """Executes a Python script in the current environment with live real-time output streaming."""
     real_path = resolve_path_alias(path)
     
     if not os.path.exists(real_path):
         return f"❌ Error: Script not found at {real_path}"
     
     try:
-        # Run using the same python interpreter
-        result = subprocess.run([sys.executable, real_path], capture_output=True, text=True)
-        output = result.stdout + result.stderr
+        import sys
+        process = subprocess.Popen(
+            [sys.executable, real_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+        
+        output_chunks = []
+        while True:
+            line = process.stdout.readline()
+            if not line and process.poll() is not None:
+                break
+            if line:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                output_chunks.append(line)
+                
+        process.wait()
+        output = "".join(output_chunks)
         return f"🐍 Script Output:\n{output}"
     except Exception as e:
         return f"❌ Error running script: {e}"

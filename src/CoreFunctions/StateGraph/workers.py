@@ -63,9 +63,22 @@ Working Memory (Data from previous tasks):
 
 Execute the tools necessary to complete this task. Return a concise, data-rich summary of your findings or actions.
 """
-    result = agent.invoke({"messages": [HumanMessage(content=prompt)]})
-    final_message = result["messages"][-1].content
-    return final_message
+    
+    # Try to pause the active visualizer spinner during the entire agent execution
+    import builtins
+    vis = getattr(builtins, "active_cli_visualizer", None)
+    if vis and vis.active:
+        vis.is_paused = True
+        sys.stdout.write("\r\033[K")
+        sys.stdout.flush()
+
+    try:
+        result = agent.invoke({"messages": [HumanMessage(content=prompt)]})
+        final_message = result["messages"][-1].content
+        return final_message
+    finally:
+        if vis and vis.active:
+            vis.is_paused = False
 
 def _update_state_completed(state: AgentState, task_id: str, final_data: str):
     """Marks task as completed and saves output to completed_tasks and working_memory"""

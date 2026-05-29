@@ -20,6 +20,9 @@ from src.CoreFunctions.tools import (
     
     # System info
     get_system_health, get_weather, get_time, web_search,
+    get_audio_volume, set_audio_volume, mute_audio_toggle,
+    get_screen_brightness, set_screen_brightness, control_media_player,
+    list_running_processes_tool, terminate_process_tool, lock_desktop_screen, suspend_desktop_system,
     
     # File Ops
     create_file_tool, read_file_tool, list_files_tool, 
@@ -88,6 +91,16 @@ system_control_tools = [
     StructuredTool.from_function(run_terminal_tool),
     StructuredTool.from_function(run_python_tool),
     StructuredTool.from_function(launch_app_tool),
+    StructuredTool.from_function(get_audio_volume),
+    StructuredTool.from_function(set_audio_volume),
+    StructuredTool.from_function(mute_audio_toggle),
+    StructuredTool.from_function(get_screen_brightness),
+    StructuredTool.from_function(set_screen_brightness),
+    StructuredTool.from_function(control_media_player),
+    StructuredTool.from_function(list_running_processes_tool),
+    StructuredTool.from_function(terminate_process_tool),
+    StructuredTool.from_function(lock_desktop_screen),
+    StructuredTool.from_function(suspend_desktop_system),
 ]
 
 # ==========================================
@@ -135,6 +148,16 @@ TOOL_MAP = {
     "run_terminal_tool": system_control_tools[0],
     "run_python_tool": system_control_tools[1],
     "launch_app_tool": system_control_tools[2],
+    "get_audio_volume": system_control_tools[3],
+    "set_audio_volume": system_control_tools[4],
+    "mute_audio_toggle": system_control_tools[5],
+    "get_screen_brightness": system_control_tools[6],
+    "set_screen_brightness": system_control_tools[7],
+    "control_media_player": system_control_tools[8],
+    "list_running_processes_tool": system_control_tools[9],
+    "terminate_process_tool": system_control_tools[10],
+    "lock_desktop_screen": system_control_tools[11],
+    "suspend_desktop_system": system_control_tools[12]
 }
 
 # Consolidate all for the Supervisor or Generalist

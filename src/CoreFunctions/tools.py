@@ -420,6 +420,120 @@ def run_code(code):
     code
 
 # ===========================
+# 4B. ADVANCED SYSTEM ACTIONS
+# ===========================
+
+def get_audio_volume() -> str:
+    """Gets the current system audio volume percentage and mute status."""
+    print(f"\n[DEBUG] 🛠️ Calling Tool: get_audio_volume")
+    try:
+        from Apps.System.system_actions import get_volume
+        return get_volume()
+    except Exception as e:
+        return f"Error: {e}"
+
+def set_audio_volume(level: int) -> str:
+    """Sets the system audio volume to a specific percentage (0-100).
+    
+    Args:
+        level (int): The percentage to set the volume to.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: set_audio_volume")
+    try:
+        from Apps.System.system_actions import set_volume
+        return set_volume(level)
+    except Exception as e:
+        return f"Error: {e}"
+
+def mute_audio_toggle() -> str:
+    """Toggles system audio mute/unmute status."""
+    print(f"\n[DEBUG] 🛠️ Calling Tool: mute_audio_toggle")
+    try:
+        from Apps.System.system_actions import toggle_mute
+        return toggle_mute()
+    except Exception as e:
+        return f"Error: {e}"
+
+def get_screen_brightness() -> str:
+    """Gets the current screen brightness percentage."""
+    print(f"\n[DEBUG] 🛠️ Calling Tool: get_screen_brightness")
+    try:
+        from Apps.System.system_actions import get_brightness
+        return get_brightness()
+    except Exception as e:
+        return f"Error: {e}"
+
+def set_screen_brightness(level: int) -> str:
+    """Sets the screen brightness to a specific percentage (1-100).
+    
+    Args:
+        level (int): The brightness percentage to set.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: set_screen_brightness")
+    try:
+        from Apps.System.system_actions import set_brightness
+        return set_brightness(level)
+    except Exception as e:
+        return f"Error: {e}"
+
+def control_media_player(action: str) -> str:
+    """Controls background music/video media playback (play-pause, next, previous).
+    
+    Args:
+        action (str): The media action to perform, either 'play-pause', 'next', or 'previous'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: control_media_player")
+    try:
+        from Apps.System.system_actions import media_control
+        return media_control(action)
+    except Exception as e:
+        return f"Error: {e}"
+
+def list_running_processes_tool(limit: int = 15) -> str:
+    """Lists the top running desktop processes sorted by memory usage."""
+    print(f"\n[DEBUG] 🛠️ Calling Tool: list_running_processes_tool")
+    try:
+        from Apps.System.system_actions import list_processes
+        return list_processes(limit)
+    except Exception as e:
+        return f"Error: {e}"
+
+def terminate_process_tool(name_or_pid: str) -> str:
+    """Terminates/kills a running process by its name or PID. PROTECTED.
+    
+    Args:
+        name_or_pid (str): The process PID number or process name to terminate.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: terminate_process_tool")
+    if verify_password():
+        try:
+            from Apps.System.system_actions import kill_process
+            return kill_process(name_or_pid)
+        except Exception as e:
+            return f"Error: {e}"
+    return "❌ Action Cancelled: Incorrect Password."
+
+def lock_desktop_screen() -> str:
+    """Locks the current Linux user session."""
+    print(f"\n[DEBUG] 🛠️ Calling Tool: lock_desktop_screen")
+    try:
+        from Apps.System.system_actions import lock_screen
+        return lock_screen()
+    except Exception as e:
+        return f"Error: {e}"
+
+def suspend_desktop_system() -> str:
+    """Suspends the local system to RAM (sleep mode). PROTECTED."""
+    print(f"\n[DEBUG] 🛠️ Calling Tool: suspend_desktop_system")
+    if verify_password():
+        try:
+            from Apps.System.system_actions import suspend_system
+            return suspend_system()
+        except Exception as e:
+            return f"Error: {e}"
+    return "❌ Action Cancelled: Incorrect Password."
+
+# ===========================
 # 6. FILE OPERATIONS (Protected)
 # ===========================
 
@@ -493,8 +607,26 @@ def run_terminal_tool(command: str) -> str:
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: run_terminal_tool")
     print(f"   Args: command={command}")
+    
+    import sys
+    import builtins
+    vis = getattr(builtins, "active_cli_visualizer", None)
+
+    if vis and vis.active:
+        vis.is_paused = True
+        sys.stdout.write("\r\033[K")
+        sys.stdout.flush()
+
     if verify_password():
-        return _run_term(command)
+        try:
+            res = _run_term(command)
+            return res
+        finally:
+            if vis and vis.active:
+                vis.is_paused = False
+    
+    if vis and vis.active:
+        vis.is_paused = False
     return "❌ Action Cancelled: Incorrect Password."
 
 def run_python_tool(path: str) -> str:
@@ -505,8 +637,26 @@ def run_python_tool(path: str) -> str:
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: run_python_tool")
     print(f"   Args: path={path}")
+
+    import sys
+    import builtins
+    vis = getattr(builtins, "active_cli_visualizer", None)
+
+    if vis and vis.active:
+        vis.is_paused = True
+        sys.stdout.write("\r\033[K")
+        sys.stdout.flush()
+
     if verify_password():
-        return _run_py(path)
+        try:
+            res = _run_py(path)
+            return res
+        finally:
+            if vis and vis.active:
+                vis.is_paused = False
+                
+    if vis and vis.active:
+        vis.is_paused = False
     return "❌ Action Cancelled: Incorrect Password."
 
 def launch_app_tool(app_name: str, arguments: str = None) -> str:
@@ -558,6 +708,16 @@ AVAILABLE_TOOLS = {
     "get_weather": get_weather,
     "get_time": get_time,
     "web_search": web_search,
+    "get_volume": get_audio_volume,
+    "set_volume": set_audio_volume,
+    "mute_audio": mute_audio_toggle,
+    "get_brightness": get_screen_brightness,
+    "set_brightness": set_screen_brightness,
+    "control_media": control_media_player,
+    "list_processes": list_running_processes_tool,
+    "kill_process": terminate_process_tool,
+    "lock_screen": lock_desktop_screen,
+    "suspend_system": suspend_desktop_system,
 
     # File Ops
     "write_file": create_file_tool,

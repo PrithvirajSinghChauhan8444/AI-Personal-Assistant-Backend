@@ -88,13 +88,19 @@ import time
 import threading
 
 class CLIStatusVisualizer:
+    instance = None
+
     def __init__(self):
+        import builtins
+        builtins.active_cli_visualizer = self
+        CLIStatusVisualizer.instance = self
         self.active = False
         self.thread = None
         self.status_text = ""
         self.color_code = "34"  # Default to blue
         self.spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         self.lock = threading.Lock()
+        self.is_paused = False
 
     def start(self, text="Processing", color="34"):
         with self.lock:
@@ -129,8 +135,13 @@ class CLIStatusVisualizer:
             with self.lock:
                 if not self.active:
                     break
+                if self.is_paused:
+                    time.sleep(0.1)
+                    continue
                 text = self.status_text
                 color = self.color_code
+                if len(text) > 55:
+                    text = text[:52] + "..."
             
             frame = self.spinner_frames[i % len(self.spinner_frames)]
             sys.stdout.write(f"\r\033[K\033[1;{color}m{frame}\033[0m \033[37m{text}...\033[0m")
