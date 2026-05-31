@@ -58,24 +58,56 @@ def _save(index, data):
     with open(DATA_PATH, "w") as f:
         json.dump(data, f, indent=2)
 
+import threading
+
+# Thread lock to prevent race conditions during concurrent FAISS/JSON vector accesses
+_vector_lock = threading.Lock()
+
 def store_vector(text):
-    index = _load_index()
-    data = _load_data()
+    with _vector_lock:
+        index = _load_index()
+        data = _load_data()
 
-    model = _get_model()
-    vec = model.encode([text])
-    index.add(vec)
-    data.append(text)
+        # Normalize the incoming text
+        normalized_text = text.strip().lower()
+        
+        # 1. Exact string checking loop to prevent duplicated text entries
+        for item in data:
+            if item.strip().lower() == normalized_text:
+                print(f"ℹ️ [Vector Store] Fact already exists: \"{text}\". Skipping store to avoid duplication.")
+                return
 
-    _save(index, data)
+        # 2. Semantic duplication check (if index has entries)
+        if index.ntotal > 0:
+            model = _get_model()
+            q = model.encode([text])
+            D, idx = index.search(q, 1)  # Find the single closest vector match
+            if len(D) > 0 and len(D[0]) > 0:
+                distance = D[0][0]
+                # In FAISS IndexFlatL2, a distance < 0.1 represents almost identical embedding semantic meaning
+                if distance < 0.1:
+                    matched_text = data[idx[0][0]]
+                    print(f"ℹ️ [Vector Store] Highly similar fact already exists (distance={distance:.4f}):\n"
+                          f"   New: \"{text}\"\n"
+                          f"   Existing: \"{matched_text}\"\n"
+                          f"   Skipping store to avoid duplication.")
+                    return
+
+            model = _get_model()
+            vec = model.encode([text])
+            index.add(vec)
+            data.append(text)
+
+            _save(index, data)
 
 def search_vector(query, k=3):
-    index = _load_index()
-    data = _load_data()
-    if index.ntotal == 0:
-        return []
+    with _vector_lock:
+        index = _load_index()
+        data = _load_data()
+        if index.ntotal == 0:
+            return []
 
-    model = _get_model()
-    q = model.encode([query])
-    _, idx = index.search(q, k)
-    return [data[i] for i in idx[0] if i < len(data)]
+        model = _get_model()
+        q = model.encode([query])
+        _, idx = index.search(q, k)
+        return [data[i] for i in idx[0] if i < len(data)]

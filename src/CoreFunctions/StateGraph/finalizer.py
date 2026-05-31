@@ -10,14 +10,18 @@ Synthesize this into a natural, friendly, and cohesive response to the user.
 Do not mention "subtasks" or the internal architecture. Just provide the final answer or confirm the actions taken.
 """
 
+from datetime import datetime
+
 def output_finalizer_node(state: AgentState):
-    print("\n[Node: Output Finalizer] Synthesizing final response...")
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    print(f"\nRunning Output Finaliser : ({timestamp})")
+    
     primary_goal = state.get("primary_goal", "")
     completed_tasks = state.get("completed_tasks", {}) or {}
     chat_history = state.get("chat_history", []) or []
     
-    from langchain_ollama import ChatOllama
-    llm = ChatOllama(model="gemma4:e2b", temperature=0.7)
+    # Use high-speed cloud LLM for instant response synthesis and reliable execution
+    llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0.7)
     
     # 1. Format conversational history
     history_str = ""
@@ -33,7 +37,9 @@ def output_finalizer_node(state: AgentState):
         content += history_str + "\n"
     content += f"User Request: {primary_goal}\n\nExecution Logs:\n{logs_str}"
     
-    print("\n\033[1;35m🤖 Assistant:\033[0m ", end="", flush=True)
+    print(f"--- Output Finaliser Finished ---")
+    print(f"\n📍 Node 'output_finaliser' Output:\n")
+    print(f"💬 Manager says: ", end="", flush=True)
     
     full_response = ""
     try:
@@ -56,7 +62,6 @@ def output_finalizer_node(state: AgentState):
                 print(text_chunk, end="", flush=True)
         print("\n")
     except Exception as e:
-        print(f"\n❌ Error during streaming: {e}")
         # Fallback to invoke if stream fails
         result = llm.invoke([
             SystemMessage(content=FINALIZER_PROMPT),

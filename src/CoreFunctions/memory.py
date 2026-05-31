@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 from datetime import datetime
 
 # Absolute path relative to project root
@@ -12,15 +13,20 @@ FILES = {
     "past": os.path.join(MEMORY_DIR, "past_memory.json"),
 }
 
+# Thread lock to prevent race conditions during concurrent file accesses
+_file_lock = threading.Lock()
+
 def _load(path):
-    if not os.path.exists(path):
-        return {}
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    with _file_lock:
+        if not os.path.exists(path):
+            return {}
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
 
 def _save(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    with _file_lock:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
 
 # -------------------------
 # STORE MEMORY
@@ -36,6 +42,19 @@ def store_memory(category, key, value):
             category = "user"
         else:
             category = "past"
+
+    # Cross-check ALL structured memory JSON files to avoid duplicates and redundant entries
+    normalized_key = key.strip().lower()
+    normalized_val = str(value).strip().lower()
+
+    for cat_name, file_path in FILES.items():
+        existing_data = _load(file_path)
+        for existing_key, existing_val_obj in existing_data.items():
+            if existing_key.strip().lower() == normalized_key:
+                val = existing_val_obj.get("value") if isinstance(existing_val_obj, dict) else existing_val_obj
+                if str(val).strip().lower() == normalized_val:
+                    print(f"ℹ️ [Structured Memory] Fact already exists in [{cat_name}] under '{existing_key}': \"{val}\". Skipping store.")
+                    return f"Stored {key} in {category} memory (already exists)."
             
     data = _load(FILES[category])
     data[key] = {

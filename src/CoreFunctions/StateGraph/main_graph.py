@@ -68,11 +68,8 @@ def create_graph():
     workflow.add_edge("MemoryWorker", "Orchestrator")
     workflow.add_edge("ClassroomWorker", "Orchestrator")
     
-    # OutputFinalizer goes to Reflection node for passive self-learning
-    workflow.add_edge("OutputFinalizer", "Reflection")
-    
-    # Reflection node ends the graph
-    workflow.add_edge("Reflection", END)
+    # OutputFinalizer completes the user-facing graph synchronously
+    workflow.add_edge("OutputFinalizer", END)
     
     # Checkpointer for state persistence
     memory = MemorySaver()
@@ -218,57 +215,88 @@ def process_request_interactive():
         visualizer.start("Analyzing request & decomposing into subtasks", "36") # Cyan
         
         try:
+            from datetime import datetime
             for event in app.stream(initial_state, config=config):
                 for node_name, state_update in event.items():
-                    if node_name == "TaskRouter":
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+                    
+                    if node_name == "MemoryInjector":
                         visualizer.stop()
-                        print("\n📋 \033[1;36mDecomposed Task Plan:\033[0m")
+                        print(f"\nRunning MemoryInjector : ({timestamp})")
+                        print("--- MemoryInjector Finished ---")
+                        print("\n📍 Node 'MemoryInjector' Output:")
+                        wm = state_update.get("working_memory", {}) or {}
+                        user_profile = wm.get("user_profile", {})
+                        relevant_memories = wm.get("relevant_memories", [])
+                        if user_profile:
+                            print(f"  -> Loaded User Profile keys: {list(user_profile.keys())}")
+                        if relevant_memories:
+                            print(f"  -> Injected {len(relevant_memories)} semantically relevant memories.")
+                        visualizer.start("Analyzing request & decomposing into subtasks", "36")
+                    
+                    elif node_name == "TaskRouter":
+                        visualizer.stop()
+                        print(f"\nRunning TaskRouter : ({timestamp})")
+                        print("--- TaskRouter Finished ---")
+                        print("\n📍 Node 'TaskRouter' Output:")
                         subtasks = state_update.get("active_subtasks", [])
-                        for st in subtasks:
-                            print(f"  \033[32m├─\033[0m [\033[1;33m{st['assigned_worker']}\033[0m] {st['description']}")
-                        print()
+                        print("-- PLAN:")
+                        for idx, st in enumerate(subtasks, 1):
+                            print(f"   {idx}. {st['assigned_worker']}: {st['description']}")
                         visualizer.start("Orchestrating subtasks", "34") # Blue
                     
                     elif node_name == "Orchestrator":
+                        visualizer.stop()
                         next_node = state_update.get("next_node")
+                        print(f"\nRunning Orchestrator : ({timestamp})")
+                        print("--- Orchestrator Finished ---")
+                        print("\n📍 Node 'Orchestrator' Output:")
                         if next_node == "OutputFinalizer":
-                            visualizer.stop()
-                            print("✨ All subtasks successfully executed. Synthesizing response...")
+                            print("  -> All planned subtasks successfully completed. Routing to Output Finalizer.")
                         else:
                             subtasks = state_update.get("active_subtasks", [])
                             task_desc = ""
                             for st in subtasks:
                                 if st["status"] == "in_progress":
-                                    task_desc = f": {st['description']}"
+                                    task_desc = st['description']
                                     break
-                            visualizer.update(f"Running {next_node}{task_desc}", "33") # Yellow
+                            print(f"  -> Next Node Target: {next_node} | Task: {task_desc}")
+                            visualizer.start(f"Running {next_node}", "33") # Yellow
                     
                     elif node_name in ["SystemWorker", "GmailWorker", "ProductivityWorker", "MemoryWorker", "ClassroomWorker"]:
                         visualizer.stop()
+                        print(f"\nRunning {node_name} : ({timestamp})")
+                        print(f"--- {node_name} Finished ---")
+                        print(f"\n📍 Node '{node_name}' Output:")
                         subtasks = state_update.get("active_subtasks", [])
                         completed_desc = ""
                         for st in subtasks:
                             if st["status"] == "completed":
                                 completed_desc = st["description"]
                         if completed_desc:
-                            print(f"  \033[1;32m✔\033[0m Completed: {completed_desc}")
+                            print(f"  \033[1;32m✔\033[0m Completed Task: {completed_desc}")
                         else:
-                            print(f"  \033[1;32m✔\033[0m {node_name} finished execution.")
+                            print(f"  \033[1;32m✔\033[0m {node_name} completed execution successfully.")
                         visualizer.start("Evaluating next steps", "34") # Blue
-                        
-                    elif node_name == "MemoryInjector":
-                        visualizer.update("Matching long-term memories & user profile", "36")
                         
                     elif node_name == "OutputFinalizer":
                         visualizer.stop()
-                        
-                    elif node_name == "Reflection":
-                        # Reflection prints its own beautiful logs directly
-                        pass
             
             # Retrieve latest state from checkpointer to save for multi-turn conversational persistence
             state_data = app.get_state(config)
             final_resp = state_data.values.get("final_response", "")
+            
+            # Trigger Asynchronous Background Self-Reflection (Phase 1 Optimization)
+            if final_resp:
+                state_snapshot = dict(state_data.values)
+                def run_background_reflection(snap):
+                    try:
+                        reflection_node(snap)
+                    except Exception as ex:
+                        print(f"\n  ⚠️ Background Reflection Error: {ex}")
+                
+                bg_thread = threading.Thread(target=run_background_reflection, args=(state_snapshot,), daemon=True)
+                bg_thread.start()
             
             # Append exchange to local history
             chat_history.append({"role": "user", "content": user_input})
