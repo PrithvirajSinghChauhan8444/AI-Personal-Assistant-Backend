@@ -29,10 +29,12 @@ gantt
 
 ## 🛠️ The 5-Phase Optimization Blueprint
 
-### Phase 1: Asynchronous & Non-Blocking Self-Reflection
+### Phase 1: Asynchronous & Non-Blocking Self-Reflection [✅ COMPLETED]
 > **Impact: ~30-40% immediate latency reduction (saves 3-5 seconds per query)**
 
+
 Currently, the `Reflection` node blocks the final response. The user must wait for the local `gemma4:e2b` model to run structured self-reflection before they receive any output.
+
 
 #### Implementation Steps:
 1. **Modify the State Graph Entry Point**:
@@ -53,10 +55,12 @@ Currently, the `Reflection` node blocks the final response. The user must wait f
 
 ---
 
-### Phase 2: Fast-Path Semantic Router (Graph Bypass)
+### Phase 2: Fast-Path Semantic Router (Graph Bypass) [✅ COMPLETED]
 > **Impact: ~90% latency reduction for single-turn requests (saves 6-8 seconds)**
 
+
 Not all requests need full multi-agent decomposition. Simple queries (e.g., greetings, time requests, single tool executions) should bypass the State Graph completely.
+
 
 #### Implementation Steps:
 1. **Implement a Lightweight Classifier**:

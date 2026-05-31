@@ -14,4 +14,4 @@ metadata:
 Use this skill when you need to execute workflows related to .
 
 ## Procedure
-1. Access the MemoryWorker store. 2. Query for all stored facts related to the user's name, location, academic status, course enrollments, and personal connections. 3. Synthesize the retrieved data into a coherent summary for the user.
+1. Access the MemoryWorker store to query facts about the user's name, location, academic status, and contact details. 2. Synthesize the retrieved data into a coherent response for the user.

@@ -13,18 +13,29 @@ from src.CoreFunctions.LangGraph.available_tools import (
     gmail_tools, calendar_tools, memory_tools, classroom_tools
 )
 
-# LLM for workers. Using Gemini for stability.
-llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0)
+# LLM for workers. Using Gemini with native cloud thinking enabled.
+llm = ChatGoogleGenerativeAI(
+    model="gemini-3.1-flash-lite", 
+    temperature=0,
+    extra_body={"thinking_config": {"thinking_budget": 2048}}
+)
 
-# Local LLM for Memory and lightweight workers.
-local_llm = ChatOllama(model="gemma4:e2b", temperature=0)
+# Local LLM for Memory and lightweight workers with Ollama thinking options enabled.
+local_llm = ChatOllama(
+    model="gemma4:e2b", 
+    temperature=0,
+    options={"thinking": True}
+)
 
 # Define prompts
-SYSTEM_PROMPT_SYSTEM = "You are SystemWorker. You manage OS tasks, files, commands, and health metrics."
-SYSTEM_PROMPT_GMAIL = "You are GmailWorker. You manage email fetching, searching, and sending."
-SYSTEM_PROMPT_PRODUCTIVITY = "You are ProductivityWorker. You manage calendars, tasks, scheduling, and weather/time checks."
-SYSTEM_PROMPT_MEMORY = "You are MemoryWorker. You save and retrieve long-term user preferences."
-SYSTEM_PROMPT_CLASSROOM = "You are ClassroomWorker. You manage Google Classroom courses, assignments, announcements, and coursework details."
+# Thinking directive to force both cloud and local models to populate msg.content before invoking tools
+THINKING_INSTRUCTION = " CRITICAL: You MUST always output your reasoning and intermediate thought process in natural language BEFORE calling any tools. Never invoke tools silently."
+
+SYSTEM_PROMPT_SYSTEM = "You are SystemWorker. You manage OS tasks, files, commands, and health metrics." + THINKING_INSTRUCTION
+SYSTEM_PROMPT_GMAIL = "You are GmailWorker. You manage email fetching, searching, and sending." + THINKING_INSTRUCTION
+SYSTEM_PROMPT_PRODUCTIVITY = "You are ProductivityWorker. You manage calendars, tasks, scheduling, and weather/time checks." + THINKING_INSTRUCTION
+SYSTEM_PROMPT_MEMORY = "You are MemoryWorker. You save and retrieve long-term user preferences." + THINKING_INSTRUCTION
+SYSTEM_PROMPT_CLASSROOM = "You are ClassroomWorker. You manage Google Classroom courses, assignments, announcements, and coursework details." + THINKING_INSTRUCTION
 
 # Pre-compile the agents ONCE globally at load time
 SYSTEM_AGENT = create_react_agent(llm, system_control_tools + file_management_tools + system_info_tools, prompt=SYSTEM_PROMPT_SYSTEM)
@@ -82,8 +93,15 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
                     # 1. Capture and print when the Agent decides to call a Tool
                     if hasattr(msg, "tool_calls") and msg.tool_calls:
                         # Extract and print the model's active reasoning thought process before tool invocation
+                        thought = ""
                         if msg.content:
                             thought = msg.content.strip()
+                        elif hasattr(msg, "additional_kwargs") and msg.additional_kwargs.get("reasoning_content"):
+                            thought = msg.additional_kwargs["reasoning_content"].strip()
+                        
+                        if thought:
+                            import re
+                            thought = re.sub(r'</?think>', '', thought).strip()
                             thought_cleaned = "\n     ".join(thought.split("\n"))
                             print(f"  🤔 [\033[1;36m{worker_name} Thinking\033[0m]: {thought_cleaned}")
                         for tc in msg.tool_calls:

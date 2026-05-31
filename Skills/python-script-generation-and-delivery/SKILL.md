@@ -1,6 +1,6 @@
 ---
 name: python-script-generation-and-delivery
-description: "Generates a functional Python script based on a user request, includes input validation and error handling, and successfully delivers the resulting file to a specified email address."
+description: "Generates a functional Python script (with input validation/error handling) and delivers the resulting file to a specified email address."
 version: 1.0.0
 platforms: [linux]
 metadata:
@@ -14,6 +14,4 @@ metadata:
 Use this skill when you need to execute workflows related to .
 
 ## Procedure
-1. **Generate Script:** Create a Python script that implements basic arithmetic operations (+, -, *, /) with robust input validation to prevent errors like division by zero. Ensure the script runs continuously until the user exits.
-2. **Save Script:** Save the generated code to a designated file path (e.g., `CompiledScripts/calculator.py`).
-3. **Delivery:** Send the content of the script to the user's specified personal email address.
+1. Generate the required Python script, ensuring it includes input validation and error handling. 2. Save the generated script to a file. 3. Email the content of the script to the specified delivery address.
