@@ -83,9 +83,60 @@ def is_personal_query(query: str) -> bool:
             
     return False
 
+def check_fast_path(primary_goal: str) -> Optional[str]:
+    """
+    Checks if a prompt can be resolved instantly via Fast-Path direct tool calls.
+    Returns the final response string if matched and processed, otherwise None.
+    """
+    q = primary_goal.strip().lower()
+    
+    # 1. Matches: "remember that [fact]" or "save that [fact]"
+    match_remember_that = re.match(r'^(remember|save)\s+that\s+(.*)', q, re.IGNORECASE)
+    if match_remember_that:
+        fact = primary_goal.strip()[match_remember_that.start(2):]
+        # Store in vector store
+        store_vector(fact)
+        return f"Got it! I've saved that fact in your long-term memory."
+        
+    # 2. Matches: "remember my [key] is [value]" or "remember [key] as [value]"
+    match_remember_keyval = re.match(r'^remember\s+(my\s+)?([\w\s_]+?)\s+(is|as)\s+(.*)', q, re.IGNORECASE)
+    if match_remember_keyval:
+        key = match_remember_keyval.group(2).strip()
+        val = match_remember_keyval.group(4).strip()
+        # Store in structured memory
+        store_memory("past", key, val)
+        return f"Got it! I have saved that your {key} is {val}."
+
+    # 3. Matches simple direct recalls: "what do you know about [topic]" or "recall [topic]" or "who is [topic]"
+    match_recall = re.match(r'^(what\s+do\s+you\s+know\s+about|recall|who\s+is|what\s+is\s+my)\s+(.*)', q, re.IGNORECASE)
+    if match_recall:
+        topic = match_recall.group(2).strip().rstrip('?')
+        # 1. Search structured memory first
+        structured_val = fetch_memory(None, topic)
+        if structured_val:
+            return f"I recall that your {topic} is: {structured_val}."
+            
+        # 2. Search vector database semantically
+        vector_results = search_vector(topic, k=2)
+        if vector_results:
+            summary = "\n".join([f"- {res}" for res in vector_results])
+            return f"Here is what I remember about '{topic}':\n{summary}"
+
+    return None
+
 def memory_injector_node(state: AgentState):
     print("\n[Node: Memory Injector] Retrieving relevant user context & skills...")
     primary_goal = state.get("primary_goal", "")
+    
+    # 0. Check Fast-Path (Phase 2 Speed Optimization)
+    fast_path_response = check_fast_path(primary_goal)
+    if fast_path_response:
+        working_memory = state.get("working_memory", {}) or {}
+        working_memory["fast_path_matched"] = True
+        return {
+            "working_memory": working_memory,
+            "final_response": fast_path_response
+        }
     
     # 1. Base Workspace Directories
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))

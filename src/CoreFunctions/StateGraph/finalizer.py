@@ -16,6 +16,22 @@ def output_finalizer_node(state: AgentState):
     timestamp = datetime.now().strftime("%H:%M:%S")
     print(f"\nRunning Output Finaliser : ({timestamp})")
     
+    # Check Fast-Path Bypass (Phase 2 Speed Optimization)
+    working_memory = state.get("working_memory", {}) or {}
+    if working_memory.get("fast_path_matched", False):
+        final_resp = state.get("final_response", "")
+        print(f"--- Output Finaliser Finished ---")
+        print(f"\n📍 Node 'output_finaliser' Output:\n")
+        print(f"💬 Manager says: ", end="", flush=True)
+        
+        # Stream character-by-character with a micro-delay for a premium, highly interactive terminal aesthetic
+        import time
+        for char in final_resp:
+            print(char, end="", flush=True)
+            time.sleep(0.008)
+        print("\n")
+        return {"final_response": final_resp}
+        
     primary_goal = state.get("primary_goal", "")
     completed_tasks = state.get("completed_tasks", {}) or {}
     chat_history = state.get("chat_history", []) or []

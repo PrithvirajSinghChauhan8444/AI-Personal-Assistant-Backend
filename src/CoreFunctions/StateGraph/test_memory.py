@@ -21,11 +21,11 @@ def run_test():
     store_vector("The user has a brother named Rohan.")
     store_vector("The user prefers using Python for scripting.")
     
-    print("\n--- Initiating Graph Run: 'Tell Rohan I will email him later' ---")
+    print("\n--- Initiating Graph Run: 'Remember that my sister is Ananya' ---")
     
-    # Run the graph with a query that triggers the memory match
+    # Run the graph with a query that triggers the fast-path memory match
     initial_state = {
-        "primary_goal": "Tell Rohan I will email him later",
+        "primary_goal": "Remember that my sister is Ananya",
         "active_subtasks": [],
         "working_memory": {},
         "completed_tasks": {},
@@ -41,13 +41,7 @@ def run_test():
                 print(f"[{node_name}] Executed.")
                 if node_name == "MemoryInjector":
                     wm = state_update.get("working_memory", {})
-                    print(f"  -> Injected Profile: {wm.get('user_profile')}")
-                    print(f"  -> Injected Memories: {wm.get('relevant_memories')}")
-                elif node_name == "TaskRouter":
-                    subtasks = state_update.get("active_subtasks", [])
-                    print("  -> Planned Subtasks:")
-                    for st in subtasks:
-                        print(f"     - [{st['assigned_worker']}] {st['description']}")
+                    print(f"  -> Fast Path Matched: {wm.get('fast_path_matched')}")
     except Exception as e:
         print(f"❌ Error during graph run: {e}")
 

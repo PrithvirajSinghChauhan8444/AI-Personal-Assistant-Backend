@@ -23,6 +23,12 @@ from src.CoreFunctions.StateGraph.workers import (
 from src.CoreFunctions.StateGraph.finalizer import output_finalizer_node
 from src.CoreFunctions.StateGraph.memory_nodes import memory_injector_node, reflection_node
 
+def memory_injector_router(state: AgentState):
+    working_memory = state.get("working_memory", {}) or {}
+    if working_memory.get("fast_path_matched", False):
+        return "OutputFinalizer"
+    return "TaskRouter"
+
 def create_graph():
     workflow = StateGraph(AgentState)
     
@@ -41,8 +47,15 @@ def create_graph():
     # Set Entry Point
     workflow.set_entry_point("MemoryInjector")
     
-    # Memory Injector runs, then Task Router
-    workflow.add_edge("MemoryInjector", "TaskRouter")
+    # Memory Injector routes to OutputFinalizer (Fast-Path Bypass) or TaskRouter (Standard Path)
+    workflow.add_conditional_edges(
+        "MemoryInjector",
+        memory_injector_router,
+        {
+            "OutputFinalizer": "OutputFinalizer",
+            "TaskRouter": "TaskRouter"
+        }
+    )
     
     # Task Router goes to Orchestrator
     workflow.add_edge("TaskRouter", "Orchestrator")
@@ -226,13 +239,17 @@ def process_request_interactive():
                         print("--- MemoryInjector Finished ---")
                         print("\n📍 Node 'MemoryInjector' Output:")
                         wm = state_update.get("working_memory", {}) or {}
-                        user_profile = wm.get("user_profile", {})
-                        relevant_memories = wm.get("relevant_memories", [])
-                        if user_profile:
-                            print(f"  -> Loaded User Profile keys: {list(user_profile.keys())}")
-                        if relevant_memories:
-                            print(f"  -> Injected {len(relevant_memories)} semantically relevant memories.")
-                        visualizer.start("Analyzing request & decomposing into subtasks", "36")
+                        
+                        if wm.get("fast_path_matched", False):
+                            print("  ⚡ [Fast-Path Bypass] Matched fast-path intent! Resolving instantly...")
+                        else:
+                            user_profile = wm.get("user_profile", {})
+                            relevant_memories = wm.get("relevant_memories", [])
+                            if user_profile:
+                                print(f"  -> Loaded User Profile keys: {list(user_profile.keys())}")
+                            if relevant_memories:
+                                print(f"  -> Injected {len(relevant_memories)} semantically relevant memories.")
+                            visualizer.start("Analyzing request & decomposing into subtasks", "36")
                     
                     elif node_name == "TaskRouter":
                         visualizer.stop()

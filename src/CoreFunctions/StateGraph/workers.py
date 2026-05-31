@@ -73,8 +73,39 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         sys.stdout.flush()
 
     try:
-        result = agent.invoke({"messages": [HumanMessage(content=prompt)]})
-        final_message = result["messages"][-1].content
+        final_message = ""
+        # Stream internal agent execution events in real-time to show thoughts/tool-calls
+        for chunk in agent.stream({"messages": [HumanMessage(content=prompt)]}):
+            for node_name, node_update in chunk.items():
+                messages = node_update.get("messages", [])
+                for msg in messages:
+                    # 1. Capture and print when the Agent decides to call a Tool
+                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                        # Extract and print the model's active reasoning thought process before tool invocation
+                        if msg.content:
+                            thought = msg.content.strip()
+                            thought_cleaned = "\n     ".join(thought.split("\n"))
+                            print(f"  🤔 [\033[1;36m{worker_name} Thinking\033[0m]: {thought_cleaned}")
+                        for tc in msg.tool_calls:
+                            print(f"  🔍 [{worker_name}] Calling Tool: \033[1;33m{tc['name']}\033[0m")
+                            args_str = json.dumps(tc.get('args', {}))
+                            if len(args_str) > 80:
+                                args_str = args_str[:77] + "..."
+                            print(f"     Args: {args_str}")
+                    
+                    # 2. Capture and print when the Tool completes execution
+                    elif msg.type == "tool":
+                        print(f"  📥 [{worker_name}] Tool \033[1;32m{msg.name}\033[0m successfully returned response.")
+                    
+                    # 3. Capture the final synthesized AI thought / message
+                    elif msg.type == "ai" and not (hasattr(msg, "tool_calls") and msg.tool_calls):
+                        final_message = msg.content
+        
+        # Fallback to invoke if streaming did not capture final message
+        if not final_message:
+            result = agent.invoke({"messages": [HumanMessage(content=prompt)]})
+            final_message = result["messages"][-1].content
+            
         return final_message
     finally:
         if vis and vis.active:
