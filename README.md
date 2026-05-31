@@ -34,6 +34,7 @@ graph TD
         N_Orch -->|Delegates next pending subtask| W_Prod["📅 ProductivityWorker Node"]
         N_Orch -->|Delegates next pending subtask| W_Class["🏫 ClassroomWorker Node"]
         N_Orch -->|Delegates next pending subtask| W_Mem["🧠 MemoryWorker Node"]
+        N_Orch -->|Delegates next pending subtask| W_Obs["📓 ObsidianWorker Manager"]
         
         %% Worker updates
         W_System -->|Writes tool results| N_Update["💾 Update State Node"]
@@ -41,6 +42,7 @@ graph TD
         W_Prod -->|Writes tool results| N_Update
         W_Class -->|Writes tool results| N_Update
         W_Mem -->|Writes tool results| N_Update
+        W_Obs -->|Writes nested team results| N_Update
         
         N_Update --> State
     end
@@ -67,6 +69,7 @@ graph TD
     style W_Prod fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
     style W_Class fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
     style W_Mem fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
+    style W_Obs fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
     style DB_JSON fill:#064e3b,stroke:#10b981,stroke-width:1px,color:#fff
     style DB_Vector fill:#064e3b,stroke:#10b981,stroke-width:1px,color:#fff
 ```
@@ -111,6 +114,7 @@ To prevent token bloat and agent confusion, each worker is pre-compiled as an in
 | **📅 ProductivityWorker** | Calendar scheduling, task management, time checking, and environmental data. | `add_google_task`, `check_calendar_events`, `add_calendar_event`, `get_system_health`, `get_weather`, `get_time`, `web_search` |
 | **🏫 ClassroomWorker** | Google Classroom synchronization, assignments tracking, and announcements. | `list_classroom_courses`, `list_classroom_assignments`, `list_classroom_announcements`, `get_classroom_assignment_details` |
 | **🧠 MemoryWorker** | Direct key fact retention and retrieval from persistent vector storage. | `recall`, `remember` |
+| **📓 ObsidianWorker** | Orchestrates a specialized nested team to programmatically manage your knowledge base. | `create_obsidian_note`, `append_to_obsidian_note`, `search_obsidian_vault`, `get_note_backlinks`, `get_note_properties`, `update_note_properties`, `create_or_update_obsidian_canvas` |
 
 > [!IMPORTANT]
 > **Zero-Trust Security Gateway**: Any worker calling destructive or high-risk OS operations (e.g. `run_terminal_tool`, `create_file_tool`, `launch_app_tool`) is automatically intercepted by a password verification layer (`verify_password()` in `auth_utils.py`). The system prompts a secure password verification challenge in the terminal before allowing the system level tool to execute.
@@ -122,6 +126,26 @@ Once all tasks are completed and the `OutputFinalizer` synthesizes a clean respo
 * The reflection engine reviews the multi-turn session to determine if the user provided new personal preferences (e.g. *"I prefer using terminal over GUI applications"* or *"My friend's email is updated to sam@example.com"*).
 * It automatically extracts these facts, updates the local `Memory/user_info.json` profile, and computes semantic vector embeddings to store in the persistent long-term vector database.
 * The system actively learns and personalizes its behavior based on your habits without needing explicit instruction.
+
+---
+
+### 📓 6. Nested Obsidian Multi-Agent Team (Manager-Worker)
+To handle complex, highly integrated Obsidian vault operations without context drift, the `ObsidianWorker` node functions as an isolated **Nested Team Manager** (Sub-Graph Orchestrator):
+
+```mermaid
+graph TD
+    ObsManager["🧠 Obsidian Manager"] -->|1. Generates Sub-Plan| ObsPlan["Structured Sub-Plan"]
+    ObsPlan -->|Task 1| W_Note["📝 ObsidianNoteWorker"]
+    ObsPlan -->|Task 2| W_Canvas["🎨 ObsidianCanvasWorker"]
+    ObsPlan -->|Task 3| W_Refactor["🔗 ObsidianRefactorWorker"]
+```
+
+* **🧠 Obsidian Manager**: Using a high-cognition cloud model (Gemini 3.1 Flash Lite) and structured JSON outputs (Pydantic validation), it analyzes the task description, reads previous `working_memory` inputs, and plans a multi-step roadmap. It dynamically invents optimized subfolder layouts (e.g. `Friends/College/` or `Friends/Hometown/`) and commands exact wikilink backlink structures.
+* **📝 ObsidianNoteWorker**: Local specialist (Gemma 4:e2b) dedicated entirely to beautiful markdown composition, including frontmatter tags, hierarchical headings, checklists, and dynamic database view tables (`dataview` syntax).
+* **🎨 ObsidianCanvasWorker**: Whiteboard specialist. Creates/updates `.canvas` visual flowchart diagrams with absolute coordinates, sizes, colors, and edges.
+* **🔗 ObsidianRefactorWorker**: Quality-assurance agent. Evaluates vault backlinks and parses/merges frontmatter YAML properties, ensuring no data is ever erased.
+
+* **📂 Auto-Directory Generator**: Every Obsidian tool dynamically supports tree-creation. If the note is saved as `Friends/College/Prithvi.md`, the folders are recursively generated.
 
 ---
 
@@ -193,4 +217,5 @@ python src/CoreFunctions/StateGraph/main_graph.py
 * [ ] **Advanced CLI Companion**: Expand the active spinner visualizer into an interactive, real-time terminal dashboard displaying running processes and tool-calling flows.
 * [ ] **Localized Voice Engine**: Integrate highly optimized speech-to-text (Whisper) and lightweight voice synthesizers (TTS) for hands-free local control.
 * [X] **Proactive Context Engine**: Implicit preference-retention and context-aware injection (State-Graph `MemoryInjector` + `Reflection` Node).
+* [X] **Advanced Obsidian Automation**: Integrated a nested multi-agent Sub-Graph team featuring an Obsidian Manager and specialized sub-workers (Note, Canvas, and Refactor agents) with dynamic folder nesting.
 * [ ] **Universal Integration Ecosystem**: Expand standard integrations to Notion and generic window-manager automations.
