@@ -674,6 +674,257 @@ def launch_app_tool(app_name: str, arguments: str = None) -> str:
     return "❌ Action Cancelled: Incorrect Password."
 
 
+# (Registry moved to the bottom of the file to prevent NameErrors)
+
+# ===========================
+# 8. OBSIDIAN TOOLS
+# ===========================
+
+OBSIDIAN_VAULT_PATH = os.environ.get("OBSIDIAN_VAULT_PATH", "/home/prit/Documents/Obsidian Vaultt")
+
+def create_obsidian_note(filename: str, content: str, folder: str = "") -> str:
+    """Creates a new note inside the Obsidian vault with raw content.
+    Supports dynamic parent folder creation automatically. You can pass nested paths in the 'filename' parameter (e.g. 'logs/daily.md') or in the 'folder' parameter (e.g. 'logs').
+
+    Args:
+        filename (str): The filename of the note (e.g. 'Project Log.md' or 'category/Profile.md').
+        content (str): The markdown body content to write in the note.
+        folder (str): Optional subfolder within the vault (e.g. 'logs'). Defaults to empty string.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: create_obsidian_note")
+    print(f"   Args: filename={filename}, folder={folder}")
+    try:
+        # Ensure file has .md extension
+        if not filename.endswith(".md") and not filename.endswith(".canvas"):
+            filename += ".md"
+            
+        file_path = os.path.join(OBSIDIAN_VAULT_PATH, folder, filename)
+        # Create all parent directories dynamically (handling folders inside filename)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return f"Successfully created note '{filename}' at path: {file_path}"
+    except Exception as e:
+        return f"Error creating obsidian note: {e}"
+
+def append_to_obsidian_note(filename: str, content: str, folder: str = "") -> str:
+    """Appends logs, summaries, or tasks to an existing Obsidian note.
+
+    Args:
+        filename (str): The filename of the note to append to.
+        content (str): The markdown content to append.
+        folder (str): Optional subfolder inside the vault. Defaults to empty string.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: append_to_obsidian_note")
+    print(f"   Args: filename={filename}, folder={folder}")
+    try:
+        if not filename.endswith(".md"):
+            filename += ".md"
+        file_path = os.path.join(OBSIDIAN_VAULT_PATH, folder, filename)
+        
+        # Create all parent directories dynamically (handling folders inside filename)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        if not os.path.exists(file_path):
+            return create_obsidian_note(filename, content, folder)
+            
+        with open(file_path, "a", encoding="utf-8") as f:
+            f.write("\n" + content)
+        return f"Successfully appended content to note '{filename}'"
+    except Exception as e:
+        return f"Error appending to obsidian note: {e}"
+
+def search_obsidian_vault(query: str) -> str:
+    """Performs a global search across all notes in the vault for a keyword or tag.
+
+    Args:
+        query (str): The keyword or tag to search for.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: search_obsidian_vault")
+    print(f"   Args: query={query}")
+    try:
+        matches = []
+        # Search all .md files recursively
+        for root, _, files in os.walk(OBSIDIAN_VAULT_PATH):
+            for file in files:
+                if file.endswith(".md"):
+                    full_path = os.path.join(root, file)
+                    try:
+                        with open(full_path, "r", encoding="utf-8") as f:
+                            content = f.read()
+                            if query.lower() in content.lower():
+                                rel_path = os.path.relpath(full_path, OBSIDIAN_VAULT_PATH)
+                                matches.append(f"- [[{rel_path[:-3]}]]")
+                    except Exception:
+                        continue
+        if not matches:
+            return f"No notes found matching query: '{query}'"
+        return "Matching notes found:\n" + "\n".join(matches[:15])
+    except Exception as e:
+        return f"Error searching obsidian vault: {e}"
+
+def get_note_backlinks(note_title: str) -> str:
+    """Finds all notes in the vault that link to the specified note (bidirectional backlinks).
+
+    Args:
+        note_title (str): The exact title of the note to find backlinks for (without the extension).
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: get_note_backlinks")
+    try:
+        backlinks = []
+        # Search all md files recursively
+        for root, _, files in os.walk(OBSIDIAN_VAULT_PATH):
+            for file in files:
+                if file.endswith(".md"):
+                    full_path = os.path.join(root, file)
+                    try:
+                        with open(full_path, "r", encoding="utf-8") as f:
+                            content = f.read()
+                            # Matches [[note_title]] or [[note_title|custom label]] or [[note_title#header]]
+                            pattern = rf"\[\[{re.escape(note_title)}(\|[0-9a-zA-Z\s]+)?(#[0-9a-zA-Z\s]+)?\]\]"
+                            if re.search(pattern, content):
+                                rel_path = os.path.relpath(full_path, OBSIDIAN_VAULT_PATH)
+                                backlinks.append(f"- [[{rel_path[:-3]}]]")
+                    except Exception:
+                        continue
+        if not backlinks:
+            return f"No backlinks found linking to: '[[{note_title}]]'"
+        return f"Notes linking to [[{note_title}]]:\n" + "\n".join(backlinks)
+    except Exception as e:
+        return f"Error fetching backlinks: {e}"
+
+def get_note_properties(filename: str, folder: str = "") -> str:
+    """Parses and returns the YAML frontmatter properties from an Obsidian note.
+
+    Args:
+        filename (str): The filename of the note (e.g. 'My Profile.md').
+        folder (str): Optional subfolder. Defaults to empty string.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: get_note_properties")
+    try:
+        if not filename.endswith(".md"):
+            filename += ".md"
+        file_path = os.path.join(OBSIDIAN_VAULT_PATH, folder, filename)
+        if not os.path.exists(file_path):
+            return f"Note '{filename}' does not exist."
+            
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            
+        match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
+        if not match:
+            return "No properties found (YAML frontmatter is empty)."
+            
+        import yaml
+        properties = yaml.safe_load(match.group(1))
+        return json.dumps(properties, indent=4)
+    except Exception as e:
+        return f"Error parsing properties: {e}"
+
+def update_note_properties(filename: str, properties: dict, folder: str = "") -> str:
+    """Creates or updates properties inside the note's YAML frontmatter.
+
+    Args:
+        filename (str): The filename of the note.
+        properties (dict): A dictionary of properties to set or merge.
+        folder (str): Optional subfolder. Defaults to empty string.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: update_note_properties")
+    try:
+        if not filename.endswith(".md"):
+            filename += ".md"
+        file_path = os.path.join(OBSIDIAN_VAULT_PATH, folder, filename)
+        
+        import yaml
+        content = ""
+        existing_props = {}
+        body = ""
+        
+        if os.path.exists(file_path):
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            
+            match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)", content, re.DOTALL)
+            if match:
+                try:
+                    existing_props = yaml.safe_load(match.group(1)) or {}
+                except Exception:
+                    pass
+                body = match.group(2)
+            else:
+                body = content
+                
+        existing_props.update(properties)
+        yaml_str = yaml.safe_dump(existing_props, default_flow_style=False, sort_keys=False)
+        new_content = f"---\n{yaml_str}---\n{body}"
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(new_content)
+        return f"Successfully updated properties for note '{filename}'"
+    except Exception as e:
+        return f"Error updating properties: {e}"
+
+def create_or_update_obsidian_canvas(canvas_name: str, nodes: list, edges: list = None, folder: str = "") -> str:
+    """Creates or updates an Obsidian Canvas (.canvas) infinite whiteboard.
+
+    Args:
+        canvas_name (str): The filename of the canvas (e.g. 'Project Mindmap.canvas').
+        nodes (list): A list of dictionaries representing nodes. Each node can contain:
+                      - 'id' (str, unique)
+                      - 'type' (str: 'text' or 'file' or 'group')
+                      - 'x' (int), 'y' (int)
+                      - 'width' (int), 'height' (int)
+                      - 'text' (str, if type is 'text')
+                      - 'file' (str, if type is 'file', relative path in vault)
+                      - 'color' (str, '1' to '6' representing Obsidian colors)
+        edges (list, optional): A list of dictionaries representing edges connecting nodes. Each edge can contain:
+                      - 'id' (str, unique)
+                      - 'fromNode' (str), 'toNode' (str)
+                      - 'fromSide' (str: 'top', 'bottom', 'left', 'right')
+                      - 'toSide' (str: 'top', 'bottom', 'left', 'right')
+                      - 'label' (str, optional)
+        folder (str): Optional subfolder within the vault. Defaults to empty string.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: create_or_update_obsidian_canvas")
+    print(f"   Args: canvas_name={canvas_name}, folder={folder}")
+    try:
+        if not canvas_name.endswith(".canvas"):
+            canvas_name += ".canvas"
+        
+        file_path = os.path.join(OBSIDIAN_VAULT_PATH, folder, canvas_name)
+        # Create all parent directories dynamically (handling folders inside canvas name)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        canvas_data = {"nodes": [], "edges": []}
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    canvas_data = json.load(f)
+            except Exception:
+                pass
+        
+        # Merge or replace nodes
+        existing_nodes = {n["id"]: n for n in canvas_data.get("nodes", [])}
+        for node in nodes:
+            existing_nodes[node["id"]] = node
+        canvas_data["nodes"] = list(existing_nodes.values())
+        
+        # Merge or replace edges
+        if edges is not None:
+            existing_edges = {e["id"]: e for e in canvas_data.get("edges", [])}
+            for edge in edges:
+                existing_edges[edge["id"]] = edge
+            canvas_data["edges"] = list(existing_edges.values())
+            
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(canvas_data, f, indent=4)
+            
+        return f"Successfully updated Canvas '{canvas_name}' at path: {file_path}"
+    except Exception as e:
+        return f"Error managing obsidian canvas: {e}"
+
+
 # ===========================
 # 5. THE REGISTRY (The Menu)
 # ===========================
@@ -729,7 +980,16 @@ AVAILABLE_TOOLS = {
     # System
     "run_cmd": run_terminal_tool,
     "run_script": run_python_tool,
-    "launch_app": launch_app_tool
+    "launch_app": launch_app_tool,
+
+    # Obsidian
+    "create_obsidian_note": create_obsidian_note,
+    "append_to_obsidian_note": append_to_obsidian_note,
+    "search_obsidian_vault": search_obsidian_vault,
+    "get_note_backlinks": get_note_backlinks,
+    "get_note_properties": get_note_properties,
+    "update_note_properties": update_note_properties,
+    "create_or_update_obsidian_canvas": create_or_update_obsidian_canvas
 }
 
 

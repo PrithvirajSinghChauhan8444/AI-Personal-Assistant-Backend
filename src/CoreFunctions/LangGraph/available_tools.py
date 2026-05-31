@@ -29,7 +29,11 @@ from src.CoreFunctions.tools import (
     create_dir_tool, save_code_tool,
     
     # Execution
-    run_terminal_tool, run_python_tool, launch_app_tool
+    run_terminal_tool, run_python_tool, launch_app_tool,
+    
+    # Obsidian
+    create_obsidian_note, append_to_obsidian_note, search_obsidian_vault,
+    get_note_backlinks, get_note_properties, update_note_properties, create_or_update_obsidian_canvas
 )
 
 # ==========================================
@@ -103,6 +107,17 @@ system_control_tools = [
     StructuredTool.from_function(suspend_desktop_system),
 ]
 
+# --- Obsidian ---
+obsidian_tools = [
+    StructuredTool.from_function(create_obsidian_note),
+    StructuredTool.from_function(append_to_obsidian_note),
+    StructuredTool.from_function(search_obsidian_vault),
+    StructuredTool.from_function(get_note_backlinks),
+    StructuredTool.from_function(get_note_properties),
+    StructuredTool.from_function(update_note_properties),
+    StructuredTool.from_function(create_or_update_obsidian_canvas),
+]
+
 # ==========================================
 # EXPORTS
 # ==========================================
@@ -157,7 +172,16 @@ TOOL_MAP = {
     "list_running_processes_tool": system_control_tools[9],
     "terminate_process_tool": system_control_tools[10],
     "lock_desktop_screen": system_control_tools[11],
-    "suspend_desktop_system": system_control_tools[12]
+    "suspend_desktop_system": system_control_tools[12],
+    
+    # Obsidian
+    "create_obsidian_note": obsidian_tools[0],
+    "append_to_obsidian_note": obsidian_tools[1],
+    "search_obsidian_vault": obsidian_tools[2],
+    "get_note_backlinks": obsidian_tools[3],
+    "get_note_properties": obsidian_tools[4],
+    "update_note_properties": obsidian_tools[5],
+    "create_or_update_obsidian_canvas": obsidian_tools[6]
 }
 
 # Consolidate all for the Supervisor or Generalist
@@ -168,6 +192,7 @@ ALL_TOOLS = (
     classroom_tools + 
     system_info_tools + 
     file_management_tools + 
-    system_control_tools
+    system_control_tools +
+    obsidian_tools
 )
 

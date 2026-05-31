@@ -14,7 +14,10 @@ from src.CoreFunctions.StateGraph.state import AgentState
 class SubTaskModel(BaseModel):
     id: str = Field(description="A unique identifier for the subtask, e.g., 'task_1'")
     description: str = Field(description="Clear instructions for the worker")
-    assigned_worker: Literal["SystemWorker", "GmailWorker", "ProductivityWorker", "MemoryWorker", "ClassroomWorker"] = Field(
+    assigned_worker: Literal[
+        "SystemWorker", "GmailWorker", "ProductivityWorker", 
+        "MemoryWorker", "ClassroomWorker", "ObsidianWorker"
+    ] = Field(
         description="The worker assigned to this task"
     )
 
@@ -29,11 +32,13 @@ Available workers:
 - ProductivityWorker: Calendar events, Google Tasks, Weather.
 - MemoryWorker: Long-term memory storage and retrieval.
 - SystemWorker: OS terminal commands, file management, scripts, system health.
+- ObsidianWorker: Takes pre-compiled plans or text data and writes/formats them into structured Obsidian notes with YAML frontmatter, wikilinks, callouts, and checklists.
 
 RULES:
 1. Break down the request into the smallest logical steps.
 2. Assign each step to the correct worker.
 3. Determine the sequential order of tasks.
+4. When creating connected structures (folders or multiple notes) in Obsidian, explicitly state the exact target note names in the description of subsequent subtasks (e.g. 'including a wikilink [[Prithvi_Dashboard]] back to the dashboard created in task_1') to ensure perfect bidirectional linking context between independent worker runs.
 """
 
 def task_router_node(state: AgentState):

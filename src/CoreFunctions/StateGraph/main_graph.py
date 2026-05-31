@@ -18,7 +18,7 @@ from src.CoreFunctions.StateGraph.orchestrator import orchestrator_node, orchest
 from src.CoreFunctions.StateGraph.workers import (
     system_worker_node, gmail_worker_node, 
     productivity_worker_node, memory_worker_node,
-    classroom_worker_node
+    classroom_worker_node, obsidian_worker_node
 )
 from src.CoreFunctions.StateGraph.finalizer import output_finalizer_node
 from src.CoreFunctions.StateGraph.memory_nodes import memory_injector_node, reflection_node
@@ -41,6 +41,7 @@ def create_graph():
     workflow.add_node("ProductivityWorker", productivity_worker_node)
     workflow.add_node("MemoryWorker", memory_worker_node)
     workflow.add_node("ClassroomWorker", classroom_worker_node)
+    workflow.add_node("ObsidianWorker", obsidian_worker_node)
     workflow.add_node("OutputFinalizer", output_finalizer_node)
     workflow.add_node("Reflection", reflection_node)
     
@@ -70,6 +71,7 @@ def create_graph():
             "ProductivityWorker": "ProductivityWorker",
             "MemoryWorker": "MemoryWorker",
             "ClassroomWorker": "ClassroomWorker",
+            "ObsidianWorker": "ObsidianWorker",
             "OutputFinalizer": "OutputFinalizer"
         }
     )
@@ -80,6 +82,7 @@ def create_graph():
     workflow.add_edge("ProductivityWorker", "Orchestrator")
     workflow.add_edge("MemoryWorker", "Orchestrator")
     workflow.add_edge("ClassroomWorker", "Orchestrator")
+    workflow.add_edge("ObsidianWorker", "Orchestrator")
     
     # OutputFinalizer completes the user-facing graph synchronously
     workflow.add_edge("OutputFinalizer", END)

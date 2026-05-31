@@ -1,6 +1,8 @@
 import os
 import sys
 import json
+from typing import List, Literal
+from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage
 from langgraph.prebuilt import create_react_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -10,14 +12,14 @@ from src.CoreFunctions.StateGraph.state import AgentState
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 from src.CoreFunctions.LangGraph.available_tools import (
     system_control_tools, file_management_tools, system_info_tools,
-    gmail_tools, calendar_tools, memory_tools, classroom_tools
+    gmail_tools, calendar_tools, memory_tools, classroom_tools, obsidian_tools
 )
 
 # LLM for workers. Using Gemini with native cloud thinking enabled.
 llm = ChatGoogleGenerativeAI(
     model="gemini-3.1-flash-lite", 
     temperature=0,
-    extra_body={"thinking_config": {"thinking_budget": 2048}}
+    model_kwargs={"extra_body": {"thinking_config": {"thinking_budget": 2048}}}
 )
 
 # Local LLM for Memory and lightweight workers with Ollama thinking options enabled.
@@ -36,6 +38,31 @@ SYSTEM_PROMPT_GMAIL = "You are GmailWorker. You manage email fetching, searching
 SYSTEM_PROMPT_PRODUCTIVITY = "You are ProductivityWorker. You manage calendars, tasks, scheduling, and weather/time checks." + THINKING_INSTRUCTION
 SYSTEM_PROMPT_MEMORY = "You are MemoryWorker. You save and retrieve long-term user preferences." + THINKING_INSTRUCTION
 SYSTEM_PROMPT_CLASSROOM = "You are ClassroomWorker. You manage Google Classroom courses, assignments, announcements, and coursework details." + THINKING_INSTRUCTION
+SYSTEM_PROMPT_OBSIDIAN_NOTE = """You are ObsidianNoteWorker. You are a highly specialized local markdown note author.
+Your job is to create or append content to `.md` notes in the Obsidian vault.
+You dynamically decide on clean categorization folders based on context (e.g., placing notes in 'Friends/College/', 'Friends/Hometown/', 'Personal/', 'Academic/') or write files according to instructions.
+Always structure notes with:
+- YAML frontmatter (metadata attributes like tags, category, title at the very top delimited by `---`)
+- Clear hierarchical headings (##, ###)
+- Wikilinks (`[[Note Name]]`) to connect files
+- Tasks (`- [ ]`) and Callout boxes (`> [!TIP]`, `> [!NOTE]`).
+
+7. **Contextual Linking via Working Memory**: Always scan previously completed task outputs inside the `Working Memory` to find exact filenames of notes created by preceding steps (e.g. if `task_1` created `Prithvi_Dashboard.md`). Use these actual note titles for bidirectional linking rather than placeholder/generic names like `[[Home]]` or `[[Root Note]]`.
+""" + THINKING_INSTRUCTION
+
+SYSTEM_PROMPT_OBSIDIAN_CANVAS = """You are ObsidianCanvasWorker. You are a whiteboard design specialist.
+Your job is to create or update Obsidian Canvas `.canvas` files.
+You construct visual infinite-canvas flowcharts, mindmaps, or visual diagrams.
+Use the `create_or_update_obsidian_canvas` tool to structure nodes (text, files) and connect them with edges.
+""" + THINKING_INSTRUCTION
+
+SYSTEM_PROMPT_OBSIDIAN_REFACTOR = """You are ObsidianRefactorWorker. You are a vault property and link integrity manager.
+Your job is to scan backlinks and read/update YAML frontmatter properties of notes using:
+- `get_note_backlinks`
+- `get_note_properties`
+- `update_note_properties`
+Ensure links are synchronized, properties are accurate, and referential integrity is preserved.
+""" + THINKING_INSTRUCTION
 
 # Pre-compile the agents ONCE globally at load time
 SYSTEM_AGENT = create_react_agent(llm, system_control_tools + file_management_tools + system_info_tools, prompt=SYSTEM_PROMPT_SYSTEM)
@@ -44,12 +71,20 @@ PRODUCTIVITY_AGENT = create_react_agent(llm, calendar_tools + system_info_tools,
 MEMORY_AGENT = create_react_agent(local_llm, memory_tools, prompt=SYSTEM_PROMPT_MEMORY)
 CLASSROOM_AGENT = create_react_agent(llm, classroom_tools, prompt=SYSTEM_PROMPT_CLASSROOM)
 
+# Specialized Obsidian Sub-workers
+OBSIDIAN_NOTE_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTEM_PROMPT_OBSIDIAN_NOTE)
+OBSIDIAN_CANVAS_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTEM_PROMPT_OBSIDIAN_CANVAS)
+OBSIDIAN_REFACTOR_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTEM_PROMPT_OBSIDIAN_REFACTOR)
+
 AGENT_MAP = {
     "SystemWorker": SYSTEM_AGENT,
     "GmailWorker": GMAIL_AGENT,
     "ProductivityWorker": PRODUCTIVITY_AGENT,
     "MemoryWorker": MEMORY_AGENT,
-    "ClassroomWorker": CLASSROOM_AGENT
+    "ClassroomWorker": CLASSROOM_AGENT,
+    "ObsidianNoteWorker": OBSIDIAN_NOTE_AGENT,
+    "ObsidianCanvasWorker": OBSIDIAN_CANVAS_AGENT,
+    "ObsidianRefactorWorker": OBSIDIAN_REFACTOR_AGENT
 }
 
 def _get_active_task(state: AgentState):
@@ -184,3 +219,71 @@ def classroom_worker_node(state: AgentState):
     
     final_data = _run_ephemeral_agent("ClassroomWorker", task["description"], state.get("working_memory", {}))
     return _update_state_completed(state, task["id"], final_data)
+
+class ObsidianSubTask(BaseModel):
+    id: str = Field(description="Subtask ID (e.g., 'obs_1')")
+    assigned_worker: Literal["ObsidianNoteWorker", "ObsidianCanvasWorker", "ObsidianRefactorWorker"] = Field(
+        description="The specialized Obsidian worker assigned to this task"
+    )
+    description: str = Field(
+        description="Detailed instruction for this sub-worker, explicitly naming target folders, filenames, and link connections."
+    )
+
+class ObsidianSubPlan(BaseModel):
+    reasoning: str = Field(description="Your structured thinking on the chosen directory structure and worker allocation strategy.")
+    subtasks: List[ObsidianSubTask] = Field(description="Sequential list of specialized tasks to execute")
+
+def obsidian_worker_node(state: AgentState):
+    task = _get_active_task(state)
+    if not task: return {}
+    
+    print(f"\n🧠 [Obsidian Manager] Decomposing high-level plan into specialized Obsidian sub-tasks...")
+    
+    # 1. Ask the Obsidian Manager to decompose the mega-task
+    manager_prompt = f"""You are the Obsidian Manager. Your job is to orchestrate a team of specialized sub-workers:
+- ObsidianNoteWorker: Creates or appends to markdown notes (.md), dynamically organizing them in appropriate folders (e.g. 'Friends/College_Friends/', 'Friends/Hometown_Friends/', 'Personal/', 'Academic/').
+- ObsidianCanvasWorker: Creates/updates whiteboard infinite whiteboard flowcharts (.canvas).
+- ObsidianRefactorWorker: Evaluates backlinks, properties, and links to keep notes synchronized.
+
+User Goal / Task: {task["description"]}
+
+Working Memory Context:
+{json.dumps(state.get("working_memory", {}), indent=2)}
+
+Create a detailed sequential sub-plan to execute this goal. 
+RULES:
+1. Dynamically structure categories into descriptive directories (e.g. 'Personal', 'Academic', 'Friends/College', 'Friends/Hometown') based on who the friends are in context.
+2. Do not use generic file names like 'Home' or 'Root'. Establish clear custom note names (e.g., 'Prithvi_Dashboard.md').
+3. Ensure every subsequent note created is explicitly commanded to contain a bidirectional wikilink back to the central hub Dashboard note.
+"""
+    
+    try:
+        structured_llm = llm.with_structured_output(ObsidianSubPlan)
+        plan: ObsidianSubPlan = structured_llm.invoke(manager_prompt)
+        print(f"  🤔 [Obsidian Manager Thought]: {plan.reasoning}")
+        print(f"  📋 Generated subtasks for Obsidian team:")
+        for st in plan.subtasks:
+            print(f"     -> [{st.assigned_worker}] {st.description}")
+    except Exception as e:
+        print(f"⚠️ Obsidian Manager planning failed: {e}. Falling back to default plan...")
+        plan = ObsidianSubPlan(
+            reasoning="Fallback due to structured model error",
+            subtasks=[
+                ObsidianSubTask(
+                    id="obs_1", 
+                    assigned_worker="ObsidianNoteWorker", 
+                    description=f"Create notes inside appropriate categorised subfolders: {task['description']}"
+                )
+            ]
+        )
+
+    # 2. Sequentially run each specialized subtask, updating the team's shared working memory
+    shared_memory = dict(state.get("working_memory", {}))
+    
+    for st in plan.subtasks:
+        print(f"\n🚀 [Obsidian Manager] Activating Worker: {st.assigned_worker} ({st.id})...")
+        output = _run_ephemeral_agent(st.assigned_worker, st.description, shared_memory)
+        shared_memory[st.id] = output
+        
+    return _update_state_completed(state, task["id"], f"Successfully executed nested Obsidian sub-plan with {len(plan.subtasks)} subtasks. Categorized files committed to vault successfully.")
+
