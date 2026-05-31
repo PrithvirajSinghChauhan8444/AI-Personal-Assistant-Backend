@@ -1,70 +1,127 @@
 # 🤖 AI Personal Assistant (Backend)
 
-> **"LLMs decide, Code executes."**
+> **"Intelligent Decision-Making, Secure Local Execution."**
 
-A powerful, secure, and extensible local AI assistant designed to interact with your system, manage communications, and organize your digital life. Built with a modular, **Dynamic State-Graph Multi-Agent Architecture**, it prioritizes safety and local control while leveraging state-of-the-art LLMs for orchestration and tool-use execution.
-
----
-
-## 🚀 Project Overview
-
-This project implements a highly resilient, state-driven backend for an AI Personal Assistant. Unlike traditional ReAct loops or monolithic agents that struggle with context window pollution, this system decomposes complex user prompts into discrete, isolated tasks, maintaining strict security and localized execution.
-
-### Key Philosophies
-
-* **🛡️ Safety First**: High-risk actions (like writing files, launching apps, or running terminal commands) are explicitly password-protected via a validation hook.
-* **🧩 Cyclic State-Graph Execution**: Relies on a global **State Object** to maintain context, eliminating agent confusion and token inflation.
-* **🧠 Automated Self-Learning**: Features an advanced memory system that learns user preferences implicitly and injects relevant history at runtime.
+A powerful, secure, and extensible local AI assistant designed to interact with your system, manage communications, and organize your digital life. Built with a modular, **Dynamic State-Graph Multi-Agent Architecture**, it prioritizes safety, localized execution, and low-latency orchestration while leveraging state-of-the-art LLMs for reasoning and tool execution.
 
 ---
 
-## ✨ Features & Architecture
+## 🏗️ System Architecture & Request Lifecycle
 
-### 1. The Core State-Graph Architecture
+Unlike traditional ReAct loops or monolithic agents that struggle with context pollution, memory drift, and token bloat, this backend operates on a tightly-controlled **cyclic state machine** built on LangGraph. 
 
-The backend operates on a tightly-controlled state machine defined inside `src/CoreFunctions/StateGraph/`.
+Here is the exact visual lifecycle of a user request as it moves through the multi-agent system:
 
 ```mermaid
 graph TD
-    Start([Task Router Initializes State]) --> State[(Global State Object)]
-  
-    subgraph The Orchestrator Loop
-        State --> Read{Orchestrator Reads State}
+    %% Entry Point
+    Start([User Input Prompt]) --> N_Inject["🧠 Memory Injector Node"]
     
-        Read -->|Pending Task| Worker[Specialized Worker Agent]
-        Worker -->|Executes Tool / API| Update[Update State Object]
-        Update --> State
-    
-        Read -->|Action Fails| Error[Error Handler]
-        Error -->|Logs Error & Retries| State
+    subgraph Stage 1: Context Enrichment
+        N_Inject -->|Fetches context from vector DB & JSON| N_Route["📋 Task Router Node"]
     end
-  
-    Read -->|Zero Active Tasks| Finalize[Output Finalizer]
-    Finalize --> End([Final Response to User])
-```
+    
+    subgraph Stage 2: Intent Decomposition
+        N_Route -->|Decomposes goal into structured JSON subtasks| State[(Global State Object)]
+    end
+    
+    subgraph Stage 3: The Cyclic Execution Loop
+        State --> N_Orch{"🔄 Orchestrator Node"}
+        
+        %% Worker Mappings
+        N_Orch -->|Delegates next pending subtask| W_System["💻 SystemWorker Node"]
+        N_Orch -->|Delegates next pending subtask| W_Gmail["📧 GmailWorker Node"]
+        N_Orch -->|Delegates next pending subtask| W_Prod["📅 ProductivityWorker Node"]
+        N_Orch -->|Delegates next pending subtask| W_Class["🏫 ClassroomWorker Node"]
+        N_Orch -->|Delegates next pending subtask| W_Mem["🧠 MemoryWorker Node"]
+        
+        %% Worker updates
+        W_System -->|Writes tool results| N_Update["💾 Update State Node"]
+        W_Gmail -->|Writes tool results| N_Update
+        W_Prod -->|Writes tool results| N_Update
+        W_Class -->|Writes tool results| N_Update
+        W_Mem -->|Writes tool results| N_Update
+        
+        N_Update --> State
+    end
+    
+    subgraph Stage 4: Output Synthesis & Learning
+        N_Orch -->|All subtasks completed| N_Final["✨ Output Finalizer Node"]
+        N_Final -->|Generates user response| N_Reflect["💡 Self-Reflection Node"]
+        
+        %% Passive Learning Links
+        N_Reflect -->|Passive learning fact extraction| DB_JSON[("💾 user_info.json")]
+        N_Reflect -->|Semantic database embedding| DB_Vector[("📂 Vector Memory DB")]
+    end
 
-* **Task Router (`task_router.py`)**: Acts as a semantic parser to split complex instructions (e.g. *"Check my system health and email the report to Rohan"*) into independent, sequentially ordered sub-tasks.
-* **Orchestrator (`orchestrator.py` & `main_graph.py`)**: Reads the active state, delegates tasks to the respective Workers, validates outputs, and updates the global `working_memory`.
-* **Memory Injection & Self-Reflection (`memory_nodes.py`)**:
-  * **`MemoryInjector` Node**: Analyzes the query, checks if personal context is needed, and automatically pulls key profile variables from `Memory/user_info.json` and semantic vector memory.
-  * **`Reflection` Engine**: Evaluates completed executions post-turn to extract permanent facts (e.g. *"prefers terminal over GUI"*) and saves them automatically to the JSON database and long-term vector database.
+    %% Final Output
+    N_Reflect --> End([Coherent Assistant Response])
+
+    %% Diagram Styling
+    style State fill:#4b2c85,stroke:#7f3fbf,stroke-width:2px,color:#fff
+    style N_Orch fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff
+    style N_Inject fill:#0f172a,stroke:#475569,stroke-width:1px,color:#fff
+    style N_Route fill:#0f172a,stroke:#475569,stroke-width:1px,color:#fff
+    style W_System fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
+    style W_Gmail fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
+    style W_Prod fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
+    style W_Class fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
+    style W_Mem fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
+    style DB_JSON fill:#064e3b,stroke:#10b981,stroke-width:1px,color:#fff
+    style DB_Vector fill:#064e3b,stroke:#10b981,stroke-width:1px,color:#fff
+```
 
 ---
 
-### 2. Specialized Worker Agents & Toolsets
+## 🔍 In-Depth Pipeline Mechanics
 
-Workers are isolated, pre-compiled ReAct agents running under `gemini-3.1-flash-lite`.
+### 🧠 1. First-Turn Context Enrichment (`MemoryInjector`)
+The moment a prompt is received, the `MemoryInjector` node intercepts the query. Instead of relying on the user to manually restate their preferences, the node:
+1. Conducts a **semantic search** using embeddings (ChromaDB) to retrieve relevant historical notes or context from previous sessions.
+2. Queries the structured static preference profile stored locally in `Memory/user_info.json`.
+3. Injects this context directly into the prompt's background metadata before any agent planning begins.
 
-| Agent                           | Purpose                                                                                         | Tools                                                                                                                                                                                                                                         |
-| :------------------------------ | :---------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **💻 SystemWorker**       | Manages OS configurations, sandboxed files, shell command executions, and hardware diagnostics. | `run_terminal_tool`, `run_python_tool`, `launch_app_tool`, `create_file_tool`, `read_file_tool`, `list_files_tool`, `create_dir_tool`, `save_code_tool`, `get_system_health`, `get_weather`, `get_time`, `web_search` |
-| **📧 GmailWorker**        | Handles inbox querying, email searches, and mailing tasks securely.                             | `fetch_unread_mails`, `send_gmail`, `search_gmail`, `read_gmail_msg`, `trash_gmail_msg`, `mark_gmail_read`, `reply_to_gmail`                                                                                                             |
-| **📅 ProductivityWorker** | Orchestrates calendar appointments, active tasks, weather checks, and time retrieval.           | `add_google_task`, `check_calendar_events`, `add_calendar_event`, `get_system_health`, `get_weather`, `get_time`, `web_search`                                                                                                  |
-| **🏫 ClassroomWorker**    | Manages Google Classroom courses, coursework, assignments, and announcements.                  | `list_classroom_courses`, `list_classroom_assignments`, `list_classroom_announcements`, `get_classroom_assignment_details`                                                                                                               |
-| **🧠 MemoryWorker**       | Responsible for managing the manual recall and retention of key facts.                          | `recall`, `remember`                                                                                                                                                                                                                      |
+---
+
+### 📋 2. Dynamic Task Decomposition (`TaskRouter`)
+The enriched prompt is passed to the `TaskRouter`. Rather than trying to execute tools immediately, this node acts as a natural language compiler:
+* Using a robust schema model, it decomposes the user's complex request into a sequential plan of isolated subtasks.
+* Each subtask is assigned a unique ID, clear descriptions of execution parameters, and a dedicated target worker (e.g. `SystemWorker`).
+* This decouples overall project planning from execution, guaranteeing that workers only process highly targeted, single-responsibility requests.
+
+---
+
+### 🔄 3. The Cyclic Orchestrator Loop (`Orchestrator`)
+The `Orchestrator` is the engine of the state machine. It evaluates the global state in a continuous loop:
+1. **Queue Scan**: Scans the `active_subtasks` list in the global `AgentState` to find the first task marked `"pending"`.
+2. **Delegation**: Automatically flags the task as `"in_progress"` and routes execution to the assigned Worker Node.
+3. **State Synthesis**: When the worker returns, its summary is logged into `completed_tasks` and data results are written into the temporary `working_memory`.
+4. **Recurrent Check**: The orchestrator reviews the state object again, evaluates the next pending item, and repeats the process until the queue is completely resolved.
+5. **Fault Recovery**: If an individual worker encounters an error or API failure, the orchestrator isolates the exception, allows targeted worker retries, or registers a controlled error log without crashing the entire graph thread.
+
+---
+
+### 💻 4. Isolated ReAct Workers & The Sandboxed Toolset
+To prevent token bloat and agent confusion, each worker is pre-compiled as an independent ReAct agent with a strictly limited set of tools:
+
+| Worker Agent | Core Mandate | Available Tool Subsystem |
+| :--- | :--- | :--- |
+| **💻 SystemWorker** | Diagnostic monitoring, hardware stats, file management, and terminal execution. | `run_terminal_tool`, `run_python_tool`, `launch_app_tool`, `create_file_tool`, `read_file_tool`, `list_files_tool`, `create_dir_tool`, `save_code_tool`, `get_system_health`, `get_weather`, `get_time`, `web_search` |
+| **📧 GmailWorker** | Inbox queries, mailing tasks, threading, and secure search operations. | `fetch_unread_mails`, `send_gmail`, `search_gmail`, `read_gmail_msg`, `trash_gmail_msg`, `mark_gmail_read`, `reply_to_gmail` |
+| **📅 ProductivityWorker** | Calendar scheduling, task management, time checking, and environmental data. | `add_google_task`, `check_calendar_events`, `add_calendar_event`, `get_system_health`, `get_weather`, `get_time`, `web_search` |
+| **🏫 ClassroomWorker** | Google Classroom synchronization, assignments tracking, and announcements. | `list_classroom_courses`, `list_classroom_assignments`, `list_classroom_announcements`, `get_classroom_assignment_details` |
+| **🧠 MemoryWorker** | Direct key fact retention and retrieval from persistent vector storage. | `recall`, `remember` |
 
 > [!IMPORTANT]
-> All file operation and command execution tools (e.g., `run_terminal_tool`, `create_file_tool`, `launch_app_tool`) are fully wrapped with `verify_password()` in `auth_utils.py` and require user authentication at runtime before execution.
+> **Zero-Trust Security Gateway**: Any worker calling destructive or high-risk OS operations (e.g. `run_terminal_tool`, `create_file_tool`, `launch_app_tool`) is automatically intercepted by a password verification layer (`verify_password()` in `auth_utils.py`). The system prompts a secure password verification challenge in the terminal before allowing the system level tool to execute.
+
+---
+
+### 💡 5. Post-Turn Self-Reflection (`Reflection`)
+Once all tasks are completed and the `OutputFinalizer` synthesizes a clean response, the state graph transitions control to the passive `Reflection` node:
+* The reflection engine reviews the multi-turn session to determine if the user provided new personal preferences (e.g. *"I prefer using terminal over GUI applications"* or *"My friend's email is updated to sam@example.com"*).
+* It automatically extracts these facts, updates the local `Memory/user_info.json` profile, and computes semantic vector embeddings to store in the persistent long-term vector database.
+* The system actively learns and personalizes its behavior based on your habits without needing explicit instruction.
 
 ---
 
@@ -73,27 +130,27 @@ Workers are isolated, pre-compiled ReAct agents running under `gemini-3.1-flash-
 ```text
 AI-Personal-Assistant-Backend/
 ├── Memory/                 # JSON profile and vector database persistence
-├── config/                 # Google API credentials & configurations
+├── config/                 # Google API credentials & OAuth configurations
 ├── src/
-│   ├── Apps/               # Functional Modules ("The Hands")
-│   │   ├── Calendar/       # Google Calendar API integration
-│   │   ├── Gmail/          # Google Gmail API client
-│   │   ├── Classroom/      # Google Classroom API integration
-│   │   ├── FileOperations/ # Protected sandboxed file management
-│   │   ├── System/         # Hardware diagnostics (CPU, RAM, Battery)
-│   │   ├── SystemControl/  # Terminal command execution and script launching
+│   ├── Apps/               # Functional API Integrations ("The Hands")
+│   │   ├── Calendar/       # Google Calendar API Client
+│   │   ├── Gmail/          # Google Gmail API Client
+│   │   ├── Classroom/      # Google Classroom API Sync Client
+│   │   ├── FileOperations/ # Protected sandboxed file operations
+│   │   ├── System/         # OS Diagnostic Diagnostics (CPU, RAM, Battery)
+│   │   ├── SystemControl/  # Shell execution and terminal automation
 │   │   └── Spotify/        # Local Spotify playback hooks
 │   │
 │   ├── CoreFunctions/      # Intelligent Orchestration ("The Brain")
-│   │   ├── StateGraph/     # Dynamic State-Graph Multi-Agent Orchestrator
-│   │   ├── LangGraph/      # (Legacy) Monolithic planner and agents
-│   │   ├── tools.py        # Central Registry of available Python tools
+│   │   ├── StateGraph/     # StateGraph structure, Orchestrator, & Worker nodes
+│   │   ├── LangGraph/      # (Legacy) Monolithic planner systems
+│   │   ├── tools.py        # Central Registry of system-level Python tools
 │   │   ├── memory.py       # JSON-based structured persistent memory
-│   │   ├── vector_memory.py# Vector database (ChromaDB) semantic search
-│   │   └── auth_utils.py   # Password verification and security logic
+│   │   ├── vector_memory.py# Vector database (ChromaDB) semantic engine
+│   │   └── auth_utils.py   # Security Gatekeeper & Password verification
 │   └── main.py             # Root entry point
 ├── requirements.txt        # Python package dependencies
-└── .env                    # System password & Gemini API credentials
+└── .env                    # Authorization keys & API environment configs
 ```
 
 ---
@@ -101,15 +158,12 @@ AI-Personal-Assistant-Backend/
 ## 🏁 Getting Started
 
 ### Prerequisites
-
 * Python 3.10+
-* Google Gemini API Key (Gemini 3.1 Flash-Lite)
+* Google Gemini API Key (optimized for `gemini-3.1-flash-lite`)
 * Google OAuth credentials (placed in `config/` for Gmail/Calendar tools)
 
 ### 1. Installation
-
 Clone the repository and set up a virtual environment:
-
 ```bash
 git clone https://github.com/yourusername/AI-Personal-Assistant-Backend.git
 cd AI-Personal-Assistant-Backend
@@ -119,18 +173,14 @@ pip install -r requirements.txt
 ```
 
 ### 2. Configuration
-
 Create a `.env` file in the root directory:
-
 ```ini
 GEMINI_API_KEY=your_gemini_api_key_here
 SYSTEM_PASSWORD=your_secure_authorization_password
 ```
 
 ### 3. Execution
-
 Launch the State-Graph Multi-Agent system:
-
 ```bash
 python src/CoreFunctions/StateGraph/main_graph.py
 ```
@@ -139,14 +189,8 @@ python src/CoreFunctions/StateGraph/main_graph.py
 
 ## 🗺️ Roadmap & Future Goals
 
-* [ ] **Full Offline Independence**: Replace cloud LLM endpoints (Gemini) with local quantized open models (via Ollama integration) for absolute data privacy.
-* [ ] **Comprehensive Dashboard**: Build a real-time terminal visualizer or modular companion to monitor active agent states, state transitions, and tool-call pipelines.
-* [ ] **Speech Integration**: Add localized speech-to-text (Whisper) and lightweight voice synthesizers (TTS) for completely hands-free desktop execution.
-* [X] **Smart Context (Implemented)**: Implicit self-learning preference retention and context-aware injection (State-Graph `MemoryInjector` + `Reflection` Node).
-* [ ] **Universal App Ecosystem**: Extend standard apps to Notion, Obsidian, and generic native window manager automations.
-
----
-
-## 🤝 Contributing
-
-Contributions are highly encouraged! Please review the `PROJECT_DOCUMENTATION.md` for a comprehensive look into core API schemas, state definitions, and developer guidelines before opening a pull request.
+* [ ] **Local Offline Autonomy**: Support full offline operation by swapping API calls with local quantized models (via Ollama integration) for 100% data privacy.
+* [ ] **Advanced CLI Companion**: Expand the active spinner visualizer into an interactive, real-time terminal dashboard displaying running processes and tool-calling flows.
+* [ ] **Localized Voice Engine**: Integrate highly optimized speech-to-text (Whisper) and lightweight voice synthesizers (TTS) for hands-free local control.
+* [X] **Proactive Context Engine**: Implicit preference-retention and context-aware injection (State-Graph `MemoryInjector` + `Reflection` Node).
+* [ ] **Universal Integration Ecosystem**: Expand standard integrations to Notion and generic window-manager automations.
