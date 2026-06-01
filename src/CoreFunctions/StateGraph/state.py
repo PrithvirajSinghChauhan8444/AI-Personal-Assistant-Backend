@@ -5,6 +5,7 @@ class SubTask(TypedDict):
     description: str
     assigned_worker: str # "SystemWorker", "GmailWorker", "ProductivityWorker", "MemoryWorker"
     status: str # "pending", "in_progress", "completed", "failed"
+    depends_on: List[str]
 
 class AgentState(TypedDict):
     primary_goal: str

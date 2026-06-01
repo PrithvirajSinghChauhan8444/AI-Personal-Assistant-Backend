@@ -290,7 +290,7 @@ def fetch_classroom_courses(account: str = "personal") -> str:
     """Lists the Google Classroom courses that the user is enrolled in or teaching.
 
     Args:
-        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+        account (str): The target Google account, either 'personal', 'college', or 'both' to fetch from both accounts. Defaults to 'personal'.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_classroom_courses")
     print(f"   Args: account={account}")
@@ -306,7 +306,7 @@ def fetch_classroom_assignments(course_id: str, account: str = "personal") -> st
 
     Args:
         course_id (str): The unique course ID.
-        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+        account (str): The target Google account, either 'personal', 'college', or 'both'. Defaults to 'personal'.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_classroom_assignments")
     print(f"   Args: course_id={course_id}, account={account}")
@@ -322,7 +322,7 @@ def fetch_classroom_announcements(course_id: str, account: str = "personal") -> 
 
     Args:
         course_id (str): The unique course ID.
-        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+        account (str): The target Google account, either 'personal', 'college', or 'both'. Defaults to 'personal'.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_classroom_announcements")
     print(f"   Args: course_id={course_id}, account={account}")
@@ -339,7 +339,7 @@ def fetch_classroom_assignment_details(course_id: str, coursework_id: str, accou
     Args:
         course_id (str): The Classroom course ID.
         coursework_id (str): The specific assignment ID.
-        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+        account (str): The target Google account, either 'personal', 'college', or 'both'. Defaults to 'personal'.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_classroom_assignment_details")
     print(f"   Args: course_id={course_id}, coursework_id={coursework_id}, account={account}")

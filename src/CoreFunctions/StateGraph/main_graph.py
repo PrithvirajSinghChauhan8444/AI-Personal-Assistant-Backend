@@ -72,7 +72,8 @@ def create_graph():
             "MemoryWorker": "MemoryWorker",
             "ClassroomWorker": "ClassroomWorker",
             "ObsidianWorker": "ObsidianWorker",
-            "OutputFinalizer": "OutputFinalizer"
+            "OutputFinalizer": "OutputFinalizer",
+            "Orchestrator": "Orchestrator"
         }
     )
     
