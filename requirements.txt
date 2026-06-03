@@ -19,3 +19,4 @@ psutil
 langchain-ollama
 langchain-groq
 langchain-google-genai
+playwright

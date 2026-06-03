@@ -25,6 +25,8 @@ except ImportError as e:
 from CoreFunctions.memory import store_memory, fetch_memory
 from CoreFunctions.vector_memory import store_vector, search_vector
 from CoreFunctions.auth_utils import verify_password
+from CoreFunctions.security_utils import is_path_safe, is_extension_safe
+
 
 
 # --- FILE PATHS FOR MEMORY ---
@@ -595,6 +597,42 @@ def save_code_tool(content: str, suggested_name: str = None) -> str:
         return _save_code(content, suggested_name)
     return "❌ Action Cancelled: Incorrect Password."
 
+def index_directory_tool(path: str) -> str:
+    """Recursively scans and indexes files inside a folder for semantic RAG search.
+
+    Args:
+        path (str): The folder path to index (must be in sandboxed directory).
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: index_directory_tool")
+    print(f"   Args: path={path}")
+    from CoreFunctions.file_vector_store import index_directory_recursive
+    return index_directory_recursive(path)
+
+def search_files_semantically_tool(query: str, limit: int = 5) -> str:
+    """Performs semantic search queries over the contents of all indexed sandboxed files.
+
+    Args:
+        query (str): The semantic query or question to search for in files.
+        limit (int, optional): Maximum number of matching chunks to return. Defaults to 5.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: search_files_semantically_tool")
+    print(f"   Args: query={query}, limit={limit}")
+    from CoreFunctions.file_vector_store import search_files_semantically
+    return search_files_semantically(query, limit)
+
+def rag_file_qa_tool(query: str, filepath: str) -> str:
+    """Uses Retrieval-Augmented Generation to answer a question specifically about a single file.
+    Highly recommended for large code scripts, JSON files, or notes.
+
+    Args:
+        query (str): The specific question about the file contents.
+        filepath (str): The target file path.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: rag_file_qa_tool")
+    print(f"   Args: query={query}, filepath={filepath}")
+    from CoreFunctions.file_vector_store import rag_qa_file
+    return rag_qa_file(query, filepath)
+
 # ===========================
 # 7. SYSTEM CONTROL (Protected)
 # ===========================
@@ -698,7 +736,11 @@ def create_obsidian_note(filename: str, content: str, folder: str = "") -> str:
         if not filename.endswith(".md") and not filename.endswith(".canvas"):
             filename += ".md"
             
-        file_path = os.path.join(OBSIDIAN_VAULT_PATH, folder, filename)
+        file_path = os.path.abspath(os.path.join(OBSIDIAN_VAULT_PATH, folder, filename))
+        
+        if not is_path_safe(file_path):
+            return f"❌ Security Violation: Access to path '{file_path}' is denied. Out of sandbox."
+            
         # Create all parent directories dynamically (handling folders inside filename)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         
@@ -721,8 +763,11 @@ def append_to_obsidian_note(filename: str, content: str, folder: str = "") -> st
     try:
         if not filename.endswith(".md"):
             filename += ".md"
-        file_path = os.path.join(OBSIDIAN_VAULT_PATH, folder, filename)
+        file_path = os.path.abspath(os.path.join(OBSIDIAN_VAULT_PATH, folder, filename))
         
+        if not is_path_safe(file_path):
+            return f"❌ Security Violation: Access to path '{file_path}' is denied. Out of sandbox."
+            
         # Create all parent directories dynamically (handling folders inside filename)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         
@@ -892,7 +937,11 @@ def create_or_update_obsidian_canvas(canvas_name: str, nodes: list, edges: list 
         if not canvas_name.endswith(".canvas"):
             canvas_name += ".canvas"
         
-        file_path = os.path.join(OBSIDIAN_VAULT_PATH, folder, canvas_name)
+        file_path = os.path.abspath(os.path.join(OBSIDIAN_VAULT_PATH, folder, canvas_name))
+        
+        if not is_path_safe(file_path):
+            return f"❌ Security Violation: Access to path '{file_path}' is denied. Out of sandbox."
+            
         # Create all parent directories dynamically (handling folders inside canvas name)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         
@@ -926,11 +975,203 @@ def create_or_update_obsidian_canvas(canvas_name: str, nodes: list, edges: list 
 
 
 # ===========================
+# 4C. BROWSER CONTROL (Accessibility Tree Method)
+# ===========================
+
+_playwright_ctx = None
+_browser = None
+_browser_context = None
+_page = None
+
+def _get_browser_page():
+    global _playwright_ctx, _browser, _browser_context, _page
+    if _page is None or _page.is_closed():
+        from playwright.sync_api import sync_playwright
+        import os
+        if _playwright_ctx is None:
+            _playwright_ctx = sync_playwright().start()
+        if _browser is None:
+            headless_mode = os.getenv("BROWSER_HEADLESS", "True").lower() == "true"
+            slow_mo_ms = int(os.getenv("BROWSER_SLOW_MO", "0"))
+            _browser = _playwright_ctx.chromium.launch(
+                headless=headless_mode,
+                slow_mo=slow_mo_ms,
+                args=["--password-store=basic"]
+            )
+        if _browser_context is None:
+            _browser_context = _browser.new_context(
+                viewport={"width": 1280, "height": 720},
+                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+        _page = _browser_context.new_page()
+    return _page
+
+def _format_a11y_tree(node, indent=0):
+    if not node:
+        return ""
+    role = node.get("role", "")
+    name = node.get("name", "").strip()
+    value = node.get("value", "").strip()
+    description = node.get("description", "").strip()
+    
+    parts = []
+    if role:
+        parts.append(f"[{role}]")
+    if name:
+        parts.append(f'"{name}"')
+    if value:
+        parts.append(f'value="{value}"')
+    if description:
+        parts.append(f'desc="{description}"')
+        
+    line = "  " * indent + " ".join(parts) + "\n"
+    
+    children_str = ""
+    for child in node.get("children", []):
+        children_str += _format_a11y_tree(child, indent + 1)
+        
+    if role == "text" and not children_str:
+        return line
+        
+    return line + children_str
+
+def browser_navigate(url: str) -> str:
+    """Navigates the headless browser to the specified URL and returns its Accessibility Tree structure.
+
+    Args:
+        url (str): The web address to navigate to (e.g. 'https://github.com').
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: browser_navigate")
+    print(f"   Args: url={url}")
+    try:
+        page = _get_browser_page()
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        try:
+            page.wait_for_load_state("networkidle", timeout=5000)
+        except Exception:
+            pass
+        page.wait_for_timeout(2000)
+        snapshot = page.accessibility.snapshot()
+        formatted = _format_a11y_tree(snapshot)
+        return formatted if formatted.strip() else "Page loaded, but accessibility tree is empty."
+    except Exception as e:
+        return f"Error navigating browser: {e}"
+
+def browser_click(role: str, name: str, index: int = 0) -> str:
+    """Clicks an interactive element matching a specific accessibility role and name.
+
+    Args:
+        role (str): The accessibility role of the element (e.g., 'button', 'link').
+        name (str): The accessibility name/label of the element (e.g., 'Submit').
+        index (int, optional): Zero-based index if multiple elements match the same role/name. Defaults to 0.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: browser_click")
+    print(f"   Args: role={role}, name={name}, index={index}")
+    try:
+        page = _get_browser_page()
+        locator = page.get_by_role(role.lower(), name=name, exact=True).nth(index)
+        locator.click(timeout=10000)
+        try:
+            page.wait_for_load_state("networkidle", timeout=4000)
+        except Exception:
+            pass
+        page.wait_for_timeout(1000)
+        snapshot = page.accessibility.snapshot()
+        return _format_a11y_tree(snapshot)
+    except Exception as e:
+        return f"Error clicking element '{role}' with name '{name}': {e}"
+
+def browser_click_selector(selector: str) -> str:
+    """Clicks an element matching a CSS or text selector. Helpful if role-based matching fails.
+
+    Args:
+        selector (str): The CSS or text selector (e.g. 'button:has-text("Sign in")').
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: browser_click_selector")
+    print(f"   Args: selector={selector}")
+    try:
+        page = _get_browser_page()
+        page.click(selector, timeout=10000)
+        try:
+            page.wait_for_load_state("networkidle", timeout=4000)
+        except Exception:
+            pass
+        page.wait_for_timeout(1000)
+        snapshot = page.accessibility.snapshot()
+        return _format_a11y_tree(snapshot)
+    except Exception as e:
+        return f"Error clicking selector '{selector}': {e}"
+
+def browser_input(role: str, name: str, text: str, index: int = 0) -> str:
+    """Fills a text input field matching a specific accessibility role and name with text.
+
+    Args:
+        role (str): The accessibility role (usually 'textbox' or 'searchbox').
+        name (str): The accessible name/label of the input field.
+        text (str): The text string to enter.
+        index (int, optional): Zero-based index if multiple inputs match. Defaults to 0.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: browser_input")
+    print(f"   Args: role={role}, name={name}, text={text}, index={index}")
+    try:
+        page = _get_browser_page()
+        locator = page.get_by_role(role.lower(), name=name, exact=True).nth(index)
+        locator.fill(text, timeout=10000)
+        page.wait_for_timeout(500)
+        snapshot = page.accessibility.snapshot()
+        return _format_a11y_tree(snapshot)
+    except Exception as e:
+        return f"Error filling element '{role}' with name '{name}': {e}"
+
+def browser_input_selector(selector: str, text: str) -> str:
+    """Fills an input field matching a CSS or text selector with text.
+
+    Args:
+        selector (str): The CSS or text selector of the input field.
+        text (str): The text to type.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: browser_input_selector")
+    print(f"   Args: selector={selector}, text={text}")
+    try:
+        page = _get_browser_page()
+        page.fill(selector, text, timeout=10000)
+        page.wait_for_timeout(500)
+        snapshot = page.accessibility.snapshot()
+        return _format_a11y_tree(snapshot)
+    except Exception as e:
+        return f"Error filling selector '{selector}': {e}"
+
+def browser_go_back() -> str:
+    """Navigates back to the previous page in the browser history."""
+    print(f"\n[DEBUG] 🛠️ Calling Tool: browser_go_back")
+    try:
+        page = _get_browser_page()
+        page.go_back(timeout=10000)
+        try:
+            page.wait_for_load_state("networkidle", timeout=4000)
+        except Exception:
+            pass
+        page.wait_for_timeout(1000)
+        snapshot = page.accessibility.snapshot()
+        return _format_a11y_tree(snapshot)
+    except Exception as e:
+        return f"Error going back: {e}"
+
+
+# ===========================
 # 5. THE REGISTRY (The Menu)
 # ===========================
 # The AI will output these keys to call the functions.
 
 AVAILABLE_TOOLS = {
+    # Browser Control
+    "browser_navigate": browser_navigate,
+    "browser_click": browser_click,
+    "browser_click_selector": browser_click_selector,
+    "browser_input": browser_input,
+    "browser_input_selector": browser_input_selector,
+    "browser_go_back": browser_go_back,
+
     # Memory
     "recall":recall,
     "remember": remember,
@@ -976,6 +1217,9 @@ AVAILABLE_TOOLS = {
     "list_files": list_files_tool,
     "create_directory": create_dir_tool,
     "save_code": save_code_tool,
+    "index_directory": index_directory_tool,
+    "search_files_semantically": search_files_semantically_tool,
+    "rag_file_qa": rag_file_qa_tool,
 
     # System
     "run_cmd": run_terminal_tool,

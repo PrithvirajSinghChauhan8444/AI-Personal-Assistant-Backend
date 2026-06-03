@@ -27,13 +27,17 @@ from src.CoreFunctions.tools import (
     # File Ops
     create_file_tool, read_file_tool, list_files_tool, 
     create_dir_tool, save_code_tool,
+    index_directory_tool, search_files_semantically_tool, rag_file_qa_tool,
     
     # Execution
     run_terminal_tool, run_python_tool, launch_app_tool,
     
     # Obsidian
     create_obsidian_note, append_to_obsidian_note, search_obsidian_vault,
-    get_note_backlinks, get_note_properties, update_note_properties, create_or_update_obsidian_canvas
+    get_note_backlinks, get_note_properties, update_note_properties, create_or_update_obsidian_canvas,
+    
+    # Browser Control
+    browser_navigate, browser_click, browser_click_selector, browser_input, browser_input_selector, browser_go_back
 )
 
 # ==========================================
@@ -88,6 +92,9 @@ file_management_tools = [
     StructuredTool.from_function(list_files_tool),
     StructuredTool.from_function(create_dir_tool),
     StructuredTool.from_function(save_code_tool),
+    StructuredTool.from_function(index_directory_tool),
+    StructuredTool.from_function(search_files_semantically_tool),
+    StructuredTool.from_function(rag_file_qa_tool),
 ]
 
 # --- System Control / Execution ---
@@ -118,12 +125,30 @@ obsidian_tools = [
     StructuredTool.from_function(create_or_update_obsidian_canvas),
 ]
 
+# --- Browser Control ---
+browser_tools = [
+    StructuredTool.from_function(browser_navigate),
+    StructuredTool.from_function(browser_click),
+    StructuredTool.from_function(browser_click_selector),
+    StructuredTool.from_function(browser_input),
+    StructuredTool.from_function(browser_input_selector),
+    StructuredTool.from_function(browser_go_back),
+]
+
 # ==========================================
 # EXPORTS
 # ==========================================
 
 # A dictionary for easy lookup by name if needed
 TOOL_MAP = {
+    # Browser Control
+    "browser_navigate": browser_tools[0],
+    "browser_click": browser_tools[1],
+    "browser_click_selector": browser_tools[2],
+    "browser_input": browser_tools[3],
+    "browser_input_selector": browser_tools[4],
+    "browser_go_back": browser_tools[5],
+
     # Memory
     "recall": memory_tools[0],
     "remember": memory_tools[1],
@@ -158,6 +183,9 @@ TOOL_MAP = {
     "list_files_tool": file_management_tools[2],
     "create_dir_tool": file_management_tools[3],
     "save_code_tool": file_management_tools[4],
+    "index_directory_tool": file_management_tools[5],
+    "search_files_semantically_tool": file_management_tools[6],
+    "rag_file_qa_tool": file_management_tools[7],
 
     # Execution
     "run_terminal_tool": system_control_tools[0],
@@ -193,6 +221,7 @@ ALL_TOOLS = (
     system_info_tools + 
     file_management_tools + 
     system_control_tools +
-    obsidian_tools
+    obsidian_tools +
+    browser_tools
 )
 

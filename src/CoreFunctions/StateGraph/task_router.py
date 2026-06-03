@@ -16,7 +16,7 @@ class SubTaskModel(BaseModel):
     description: str = Field(description="Clear instructions for the worker")
     assigned_worker: Literal[
         "SystemWorker", "GmailWorker", "ProductivityWorker", 
-        "MemoryWorker", "ClassroomWorker", "ObsidianWorker"
+        "MemoryWorker", "ClassroomWorker", "ObsidianWorker", "BrowserWorker"
     ] = Field(
         description="The worker assigned to this task"
     )
@@ -37,6 +37,7 @@ Available workers:
 - MemoryWorker: Long-term memory storage and retrieval.
 - SystemWorker: OS terminal commands, file management, scripts, system health.
 - ObsidianWorker: Creates, refactors, and organizes structured Obsidian notes (.md files) and designs infinite whiteboard mind-maps and visual dashboards (.canvas files).
+- BrowserWorker: Navigates websites, searches information, logs in, clicks elements, and automates online tasks using accessibility trees without screenshots.
 
 RULES & WORKFLOW FOR SPECIALIZED TASKS:
 1. Break down the request into the smallest logical steps.
@@ -48,6 +49,9 @@ RULES & WORKFLOW FOR SPECIALIZED TASKS:
    - Step 1: Use `ClassroomWorker` to list courses and fetch active assignments/coursework (no dependencies).
    - Step 2: Use `ObsidianWorker` to compile this data, create structured markdown notes for the coursework/assignments inside the vault under the 'Academic/' folder, and then create or update a beautiful Obsidian Canvas (.canvas) visualizing these courses, assignment files, deadlines, and flow edges using the Coordinate Mapping Layout Algorithm. This task depends on the ClassroomWorker task.
 5. When creating connected structures (folders or multiple notes) in Obsidian, explicitly state the exact target note names in the description of subsequent subtasks (e.g. 'including a wikilink [[Prithvi_Dashboard]] back to the dashboard created in task_1') to ensure perfect bidirectional linking context between independent worker runs.
+6. **Browser/Web Automation Workflow**:
+   - Web automation sessions (e.g. navigating to a website, searching, clicking, logging in, or playing media) MUST be kept as a single, combined subtask assigned to BrowserWorker.
+   - Do NOT break a single web session into multiple sequential BrowserWorker subtasks (e.g. step 1 navigate, step 2 search, step 3 click), because the browser page state and context are lost between different worker runs. Keep them combined in one subtask description (e.g., 'Navigate to music.youtube.com, search for j-pop, and play the first result').
 """
 
 def task_router_node(state: AgentState):

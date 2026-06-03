@@ -12,7 +12,8 @@ from src.CoreFunctions.StateGraph.state import AgentState
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 from src.CoreFunctions.LangGraph.available_tools import (
     system_control_tools, file_management_tools, system_info_tools,
-    gmail_tools, calendar_tools, memory_tools, classroom_tools, obsidian_tools
+    gmail_tools, calendar_tools, memory_tools, classroom_tools, obsidian_tools,
+    browser_tools
 )
 
 # LLM for workers. Using Gemini with native cloud thinking enabled.
@@ -38,6 +39,13 @@ SYSTEM_PROMPT_GMAIL = "You are GmailWorker. You manage email fetching, searching
 SYSTEM_PROMPT_PRODUCTIVITY = "You are ProductivityWorker. You manage calendars, tasks, scheduling, and weather/time checks." + THINKING_INSTRUCTION
 SYSTEM_PROMPT_MEMORY = "You are MemoryWorker. You save and retrieve long-term user preferences." + THINKING_INSTRUCTION
 SYSTEM_PROMPT_CLASSROOM = "You are ClassroomWorker. You manage Google Classroom courses, assignments, announcements, and coursework details." + THINKING_INSTRUCTION
+SYSTEM_PROMPT_BROWSER = """You are BrowserWorker. You navigate websites, search information, log in, click elements, and automate online tasks.
+You do not see screenshots; instead, you navigate using clean semantic accessibility trees and selectors.
+Analyze the page structure returned after each tool call to decide which selectors, roles, or names to target next.
+To click an element, prefer 'browser_click' if you can identify its role and name from the tree. If that is tricky or fails, use 'browser_click_selector' with CSS or text selectors (e.g. 'button:has-text("Sign in")').
+To enter text, use 'browser_input' or 'browser_input_selector'.
+Always explain what you are doing in natural language before calling tools.
+""" + THINKING_INSTRUCTION
 SYSTEM_PROMPT_OBSIDIAN_NOTE = """You are ObsidianNoteWorker. You are a highly specialized local markdown note author.
 Your job is to create or append content to `.md` notes in the Obsidian vault.
 You dynamically decide on clean categorization folders based on context (e.g., placing notes in 'Friends/College/', 'Friends/Hometown/', 'Personal/', 'Academic/') or write files according to instructions.
@@ -105,6 +113,7 @@ GMAIL_AGENT = create_react_agent(llm, gmail_tools, prompt=SYSTEM_PROMPT_GMAIL)
 PRODUCTIVITY_AGENT = create_react_agent(llm, calendar_tools + system_info_tools, prompt=SYSTEM_PROMPT_PRODUCTIVITY)
 MEMORY_AGENT = create_react_agent(local_llm, memory_tools, prompt=SYSTEM_PROMPT_MEMORY)
 CLASSROOM_AGENT = create_react_agent(llm, classroom_tools, prompt=SYSTEM_PROMPT_CLASSROOM)
+BROWSER_AGENT = create_react_agent(local_llm, browser_tools, prompt=SYSTEM_PROMPT_BROWSER)
 
 # Specialized Obsidian Sub-workers
 OBSIDIAN_NOTE_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTEM_PROMPT_OBSIDIAN_NOTE)
@@ -117,6 +126,7 @@ AGENT_MAP = {
     "ProductivityWorker": PRODUCTIVITY_AGENT,
     "MemoryWorker": MEMORY_AGENT,
     "ClassroomWorker": CLASSROOM_AGENT,
+    "BrowserWorker": BROWSER_AGENT,
     "ObsidianNoteWorker": OBSIDIAN_NOTE_AGENT,
     "ObsidianCanvasWorker": OBSIDIAN_CANVAS_AGENT,
     "ObsidianRefactorWorker": OBSIDIAN_REFACTOR_AGENT
@@ -322,4 +332,11 @@ RULES:
         shared_memory[st.id] = output
         
     return _update_state_completed(state, task["id"], f"Successfully executed nested Obsidian sub-plan with {len(plan.subtasks)} subtasks. Categorized files committed to vault successfully.")
+
+def browser_worker_node(state: AgentState):
+    task = _get_active_task(state)
+    if not task: return {}
+    
+    final_data = _run_ephemeral_agent("BrowserWorker", task["description"], state.get("working_memory", {}))
+    return _update_state_completed(state, task["id"], final_data)
 

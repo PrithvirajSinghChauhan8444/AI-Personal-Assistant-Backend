@@ -3,9 +3,8 @@ import subprocess
 import os
 import json
 import sys
-
-
 import platform
+from CoreFunctions.security_utils import is_path_safe, is_command_safe
 
 open_app = None
 if os.name == "nt":
@@ -48,7 +47,10 @@ def resolve_path_alias(path_or_alias):
 
 
 def run_terminal_command(command):
-    """Executes a shell command with live real-time output streaming."""
+    """Executes a shell command with live real-time output streaming. Protected by safety checks."""
+    if not is_command_safe(command):
+        return f"❌ Security Violation: Terminal command execution blocked (contains prohibited command/pattern)."
+
     try:
         import sys
         process = subprocess.Popen(
@@ -77,16 +79,21 @@ def run_terminal_command(command):
         return f"❌ Error executing command: {e}"
 
 def run_python_script(path):
-    """Executes a Python script in the current environment with live real-time output streaming."""
+    """Executes a Python script in the current environment. Protected by sandbox validation."""
     real_path = resolve_path_alias(path)
-    
-    if not os.path.exists(real_path):
-        return f"❌ Error: Script not found at {real_path}"
+    abs_path = os.path.abspath(real_path)
+
+    # Check path safety (sandboxing)
+    if not is_path_safe(abs_path):
+        return f"❌ Security Violation: Execution of script '{path}' is denied. Out of sandbox."
+
+    if not os.path.exists(abs_path):
+        return f"❌ Error: Script not found at {abs_path}"
     
     try:
         import sys
         process = subprocess.Popen(
-            [sys.executable, real_path],
+            [sys.executable, abs_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -108,6 +115,7 @@ def run_python_script(path):
         return f"🐍 Script Output:\n{output}"
     except Exception as e:
         return f"❌ Error running script: {e}"
+
 
 def launch_app(app_name, arguments=None):
     """
