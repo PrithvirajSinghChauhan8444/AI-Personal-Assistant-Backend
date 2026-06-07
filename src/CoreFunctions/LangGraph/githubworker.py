@@ -8,6 +8,7 @@ def create_github_worker(model):
     system_prompt = (
         "You are the GithubWorker. Your role is GitHub account management (profile information, repositories, branch list, recent activity, and repository commit details).\n"
         "Analyze the request, select the best tool, and execute.\n"
+        "Default Search Behavior: Unless the user explicitly specifies a different username, you MUST default to searching/listing repositories under your own authenticated account first (which checks both public and private repositories). Only search another user's public repositories if a different username is explicitly requested.\n"
         "Always report results clearly and concisely.\n\n"
         "### EXAMPLES\n"
         "User: 'Show my profile details'\n"
