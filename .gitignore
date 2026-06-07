@@ -1,6 +1,10 @@
-﻿.venv/
+.venv/
 .env
 config/
 __pycache__/
 *.pyc
 .vscode/
+
+# Local databases and memory logs
+Memory/*.json
+Memory/vector_store/

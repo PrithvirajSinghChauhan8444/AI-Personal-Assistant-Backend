@@ -1223,6 +1223,21 @@ def list_github_commits_tool(repo_name: str, username: str = None, branch: str =
     except Exception as e:
         return f"Error listing commits: {e}"
 
+def list_github_branches_tool(repo_name: str, username: str = None) -> str:
+    """Lists the branches of a given GitHub repository.
+    
+    Args:
+        repo_name (str): The name of the repository.
+        username (str, optional): The owner/organization of the repository. If not provided, falls back to the configured username.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: list_github_branches_tool")
+    try:
+        from Apps.Github.github_ops import list_github_branches
+        res = list_github_branches(repo_name, username=username)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error listing branches: {e}"
+
 
 # ===========================
 # 5. THE REGISTRY (The Menu)
@@ -1235,6 +1250,7 @@ AVAILABLE_TOOLS = {
     "list_github_repos": list_github_repos_tool,
     "get_github_recent_activity": get_github_recent_activity_tool,
     "list_github_commits": list_github_commits_tool,
+    "list_github_branches": list_github_branches_tool,
 
     # Browser Control
     "browser_navigate": browser_navigate,

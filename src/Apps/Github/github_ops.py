@@ -265,3 +265,80 @@ def list_github_commits(repo_name: str, username: str = None, branch: str = None
             if local_res and "error" not in local_res[0]:
                 return local_res
         return [{"error": f"Error fetching commits: {str(e)}"}]
+
+def get_local_branches() -> list:
+    """
+    Lists all branches in the local git repository.
+    """
+    try:
+        import subprocess
+        res = subprocess.run(
+            ["git", "branch", "-a", "--format=%(refname:short)"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=BASE_DIR
+        )
+        lines = res.stdout.strip().split("\n")
+        branches = []
+        for line in lines:
+            branch = line.strip()
+            if not branch:
+                continue
+            if "HEAD" in branch:
+                continue
+            # Remove remote branch prefixes like origin/ to match local format where helpful
+            if branch.startswith("remotes/"):
+                branch = branch.replace("remotes/", "")
+            branches.append(branch)
+        return list(set(branches))
+    except Exception as e:
+        return [{"error": f"Failed to list local branches: {str(e)}"}]
+
+def list_github_branches(repo_name: str, username: str = None) -> list:
+    """
+    Lists branches for a given repository. Falls back to local git branch list if remote fetch fails.
+    """
+    local_owner, local_repo = get_local_git_info()
+    owner = username or GITHUB_USERNAME or local_owner
+    if not owner and GITHUB_TOKEN:
+        profile = get_github_profile()
+        owner = profile.get("login")
+        
+    is_local_repo = False
+    if local_repo and repo_name.lower().replace(".git", "") == local_repo.lower().replace(".git", ""):
+        is_local_repo = True
+        
+    if not owner:
+        if is_local_repo:
+            return get_local_branches()
+        return [{"error": "No GitHub username/owner or GITHUB_TOKEN provided."}]
+        
+    url = f"https://api.github.com/repos/{owner}/{repo_name}/branches"
+    try:
+        headers = get_headers()
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            branches = response.json()
+            result = []
+            for b in branches:
+                result.append(b.get("name"))
+            
+            if is_local_repo:
+                local_b = get_local_branches()
+                if local_b and isinstance(local_b, list) and "error" not in local_b[0]:
+                    result = list(set(result + local_b))
+            return result
+        else:
+            if is_local_repo:
+                local_res = get_local_branches()
+                if local_res and isinstance(local_res, list) and "error" not in local_res[0]:
+                    return local_res
+            return [{"error": f"Failed to fetch branches from GitHub: Status {response.status_code}"}]
+    except Exception as e:
+        if is_local_repo:
+            local_res = get_local_branches()
+            if local_res and isinstance(local_res, list) and "error" not in local_res[0]:
+                return local_res
+        return [{"error": f"Error fetching branches: {str(e)}"}]
+
