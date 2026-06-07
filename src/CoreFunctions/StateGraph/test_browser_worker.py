@@ -6,7 +6,12 @@ from dotenv import load_dotenv
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..', '.env')))
+load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..', '.env')), override=True)
+
+# Print configuration diagnostic
+import os
+print(f"🔍 [Config Debug] BROWSER_HEADLESS={os.getenv('BROWSER_HEADLESS')}")
+print(f"🔍 [Config Debug] BROWSER_SLOW_MO={os.getenv('BROWSER_SLOW_MO')}")
 
 from src.CoreFunctions.StateGraph.main_graph import app
 

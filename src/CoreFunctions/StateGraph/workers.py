@@ -39,13 +39,8 @@ SYSTEM_PROMPT_GMAIL = "You are GmailWorker. You manage email fetching, searching
 SYSTEM_PROMPT_PRODUCTIVITY = "You are ProductivityWorker. You manage calendars, tasks, scheduling, and weather/time checks." + THINKING_INSTRUCTION
 SYSTEM_PROMPT_MEMORY = "You are MemoryWorker. You save and retrieve long-term user preferences." + THINKING_INSTRUCTION
 SYSTEM_PROMPT_CLASSROOM = "You are ClassroomWorker. You manage Google Classroom courses, assignments, announcements, and coursework details." + THINKING_INSTRUCTION
-SYSTEM_PROMPT_BROWSER = """You are BrowserWorker. You navigate websites, search information, log in, click elements, and automate online tasks.
-You do not see screenshots; instead, you navigate using clean semantic accessibility trees and selectors.
-Analyze the page structure returned after each tool call to decide which selectors, roles, or names to target next.
-To click an element, prefer 'browser_click' if you can identify its role and name from the tree. If that is tricky or fails, use 'browser_click_selector' with CSS or text selectors (e.g. 'button:has-text("Sign in")').
-To enter text, use 'browser_input' or 'browser_input_selector'.
-Always explain what you are doing in natural language before calling tools.
-""" + THINKING_INSTRUCTION
+SYSTEM_PROMPT_BROWSER_NAVIGATOR = "You are BrowserNavigator. Execute the browser actions (navigate, click, or input) requested in the task. Once the action is successful, stop immediately and report the result. Do not repeat actions."
+SYSTEM_PROMPT_BROWSER_READER = "You are BrowserReader. Read the page content, extract the requested information, and output it. Once you have the information, stop immediately."
 SYSTEM_PROMPT_OBSIDIAN_NOTE = """You are ObsidianNoteWorker. You are a highly specialized local markdown note author.
 Your job is to create or append content to `.md` notes in the Obsidian vault.
 You dynamically decide on clean categorization folders based on context (e.g., placing notes in 'Friends/College/', 'Friends/Hometown/', 'Personal/', 'Academic/') or write files according to instructions.
@@ -113,7 +108,9 @@ GMAIL_AGENT = create_react_agent(llm, gmail_tools, prompt=SYSTEM_PROMPT_GMAIL)
 PRODUCTIVITY_AGENT = create_react_agent(llm, calendar_tools + system_info_tools, prompt=SYSTEM_PROMPT_PRODUCTIVITY)
 MEMORY_AGENT = create_react_agent(local_llm, memory_tools, prompt=SYSTEM_PROMPT_MEMORY)
 CLASSROOM_AGENT = create_react_agent(llm, classroom_tools, prompt=SYSTEM_PROMPT_CLASSROOM)
-BROWSER_AGENT = create_react_agent(local_llm, browser_tools, prompt=SYSTEM_PROMPT_BROWSER)
+BROWSER_NAVIGATOR_AGENT = create_react_agent(llm, browser_tools, prompt=SYSTEM_PROMPT_BROWSER_NAVIGATOR)
+BROWSER_READER_AGENT = create_react_agent(llm, browser_tools, prompt=SYSTEM_PROMPT_BROWSER_READER)
+BROWSER_AGENT = BROWSER_NAVIGATOR_AGENT  # Legacy fallback
 
 # Specialized Obsidian Sub-workers
 OBSIDIAN_NOTE_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTEM_PROMPT_OBSIDIAN_NOTE)
@@ -129,6 +126,8 @@ AGENT_MAP = {
     "MemoryWorker": MEMORY_AGENT,
     "ClassroomWorker": CLASSROOM_AGENT,
     "BrowserWorker": BROWSER_AGENT,
+    "BrowserNavigator": BROWSER_NAVIGATOR_AGENT,
+    "BrowserReader": BROWSER_READER_AGENT,
     "GithubWorker": GITHUB_AGENT,
     "ObsidianNoteWorker": OBSIDIAN_NOTE_AGENT,
     "ObsidianCanvasWorker": OBSIDIAN_CANVAS_AGENT,
@@ -205,6 +204,76 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         # Fallback to invoke if streaming did not capture final message
         if not final_message:
             result = agent.invoke({"messages": [HumanMessage(content=prompt)]})
+            final_message = result["messages"][-1].content
+            
+        return final_message
+    finally:
+        if vis and vis.active:
+            vis.is_paused = False
+
+async def _run_async_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict):
+    """Runs a pre-compiled async ReAct agent in complete isolation, returning only the final answer."""
+    agent = AGENT_MAP[worker_name]
+    
+    # Compress working memory to give context without polluting
+    memory_str = json.dumps(working_memory, indent=2)
+    
+    prompt = f"""
+Task: {task_desc}
+
+Working Memory (Data from previous tasks):
+{memory_str}
+
+Execute the tools necessary to complete this task. Return a concise, data-rich summary of your findings or actions.
+"""
+    
+    # Try to pause the active visualizer spinner during the entire agent execution
+    import builtins
+    vis = getattr(builtins, "active_cli_visualizer", None)
+    if vis and vis.active:
+        vis.is_paused = True
+        sys.stdout.write("\r\033[K")
+        sys.stdout.flush()
+
+    try:
+        final_message = ""
+        # Stream internal agent execution events in real-time to show thoughts/tool-calls
+        async for chunk in agent.astream({"messages": [HumanMessage(content=prompt)]}):
+            for node_name, node_update in chunk.items():
+                messages = node_update.get("messages", [])
+                for msg in messages:
+                    # 1. Capture and print when the Agent decides to call a Tool
+                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                        # Extract and print the model's active reasoning thought process before tool invocation
+                        thought = ""
+                        if msg.content:
+                            thought = msg.content.strip()
+                        elif hasattr(msg, "additional_kwargs") and msg.additional_kwargs.get("reasoning_content"):
+                            thought = msg.additional_kwargs["reasoning_content"].strip()
+                        
+                        if thought:
+                            import re
+                            thought = re.sub(r'</?think>', '', thought).strip()
+                            thought_cleaned = "\n     ".join(thought.split("\n"))
+                            print(f"  🤔 [\033[1;36m{worker_name} Thinking\033[0m]: {thought_cleaned}")
+                        for tc in msg.tool_calls:
+                            print(f"  🔍 [{worker_name}] Calling Tool: \033[1;33m{tc['name']}\033[0m")
+                            args_str = json.dumps(tc.get('args', {}))
+                            if len(args_str) > 80:
+                                args_str = args_str[:77] + "..."
+                            print(f"     Args: {args_str}")
+                    
+                    # 2. Capture and print when the Tool completes execution
+                    elif msg.type == "tool":
+                        print(f"  📥 [{worker_name}] Tool \033[1;32m{msg.name}\033[0m successfully returned response.")
+                    
+                    # 3. Capture the final synthesized AI thought / message
+                    elif msg.type == "ai" and not (hasattr(msg, "tool_calls") and msg.tool_calls):
+                        final_message = msg.content
+        
+        # Fallback to invoke if streaming did not capture final message
+        if not final_message:
+            result = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
             final_message = result["messages"][-1].content
             
         return final_message
@@ -336,12 +405,82 @@ RULES:
         
     return _update_state_completed(state, task["id"], f"Successfully executed nested Obsidian sub-plan with {len(plan.subtasks)} subtasks. Categorized files committed to vault successfully.")
 
+class BrowserSubTask(BaseModel):
+    id: str = Field(description="Subtask ID (e.g., 'br_1')")
+    assigned_worker: Literal["BrowserNavigator", "BrowserReader"] = Field(
+        description="The specialized Browser worker assigned to this task"
+    )
+    description: str = Field(
+        description="Detailed instruction for this sub-worker. (e.g., 'Navigate to https://news.ycombinator.com', 'Locate the search input and type playwright')"
+    )
+
+class BrowserSubPlan(BaseModel):
+    reasoning: str = Field(description="Structured thinking on how to break down the task and which worker to assign.")
+    subtasks: List[BrowserSubTask] = Field(description="Sequential list of browser subtasks")
+
 def browser_worker_node(state: AgentState):
     task = _get_active_task(state)
     if not task: return {}
     
-    final_data = _run_ephemeral_agent("BrowserWorker", task["description"], state.get("working_memory", {}))
-    return _update_state_completed(state, task["id"], final_data)
+    print(f"\n🧠 [Browser Manager] Decomposing high-level plan into specialized browser sub-tasks...")
+    
+    manager_prompt = f"""You are the Browser Manager. Your job is to orchestrate a team of specialized sub-workers:
+- BrowserNavigator: Navigates websites, clicks interactive elements, and types inputs.
+- BrowserReader: Reads page state, scrapes content, and extracts relevant information.
+
+User Goal / Task: {task["description"]}
+
+Working Memory Context:
+{json.dumps(state.get("working_memory", {}), indent=2)}
+
+Create a detailed sequential sub-plan to execute this goal.
+"""
+    try:
+        structured_llm = llm.with_structured_output(BrowserSubPlan)
+        plan: BrowserSubPlan = structured_llm.invoke(manager_prompt)
+        print(f"  🤔 [Browser Manager Thought]: {plan.reasoning}")
+        print(f"  📋 Generated subtasks for Browser team:")
+        for st in plan.subtasks:
+            print(f"     -> [{st.assigned_worker}] {st.description}")
+    except Exception as e:
+        print(f"⚠️ Browser Manager planning failed: {e}. Falling back to default plan...")
+        plan = BrowserSubPlan(
+            reasoning="Fallback due to structured model error",
+            subtasks=[
+                BrowserSubTask(
+                    id="br_1", 
+                    assigned_worker="BrowserNavigator", 
+                    description=task["description"]
+                )
+            ]
+        )
+
+    # Run the plan asynchronously
+    import asyncio
+    
+    async def run_plan():
+        shared_memory = dict(state.get("working_memory", {}))
+        for st in plan.subtasks:
+            print(f"\n🚀 [Browser Manager] Activating Worker: {st.assigned_worker} ({st.id})...")
+            output = await _run_async_ephemeral_agent(st.assigned_worker, st.description, shared_memory)
+            shared_memory[st.id] = output
+        return shared_memory
+
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+    if loop.is_running():
+        import nest_asyncio
+        nest_asyncio.apply()
+        shared_memory = loop.run_until_complete(run_plan())
+    else:
+        shared_memory = loop.run_until_complete(run_plan())
+
+    final_result = list(shared_memory.values())[-1] if shared_memory else "No actions performed"
+    return _update_state_completed(state, task["id"], final_result)
 
 def github_worker_node(state: AgentState):
     task = _get_active_task(state)

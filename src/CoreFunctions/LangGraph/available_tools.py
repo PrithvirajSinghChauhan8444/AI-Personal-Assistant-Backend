@@ -129,12 +129,12 @@ obsidian_tools = [
 ]
 
 browser_tools = [
-    StructuredTool.from_function(browser_navigate),
-    StructuredTool.from_function(browser_click),
-    StructuredTool.from_function(browser_click_selector),
-    StructuredTool.from_function(browser_input),
-    StructuredTool.from_function(browser_input_selector),
-    StructuredTool.from_function(browser_go_back),
+    StructuredTool.from_function(name="browser_navigate", description="Navigate to a URL and return interactive elements", coroutine=browser_navigate),
+    StructuredTool.from_function(name="browser_click", description="Click an element by its numerical data-agent-id", coroutine=browser_click),
+    StructuredTool.from_function(name="browser_click_selector", description="Click an element using a CSS/XPath selector", coroutine=browser_click_selector),
+    StructuredTool.from_function(name="browser_input", description="Input text into an element by its numerical data-agent-id", coroutine=browser_input),
+    StructuredTool.from_function(name="browser_input_selector", description="Input text into an element using a CSS/XPath selector", coroutine=browser_input_selector),
+    StructuredTool.from_function(name="browser_go_back", description="Navigate back to the previous page", coroutine=browser_go_back),
 ]
 
 # --- GitHub ---

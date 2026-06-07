@@ -983,60 +983,124 @@ _browser = None
 _browser_context = None
 _page = None
 
-def _get_browser_page():
+async def _get_browser_page():
     global _playwright_ctx, _browser, _browser_context, _page
     if _page is None or _page.is_closed():
-        from playwright.sync_api import sync_playwright
+        from playwright.async_api import async_playwright
         import os
+        from dotenv import load_dotenv
+        load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', '.env')), override=True)
+        
         if _playwright_ctx is None:
-            _playwright_ctx = sync_playwright().start()
-        if _browser is None:
-            headless_mode = os.getenv("BROWSER_HEADLESS", "True").lower() == "true"
-            slow_mo_ms = int(os.getenv("BROWSER_SLOW_MO", "0"))
-            _browser = _playwright_ctx.chromium.launch(
-                headless=headless_mode,
-                slow_mo=slow_mo_ms,
-                args=["--password-store=basic"]
-            )
+            _playwright_ctx = await async_playwright().start()
+            
+        browser_type_str = os.getenv("BROWSER_TYPE", "chromium").lower()
+        if browser_type_str not in ["chromium", "firefox", "webkit"]:
+            browser_type_str = "chromium"
+            
+        user_data_dir = os.getenv("BROWSER_USER_DATA_DIR", "").strip()
+        if user_data_dir:
+            user_data_dir = os.path.expanduser(user_data_dir)
+            
+        headless_mode = os.getenv("BROWSER_HEADLESS", "True").lower() == "true"
+        slow_mo_ms = int(os.getenv("BROWSER_SLOW_MO", "0"))
+        
+        browser_launcher = getattr(_playwright_ctx, browser_type_str)
+        
         if _browser_context is None:
-            _browser_context = _browser.new_context(
-                viewport={"width": 1280, "height": 720},
-                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            )
-        _page = _browser_context.new_page()
+            if user_data_dir:
+                print(f"🌐 [Browser] Launching {browser_type_str} with persistent context at {user_data_dir} (headless={headless_mode}, slow_mo={slow_mo_ms}ms)...", flush=True)
+                _browser_context = await browser_launcher.launch_persistent_context(
+                    user_data_dir=user_data_dir,
+                    headless=headless_mode,
+                    slow_mo=slow_mo_ms
+                )
+            else:
+                if _browser is None:
+                    print(f"🌐 [Browser] Launching {browser_type_str} (headless={headless_mode}, slow_mo={slow_mo_ms}ms)...", flush=True)
+                    launch_kwargs = {
+                        "headless": headless_mode,
+                        "slow_mo": slow_mo_ms,
+                    }
+                    if browser_type_str == "chromium":
+                        launch_kwargs["args"] = ["--password-store=basic"]
+                    _browser = await browser_launcher.launch(**launch_kwargs)
+                
+                _browser_context = await _browser.new_context(
+                    viewport={"width": 1280, "height": 720},
+                    user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" if browser_type_str == "chromium" else None
+                )
+        
+        _page = await _browser_context.new_page()
     return _page
 
-def _format_a11y_tree(node, indent=0):
-    if not node:
-        return ""
-    role = node.get("role", "")
-    name = node.get("name", "").strip()
-    value = node.get("value", "").strip()
-    description = node.get("description", "").strip()
-    
-    parts = []
-    if role:
-        parts.append(f"[{role}]")
-    if name:
-        parts.append(f'"{name}"')
-    if value:
-        parts.append(f'value="{value}"')
-    if description:
-        parts.append(f'desc="{description}"')
-        
-    line = "  " * indent + " ".join(parts) + "\n"
-    
-    children_str = ""
-    for child in node.get("children", []):
-        children_str += _format_a11y_tree(child, indent + 1)
-        
-    if role == "text" and not children_str:
-        return line
-        
-    return line + children_str
+DOM_TAGGING_SCRIPT = """
+() => {
+    // 1. Remove previous tags if any
+    const oldTags = document.querySelectorAll('[data-agent-id]');
+    oldTags.forEach(el => el.removeAttribute('data-agent-id'));
 
-def browser_navigate(url: str) -> str:
-    """Navigates the headless browser to the specified URL and returns its Accessibility Tree structure.
+    const candidates = document.querySelectorAll(
+        'button, a, input, select, textarea, [role="button"], [onclick], [tabindex="0"]'
+    );
+    
+    let idCounter = 0;
+    const interactiveElements = [];
+
+    candidates.forEach(el => {
+        // Filter out elements that are not visible or off-screen
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        const isVisible = rect.width > 0 && 
+                          rect.height > 0 && 
+                          style.display !== 'none' && 
+                          style.visibility !== 'hidden' &&
+                          style.opacity !== '0';
+                          
+        if (isVisible) {
+            const id = idCounter++;
+            el.setAttribute('data-agent-id', id.toString());
+            
+            // Build a friendly name / description
+            let text = el.innerText.trim();
+            if (!text && el.placeholder) text = el.placeholder.trim();
+            if (!text && el.getAttribute('aria-label')) text = el.getAttribute('aria-label').trim();
+            if (!text && el.value) text = el.value.trim();
+            if (!text && el.title) text = el.title.trim();
+            if (!text) text = el.name || "";
+            
+            interactiveElements.push({
+                id: id,
+                tag: el.tagName.toLowerCase(),
+                type: el.type || "",
+                text: text,
+                role: el.getAttribute('role') || ""
+            });
+        }
+    });
+
+    return interactiveElements;
+}
+"""
+
+async def _get_elements_formatted() -> str:
+    page = await _get_browser_page()
+    try:
+        elements = await page.evaluate(DOM_TAGGING_SCRIPT)
+        if not elements:
+            return "No interactive elements found on this page."
+        
+        lines = []
+        for el in elements:
+            type_str = f" (type='{el['type']}')" if el['type'] else ""
+            role_str = f" [role='{el['role']}']" if el['role'] else ""
+            lines.append(f"[{el['id']}] {el['tag'].upper()}: \"{el['text']}\"{type_str}{role_str}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error gathering page elements: {e}"
+
+async def browser_navigate(url: str) -> str:
+    """Navigates the browser to the specified URL and returns its interactive elements.
 
     Args:
         url (str): The web address to navigate to (e.g. 'https://github.com').
@@ -1044,86 +1108,81 @@ def browser_navigate(url: str) -> str:
     print(f"\n[DEBUG] 🛠️ Calling Tool: browser_navigate")
     print(f"   Args: url={url}")
     try:
-        page = _get_browser_page()
-        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        page = await _get_browser_page()
+        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
         try:
-            page.wait_for_load_state("networkidle", timeout=5000)
+            await page.wait_for_load_state("networkidle", timeout=5000)
         except Exception:
             pass
-        page.wait_for_timeout(2000)
-        snapshot = page.accessibility.snapshot()
-        formatted = _format_a11y_tree(snapshot)
-        return formatted if formatted.strip() else "Page loaded, but accessibility tree is empty."
+        await page.wait_for_timeout(2000)
+        elements_str = await _get_elements_formatted()
+        return elements_str
     except Exception as e:
         return f"Error navigating browser: {e}"
 
-def browser_click(role: str, name: str, index: int = 0) -> str:
-    """Clicks an interactive element matching a specific accessibility role and name.
+async def browser_click(element_id: int) -> str:
+    """Clicks an interactive element matching a specific numerical element_id.
 
     Args:
-        role (str): The accessibility role of the element (e.g., 'button', 'link').
-        name (str): The accessibility name/label of the element (e.g., 'Submit').
-        index (int, optional): Zero-based index if multiple elements match the same role/name. Defaults to 0.
+        element_id (int): The unique numerical ID of the element on the page.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: browser_click")
-    print(f"   Args: role={role}, name={name}, index={index}")
+    print(f"   Args: element_id={element_id}")
     try:
-        page = _get_browser_page()
-        locator = page.get_by_role(role.lower(), name=name, exact=True).nth(index)
-        locator.click(timeout=10000)
+        page = await _get_browser_page()
+        selector = f'[data-agent-id="{element_id}"]'
+        await page.click(selector, timeout=10000)
         try:
-            page.wait_for_load_state("networkidle", timeout=4000)
+            await page.wait_for_load_state("networkidle", timeout=4000)
         except Exception:
             pass
-        page.wait_for_timeout(1000)
-        snapshot = page.accessibility.snapshot()
-        return _format_a11y_tree(snapshot)
+        await page.wait_for_timeout(2000)
+        elements_str = await _get_elements_formatted()
+        return elements_str
     except Exception as e:
-        return f"Error clicking element '{role}' with name '{name}': {e}"
+        return f"Error clicking element [{element_id}]: {e}"
 
-def browser_click_selector(selector: str) -> str:
-    """Clicks an element matching a CSS or text selector. Helpful if role-based matching fails.
+async def browser_click_selector(selector: str) -> str:
+    """Clicks an element matching a CSS or text selector. Helpful if role or ID-based matching fails.
 
     Args:
-        selector (str): The CSS or text selector (e.g. 'button:has-text("Sign in")').
+        selector (str): The CSS selector (e.g. 'button#submit').
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: browser_click_selector")
     print(f"   Args: selector={selector}")
     try:
-        page = _get_browser_page()
-        page.click(selector, timeout=10000)
+        page = await _get_browser_page()
+        await page.click(selector, timeout=10000)
         try:
-            page.wait_for_load_state("networkidle", timeout=4000)
+            await page.wait_for_load_state("networkidle", timeout=4000)
         except Exception:
             pass
-        page.wait_for_timeout(1000)
-        snapshot = page.accessibility.snapshot()
-        return _format_a11y_tree(snapshot)
+        await page.wait_for_timeout(2000)
+        elements_str = await _get_elements_formatted()
+        return elements_str
     except Exception as e:
         return f"Error clicking selector '{selector}': {e}"
 
-def browser_input(role: str, name: str, text: str, index: int = 0) -> str:
-    """Fills a text input field matching a specific accessibility role and name with text.
+async def browser_input(element_id: int, text: str) -> str:
+    """Fills a text input field matching a specific numerical element_id with text.
 
     Args:
-        role (str): The accessibility role (usually 'textbox' or 'searchbox').
-        name (str): The accessible name/label of the input field.
+        element_id (int): The unique numerical ID of the input field.
         text (str): The text string to enter.
-        index (int, optional): Zero-based index if multiple inputs match. Defaults to 0.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: browser_input")
-    print(f"   Args: role={role}, name={name}, text={text}, index={index}")
+    print(f"   Args: element_id={element_id}, text={text}")
     try:
-        page = _get_browser_page()
-        locator = page.get_by_role(role.lower(), name=name, exact=True).nth(index)
-        locator.fill(text, timeout=10000)
-        page.wait_for_timeout(500)
-        snapshot = page.accessibility.snapshot()
-        return _format_a11y_tree(snapshot)
+        page = await _get_browser_page()
+        selector = f'[data-agent-id="{element_id}"]'
+        await page.fill(selector, text, timeout=10000)
+        await page.wait_for_timeout(1000)
+        elements_str = await _get_elements_formatted()
+        return elements_str
     except Exception as e:
-        return f"Error filling element '{role}' with name '{name}': {e}"
+        return f"Error filling element [{element_id}]: {e}"
 
-def browser_input_selector(selector: str, text: str) -> str:
+async def browser_input_selector(selector: str, text: str) -> str:
     """Fills an input field matching a CSS or text selector with text.
 
     Args:
@@ -1133,27 +1192,27 @@ def browser_input_selector(selector: str, text: str) -> str:
     print(f"\n[DEBUG] 🛠️ Calling Tool: browser_input_selector")
     print(f"   Args: selector={selector}, text={text}")
     try:
-        page = _get_browser_page()
-        page.fill(selector, text, timeout=10000)
-        page.wait_for_timeout(500)
-        snapshot = page.accessibility.snapshot()
-        return _format_a11y_tree(snapshot)
+        page = await _get_browser_page()
+        await page.fill(selector, text, timeout=10000)
+        await page.wait_for_timeout(1000)
+        elements_str = await _get_elements_formatted()
+        return elements_str
     except Exception as e:
         return f"Error filling selector '{selector}': {e}"
 
-def browser_go_back() -> str:
+async def browser_go_back() -> str:
     """Navigates back to the previous page in the browser history."""
     print(f"\n[DEBUG] 🛠️ Calling Tool: browser_go_back")
     try:
-        page = _get_browser_page()
-        page.go_back(timeout=10000)
+        page = await _get_browser_page()
+        await page.go_back(timeout=10000)
         try:
-            page.wait_for_load_state("networkidle", timeout=4000)
+            await page.wait_for_load_state("networkidle", timeout=4000)
         except Exception:
             pass
-        page.wait_for_timeout(1000)
-        snapshot = page.accessibility.snapshot()
-        return _format_a11y_tree(snapshot)
+        await page.wait_for_timeout(2000)
+        elements_str = await _get_elements_formatted()
+        return elements_str
     except Exception as e:
         return f"Error going back: {e}"
 

@@ -7,7 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))) # Add src to path for 'Apps' and 'CoreFunctions' imports
 
 # Load environment variables
-load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..', '.env')))
+load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..', '.env')), override=True)
 
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
