@@ -19,21 +19,86 @@ def get_headers():
         headers["Authorization"] = f"token {GITHUB_TOKEN}"
     return headers
 
+def get_local_git_info():
+    """
+    Attempts to read the remote origin URL from the local git configuration
+    to determine the default owner and repository name.
+    """
+    try:
+        import subprocess
+        res = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=BASE_DIR
+        )
+        url = res.stdout.strip()
+        if not url:
+            return None, None
+            
+        owner, repo = None, None
+        if "github.com" in url:
+            if url.startswith("git@"):
+                path = url.split("github.com:")[-1]
+            else:
+                path = url.split("github.com/")[-1]
+                
+            path = path.replace(".git", "")
+            parts = path.split("/")
+            if len(parts) >= 2:
+                owner = parts[0]
+                repo = parts[1]
+        return owner, repo
+    except Exception:
+        return None, None
+
+def get_local_commits(branch: str = None, count: int = 5) -> list:
+    """
+    Queries local git log to get commit history from the filesystem repository.
+    """
+    try:
+        import subprocess
+        target_branch = branch or "HEAD"
+        res = subprocess.run(
+            ["git", "log", target_branch, f"-n", str(count), "--format=%H|%an|%ad|%s"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=BASE_DIR
+        )
+        lines = res.stdout.strip().split("\n")
+        result = []
+        for line in lines:
+            if not line:
+                continue
+            parts = line.split("|", 3)
+            if len(parts) >= 4:
+                sha, author, date, message = parts
+                result.append({
+                    "sha": sha[:7],
+                    "author": author,
+                    "date": date,
+                    "message": message,
+                    "html_url": f"Local repository (branch: {target_branch})"
+                })
+        return result
+    except Exception as e:
+        return [{"error": f"Failed to read local git commits: {str(e)}"}]
+
 def get_github_profile(username: str = None) -> dict:
     """
     Fetches basic profile information for a GitHub account.
-    If a GITHUB_TOKEN is present in env, it fetches the authenticated user's profile.
-    Otherwise, fetches the public profile of the given username.
     """
     headers = get_headers()
     
-    # If authenticated, fetch current user info if no username is supplied
     if GITHUB_TOKEN and not username:
         url = "https://api.github.com/user"
     else:
-        target_username = username or GITHUB_USERNAME
+        local_owner, _ = get_local_git_info()
+        target_username = username or GITHUB_USERNAME or local_owner
         if not target_username:
-            return {"error": "No GitHub username or GITHUB_TOKEN provided. Please specify a username or configure it in .env."}
+            return {"error": "No GitHub username or GITHUB_TOKEN provided."}
         url = f"https://api.github.com/users/{target_username}"
 
     try:
@@ -54,7 +119,7 @@ def get_github_profile(username: str = None) -> dict:
                 "created_at": data.get("created_at")
             }
         else:
-            return {"error": f"Failed to fetch profile: GitHub API returned status {response.status_code} - {response.text}"}
+            return {"error": f"Failed to fetch profile: Status {response.status_code}"}
     except Exception as e:
         return {"error": f"Error fetching GitHub profile: {str(e)}"}
 
@@ -67,7 +132,8 @@ def list_github_repos(username: str = None, sort: str = "updated", count: int = 
     if GITHUB_TOKEN and not username:
         url = f"https://api.github.com/user/repos?sort={sort}&per_page={count}"
     else:
-        target_username = username or GITHUB_USERNAME
+        local_owner, _ = get_local_git_info()
+        target_username = username or GITHUB_USERNAME or local_owner
         if not target_username:
             return [{"error": "No GitHub username or GITHUB_TOKEN provided."}]
         url = f"https://api.github.com/users/{target_username}/repos?sort={sort}&per_page={count}"
@@ -98,12 +164,11 @@ def get_github_recent_activity(username: str = None, count: int = 5) -> list:
     Retrieves recent activity events for a GitHub user.
     """
     headers = get_headers()
-    target_username = username or GITHUB_USERNAME
-    if not target_username:
-        # If token is present, we can get current user first
-        if GITHUB_TOKEN:
-            profile = get_github_profile()
-            target_username = profile.get("login")
+    local_owner, _ = get_local_git_info()
+    target_username = username or GITHUB_USERNAME or local_owner
+    if not target_username and GITHUB_TOKEN:
+        profile = get_github_profile()
+        target_username = profile.get("login")
             
     if not target_username:
         return [{"error": "No GitHub username or GITHUB_TOKEN provided."}]
@@ -119,7 +184,6 @@ def get_github_recent_activity(username: str = None, count: int = 5) -> list:
                 repo_name = e.get("repo", {}).get("name")
                 created_at = e.get("created_at")
                 
-                # Extract summary based on event type
                 summary = ""
                 payload = e.get("payload", {})
                 if event_type == "PushEvent":
@@ -151,22 +215,29 @@ def get_github_recent_activity(username: str = None, count: int = 5) -> list:
 
 def list_github_commits(repo_name: str, username: str = None, branch: str = None, count: int = 5) -> list:
     """
-    Lists recent commits for a given repository.
+    Lists recent commits for a given repository, falling back to local Git database if remote branch is not found.
     """
-    headers = get_headers()
-    owner = username or GITHUB_USERNAME
-    if not owner:
-        if GITHUB_TOKEN:
-            profile = get_github_profile()
-            owner = profile.get("login")
+    local_owner, local_repo = get_local_git_info()
+    owner = username or GITHUB_USERNAME or local_owner
+    if not owner and GITHUB_TOKEN:
+        profile = get_github_profile()
+        owner = profile.get("login")
             
+    is_local_repo = False
+    if local_repo and repo_name.lower().replace(".git", "") == local_repo.lower().replace(".git", ""):
+        is_local_repo = True
+        
     if not owner:
+        if is_local_repo:
+            return get_local_commits(branch, count)
         return [{"error": "No GitHub username/owner or GITHUB_TOKEN provided."}]
         
     url = f"https://api.github.com/repos/{owner}/{repo_name}/commits?per_page={count}"
     if branch:
         url += f"&sha={branch}"
+        
     try:
+        headers = get_headers()
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
             commits = response.json()
@@ -182,6 +253,15 @@ def list_github_commits(repo_name: str, username: str = None, branch: str = None
                 })
             return result
         else:
+            # Succeeded in resolving target owner/repo, but API failed (e.g. 404/422 branch not pushed to GitHub yet)
+            if is_local_repo:
+                local_res = get_local_commits(branch, count)
+                if local_res and "error" not in local_res[0]:
+                    return local_res
             return [{"error": f"Failed to fetch commits: Status {response.status_code} - {response.text}"}]
     except Exception as e:
+        if is_local_repo:
+            local_res = get_local_commits(branch, count)
+            if local_res and "error" not in local_res[0]:
+                return local_res
         return [{"error": f"Error fetching commits: {str(e)}"}]
