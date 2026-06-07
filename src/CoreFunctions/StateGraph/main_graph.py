@@ -18,7 +18,8 @@ from src.CoreFunctions.StateGraph.orchestrator import orchestrator_node, orchest
 from src.CoreFunctions.StateGraph.workers import (
     system_worker_node, gmail_worker_node, 
     productivity_worker_node, memory_worker_node,
-    classroom_worker_node, obsidian_worker_node, browser_worker_node
+    classroom_worker_node, obsidian_worker_node, browser_worker_node,
+    github_worker_node
 )
 from src.CoreFunctions.StateGraph.finalizer import output_finalizer_node
 from src.CoreFunctions.StateGraph.memory_nodes import memory_injector_node, reflection_node
@@ -41,8 +42,9 @@ def create_graph():
     workflow.add_node("ProductivityWorker", productivity_worker_node)
     workflow.add_node("MemoryWorker", memory_worker_node)
     workflow.add_node("ClassroomWorker", classroom_worker_node)
-    workflow.add_node("ObsidianWorker", obsidian_worker_node)
+    # workflow.add_node("ObsidianWorker", obsidian_worker_node)
     workflow.add_node("BrowserWorker", browser_worker_node)
+    workflow.add_node("GithubWorker", github_worker_node)
     workflow.add_node("OutputFinalizer", output_finalizer_node)
     workflow.add_node("Reflection", reflection_node)
     
@@ -72,8 +74,9 @@ def create_graph():
             "ProductivityWorker": "ProductivityWorker",
             "MemoryWorker": "MemoryWorker",
             "ClassroomWorker": "ClassroomWorker",
-            "ObsidianWorker": "ObsidianWorker",
+            # "ObsidianWorker": "ObsidianWorker",
             "BrowserWorker": "BrowserWorker",
+            "GithubWorker": "GithubWorker",
             "OutputFinalizer": "OutputFinalizer",
             "Orchestrator": "Orchestrator"
         }
@@ -85,8 +88,9 @@ def create_graph():
     workflow.add_edge("ProductivityWorker", "Orchestrator")
     workflow.add_edge("MemoryWorker", "Orchestrator")
     workflow.add_edge("ClassroomWorker", "Orchestrator")
-    workflow.add_edge("ObsidianWorker", "Orchestrator")
+    # workflow.add_edge("ObsidianWorker", "Orchestrator")
     workflow.add_edge("BrowserWorker", "Orchestrator")
+    workflow.add_edge("GithubWorker", "Orchestrator")
     
     # OutputFinalizer completes the user-facing graph synchronously
     workflow.add_edge("OutputFinalizer", END)
@@ -287,7 +291,7 @@ def process_request_interactive():
                             print(f"  -> Next Node Target: {next_node} | Task: {task_desc}")
                             visualizer.start(f"Running {next_node}", "33") # Yellow
                     
-                    elif node_name in ["SystemWorker", "GmailWorker", "ProductivityWorker", "MemoryWorker", "ClassroomWorker", "BrowserWorker"]:
+                    elif node_name in ["SystemWorker", "GmailWorker", "ProductivityWorker", "MemoryWorker", "ClassroomWorker", "BrowserWorker", "GithubWorker"]:
                         visualizer.stop()
                         print(f"\nRunning {node_name} : ({timestamp})")
                         print(f"--- {node_name} Finished ---")

@@ -22,6 +22,7 @@ from src.CoreFunctions.LangGraph.memoryworker import create_memory_worker
 from src.CoreFunctions.LangGraph.productivityworker import create_productivity_worker
 from src.CoreFunctions.LangGraph.classroomworker import create_classroom_worker
 from src.CoreFunctions.LangGraph.obsidianworker import create_obsidian_worker
+from src.CoreFunctions.LangGraph.githubworker import create_github_worker
 
 # ==========================================
 # 1. INITIALIZE MODEL
@@ -59,6 +60,9 @@ if llm:
 
     # Create Obsidian Worker
     worker_nodes["ObsidianWorker"] = create_obsidian_worker(llm)
+    
+    # Create GitHub Worker
+    worker_nodes["GithubWorker"] = create_github_worker(llm)
     
 else:
     print("⚠️ Workers could not be initialized (LLM missing).")

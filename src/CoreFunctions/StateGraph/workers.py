@@ -13,7 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.
 from src.CoreFunctions.LangGraph.available_tools import (
     system_control_tools, file_management_tools, system_info_tools,
     gmail_tools, calendar_tools, memory_tools, classroom_tools, obsidian_tools,
-    browser_tools
+    browser_tools, github_tools
 )
 
 # LLM for workers. Using Gemini with native cloud thinking enabled.
@@ -120,6 +120,8 @@ OBSIDIAN_NOTE_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTE
 OBSIDIAN_CANVAS_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTEM_PROMPT_OBSIDIAN_CANVAS)
 OBSIDIAN_REFACTOR_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTEM_PROMPT_OBSIDIAN_REFACTOR)
 
+GITHUB_AGENT = create_react_agent(llm, github_tools, prompt="You are GithubWorker. You retrieve profile details, list repositories, check repository commit history, and get recent public activity from GitHub." + THINKING_INSTRUCTION)
+
 AGENT_MAP = {
     "SystemWorker": SYSTEM_AGENT,
     "GmailWorker": GMAIL_AGENT,
@@ -127,6 +129,7 @@ AGENT_MAP = {
     "MemoryWorker": MEMORY_AGENT,
     "ClassroomWorker": CLASSROOM_AGENT,
     "BrowserWorker": BROWSER_AGENT,
+    "GithubWorker": GITHUB_AGENT,
     "ObsidianNoteWorker": OBSIDIAN_NOTE_AGENT,
     "ObsidianCanvasWorker": OBSIDIAN_CANVAS_AGENT,
     "ObsidianRefactorWorker": OBSIDIAN_REFACTOR_AGENT
@@ -338,5 +341,12 @@ def browser_worker_node(state: AgentState):
     if not task: return {}
     
     final_data = _run_ephemeral_agent("BrowserWorker", task["description"], state.get("working_memory", {}))
+    return _update_state_completed(state, task["id"], final_data)
+
+def github_worker_node(state: AgentState):
+    task = _get_active_task(state)
+    if not task: return {}
+    
+    final_data = _run_ephemeral_agent("GithubWorker", task["description"], state.get("working_memory", {}))
     return _update_state_completed(state, task["id"], final_data)
 

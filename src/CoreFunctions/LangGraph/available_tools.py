@@ -37,7 +37,10 @@ from src.CoreFunctions.tools import (
     get_note_backlinks, get_note_properties, update_note_properties, create_or_update_obsidian_canvas,
     
     # Browser Control
-    browser_navigate, browser_click, browser_click_selector, browser_input, browser_input_selector, browser_go_back
+    browser_navigate, browser_click, browser_click_selector, browser_input, browser_input_selector, browser_go_back,
+    
+    # GitHub
+    get_github_profile_tool, list_github_repos_tool, get_github_recent_activity_tool, list_github_commits_tool
 )
 
 # ==========================================
@@ -125,7 +128,6 @@ obsidian_tools = [
     StructuredTool.from_function(create_or_update_obsidian_canvas),
 ]
 
-# --- Browser Control ---
 browser_tools = [
     StructuredTool.from_function(browser_navigate),
     StructuredTool.from_function(browser_click),
@@ -133,6 +135,14 @@ browser_tools = [
     StructuredTool.from_function(browser_input),
     StructuredTool.from_function(browser_input_selector),
     StructuredTool.from_function(browser_go_back),
+]
+
+# --- GitHub ---
+github_tools = [
+    StructuredTool.from_function(get_github_profile_tool, name="get_github_profile"),
+    StructuredTool.from_function(list_github_repos_tool, name="list_github_repos"),
+    StructuredTool.from_function(get_github_recent_activity_tool, name="get_github_recent_activity"),
+    StructuredTool.from_function(list_github_commits_tool, name="list_github_commits")
 ]
 
 # ==========================================
@@ -209,7 +219,13 @@ TOOL_MAP = {
     "get_note_backlinks": obsidian_tools[3],
     "get_note_properties": obsidian_tools[4],
     "update_note_properties": obsidian_tools[5],
-    "create_or_update_obsidian_canvas": obsidian_tools[6]
+    "create_or_update_obsidian_canvas": obsidian_tools[6],
+
+    # GitHub
+    "get_github_profile": github_tools[0],
+    "list_github_repos": github_tools[1],
+    "get_github_recent_activity": github_tools[2],
+    "list_github_commits": github_tools[3]
 }
 
 # Consolidate all for the Supervisor or Generalist
@@ -222,6 +238,7 @@ ALL_TOOLS = (
     file_management_tools + 
     system_control_tools +
     obsidian_tools +
-    browser_tools
+    browser_tools +
+    github_tools
 )
 

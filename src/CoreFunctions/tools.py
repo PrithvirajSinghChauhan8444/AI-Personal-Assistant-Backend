@@ -1159,11 +1159,83 @@ def browser_go_back() -> str:
 
 
 # ===========================
+# GitHub Tools
+# ===========================
+def get_github_profile_tool(username: str = None) -> str:
+    """Fetches basic profile information for a GitHub account.
+    
+    Args:
+        username (str, optional): The target GitHub username. If not provided, it falls back to the configured username or authenticated token.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: get_github_profile_tool")
+    try:
+        from Apps.Github.github_ops import get_github_profile
+        res = get_github_profile(username)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error fetching GitHub profile: {e}"
+
+def list_github_repos_tool(username: str = None, sort: str = "updated", count: int = 5) -> str:
+    """Lists repositories for a GitHub user.
+    
+    Args:
+        username (str, optional): The target GitHub username.
+        sort (str, optional): Property to sort repositories by ('created', 'updated', 'pushed', 'full_name'). Defaults to 'updated'.
+        count (int, optional): The number of repositories to list. Defaults to 5.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: list_github_repos_tool")
+    try:
+        from Apps.Github.github_ops import list_github_repos
+        res = list_github_repos(username, sort=sort, count=count)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error listing repositories: {e}"
+
+def get_github_recent_activity_tool(username: str = None, count: int = 5) -> str:
+    """Retrieves recent public activity events for a GitHub user.
+    
+    Args:
+        username (str, optional): The target GitHub username.
+        count (int, optional): The number of recent events to retrieve. Defaults to 5.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: get_github_recent_activity_tool")
+    try:
+        from Apps.Github.github_ops import get_github_recent_activity
+        res = get_github_recent_activity(username, count=count)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error retrieving recent activity: {e}"
+
+def list_github_commits_tool(repo_name: str, username: str = None, branch: str = None, count: int = 5) -> str:
+    """Lists recent commits for a given GitHub repository.
+    
+    Args:
+        repo_name (str): The name of the repository.
+        username (str, optional): The owner/organization of the repository. If not provided, falls back to the configured username.
+        branch (str, optional): The branch name to fetch commits from (e.g. 'main', 'development').
+        count (int, optional): The number of recent commits to retrieve. Defaults to 5.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: list_github_commits_tool")
+    try:
+        from Apps.Github.github_ops import list_github_commits
+        res = list_github_commits(repo_name, username=username, branch=branch, count=count)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error listing commits: {e}"
+
+
+# ===========================
 # 5. THE REGISTRY (The Menu)
 # ===========================
 # The AI will output these keys to call the functions.
 
 AVAILABLE_TOOLS = {
+    # GitHub
+    "get_github_profile": get_github_profile_tool,
+    "list_github_repos": list_github_repos_tool,
+    "get_github_recent_activity": get_github_recent_activity_tool,
+    "list_github_commits": list_github_commits_tool,
+
     # Browser Control
     "browser_navigate": browser_navigate,
     "browser_click": browser_click,
