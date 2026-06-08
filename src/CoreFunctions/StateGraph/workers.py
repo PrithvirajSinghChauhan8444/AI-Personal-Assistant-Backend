@@ -33,14 +33,15 @@ local_llm = ChatOllama(
 # Define prompts
 # Thinking directive to force both cloud and local models to populate msg.content before invoking tools
 THINKING_INSTRUCTION = " CRITICAL: You MUST always output your reasoning and intermediate thought process in natural language BEFORE calling any tools. Never invoke tools silently."
+HUMAN_INTERVENTION_INSTRUCTION = " If you encounter a roadblock, need manual approval, get stuck, need user credentials/2FA, or if the user asks you to wait/perform an action manually, you MUST call `request_human_intervention` to pause execution and ask the human for assistance."
 
-SYSTEM_PROMPT_SYSTEM = "You are SystemWorker. You manage OS tasks, files, commands, and health metrics." + THINKING_INSTRUCTION
-SYSTEM_PROMPT_GMAIL = "You are GmailWorker. You manage email fetching, searching, and sending." + THINKING_INSTRUCTION
-SYSTEM_PROMPT_PRODUCTIVITY = "You are ProductivityWorker. You manage calendars, tasks, scheduling, and weather/time checks." + THINKING_INSTRUCTION
-SYSTEM_PROMPT_MEMORY = "You are MemoryWorker. You save and retrieve long-term user preferences." + THINKING_INSTRUCTION
-SYSTEM_PROMPT_CLASSROOM = "You are ClassroomWorker. You manage Google Classroom courses, assignments, announcements, and coursework details." + THINKING_INSTRUCTION
-SYSTEM_PROMPT_BROWSER_NAVIGATOR = "You are BrowserNavigator. Execute the browser actions (navigate, click, or input) requested in the task. Once the action is successful, stop immediately and report the result. Do not repeat actions."
-SYSTEM_PROMPT_BROWSER_READER = "You are BrowserReader. Read the page content, extract the requested information, and output it. Once you have the information, stop immediately."
+SYSTEM_PROMPT_SYSTEM = "You are SystemWorker. You manage OS tasks, files, commands, and health metrics." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
+SYSTEM_PROMPT_GMAIL = "You are GmailWorker. You manage email fetching, searching, and sending." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
+SYSTEM_PROMPT_PRODUCTIVITY = "You are ProductivityWorker. You manage calendars, tasks, scheduling, and weather/time checks." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
+SYSTEM_PROMPT_MEMORY = "You are MemoryWorker. You save and retrieve long-term user preferences." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
+SYSTEM_PROMPT_CLASSROOM = "You are ClassroomWorker. You manage Google Classroom courses, assignments, announcements, and coursework details." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
+SYSTEM_PROMPT_BROWSER_NAVIGATOR = "You are BrowserNavigator. Execute the browser actions (navigate, click, or input) requested in the task. Once the action is successful, stop immediately and report the result. Do not repeat actions. If you encounter a CAPTCHA, bot detection, a 2FA prompt, or if the user asks to pause/perform an action manually, call `request_human_intervention` immediately. If you must wait for the user to perform an action, do not report completion until you have called `request_human_intervention` first to let them finish. If a website requires or works better with a sign-in, check if you are already logged in; if not, call `request_human_intervention` to let the user log in first. For reading textual content, you can use `browser_read_page_content` with mode='summary', mode='query', or mode='chunk'."
+SYSTEM_PROMPT_BROWSER_READER = "You are BrowserReader. Read the page content, extract the requested information, and output it. Once you have the information, stop immediately. If you encounter a CAPTCHA, bot detection, a 2FA prompt, or if the user asks to pause/perform an action manually, call `request_human_intervention` immediately. If you must wait for the user to perform an action, do not report completion until you have called `request_human_intervention` first to let them finish. If a website requires or works better with a sign-in, check if you are already logged in; if not, call `request_human_intervention` to let the user log in first. For reading webpage textual content, you MUST use `browser_read_page_content`. To avoid context limit issues, you can summarize long pages using `mode='summary'`, search/answer questions directly using `mode='query'`, or read raw text section by section using `mode='chunk'` (passing incrementing `chunk_index` values starting at 0). Never request the full page if it is extremely long; always use `summary` or `query` mode first."
 SYSTEM_PROMPT_OBSIDIAN_NOTE = """You are ObsidianNoteWorker. You are a highly specialized local markdown note author.
 Your job is to create or append content to `.md` notes in the Obsidian vault.
 You dynamically decide on clean categorization folders based on context (e.g., placing notes in 'Friends/College/', 'Friends/Hometown/', 'Personal/', 'Academic/') or write files according to instructions.
@@ -51,7 +52,7 @@ Always structure notes with:
 - Tasks (`- [ ]`) and Callout boxes (`> [!TIP]`, `> [!NOTE]`).
 
 7. **Contextual Linking via Working Memory**: Always scan previously completed task outputs inside the `Working Memory` to find exact filenames of notes created by preceding steps (e.g. if `task_1` created `Prithvi_Dashboard.md`). Use these actual note titles for bidirectional linking rather than placeholder/generic names like `[[Home]]` or `[[Root Note]]`.
-""" + THINKING_INSTRUCTION
+""" + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
 
 SYSTEM_PROMPT_OBSIDIAN_CANVAS = """You are ObsidianCanvasWorker. You are a whiteboard design specialist.
 Your job is to create or update Obsidian Canvas `.canvas` files inside the Obsidian vault.
@@ -91,7 +92,7 @@ When organizing Google Classroom coursework/assignments visually, you MUST follo
      - `fromSide`: "bottom", `toSide`: "top"
 
 Always parse the Classroom course and assignment details carefully from your Working Memory (from the ClassroomWorker). Ensure nodes have unique, short, deterministic IDs (e.g. 'course_1', 'assign_1_1', 'deadline_1_1').
-""" + THINKING_INSTRUCTION
+""" + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
 
 
 SYSTEM_PROMPT_OBSIDIAN_REFACTOR = """You are ObsidianRefactorWorker. You are a vault property and link integrity manager.
@@ -100,7 +101,7 @@ Your job is to scan backlinks and read/update YAML frontmatter properties of not
 - `get_note_properties`
 - `update_note_properties`
 Ensure links are synchronized, properties are accurate, and referential integrity is preserved.
-""" + THINKING_INSTRUCTION
+""" + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
 
 # Pre-compile the agents ONCE globally at load time
 SYSTEM_AGENT = create_react_agent(llm, system_control_tools + file_management_tools + system_info_tools, prompt=SYSTEM_PROMPT_SYSTEM)
@@ -117,7 +118,7 @@ OBSIDIAN_NOTE_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTE
 OBSIDIAN_CANVAS_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTEM_PROMPT_OBSIDIAN_CANVAS)
 OBSIDIAN_REFACTOR_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTEM_PROMPT_OBSIDIAN_REFACTOR)
 
-GITHUB_AGENT = create_react_agent(llm, github_tools, prompt="You are GithubWorker. You retrieve profile details, list repositories, list repository branches, check repository commit history, and get recent public activity from GitHub. Unless the user explicitly specifies a different username, you MUST default to searching/listing repositories under the authenticated user account first (which checks both public and private repositories)." + THINKING_INSTRUCTION)
+GITHUB_AGENT = create_react_agent(llm, github_tools, prompt="You are GithubWorker. You retrieve profile details, list repositories, list repository branches, check repository commit history, and get recent public activity from GitHub. Unless the user explicitly specifies a different username, you MUST default to searching/listing repositories under the authenticated user account first (which checks both public and private repositories)." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION)
 
 AGENT_MAP = {
     "SystemWorker": SYSTEM_AGENT,

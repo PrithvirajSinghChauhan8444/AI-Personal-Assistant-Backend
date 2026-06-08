@@ -28,7 +28,15 @@ class SkillDocument(BaseModel):
         description="List of related keywords/tags to match user queries."
     )
     procedure: str = Field(
-        description="Markdown step-by-step instructions on how to perform this workflow, including command examples or APIs."
+        description="Markdown step-by-step instructions on how to perform this workflow. Must include references to the automated helper script if one is generated."
+    )
+    script_code: Optional[str] = Field(
+        default=None,
+        description="An optional Python or Bash script code that automates the procedure. If the workflow can be programmed to bypass complex worker actions (e.g. API calls, file editing, parsing, terminal commands), provide the full script code here. Otherwise, leave null."
+    )
+    script_filename: Optional[str] = Field(
+        default=None,
+        description="The filename of the automation script if script_code is provided (e.g., 'reorganize.py', 'sync_data.sh')."
     )
 
 # Pydantic Model for Structured Reflection
@@ -51,7 +59,7 @@ REFLECTION_PROMPT = """
 You are the Hermes Self-Learning Reflection & Skill Extraction Engine.
 Your job is to analyze the conversation history and successfully executed tasks to:
 1. Extract any new, permanent facts or preferences about the user.
-2. Extract and compile reusable procedural **"Skills"** if a complex workflow or multi-step task was successfully accomplished (e.g., configuring multi-account authorization, checking specialized coursework, complex terminal pipelines). 
+2. Extract and compile reusable procedural **"Skills"** ONLY if a novel, complex, and highly reusable workflow or multi-step task was successfully accomplished (e.g., configuring multi-account authorization, checking specialized coursework, complex terminal pipelines, advanced browser automation).
 
 Input details:
 User Prompt: {primary_goal}
@@ -59,10 +67,17 @@ Completed Tasks: {completed_tasks}
 Final Response: {final_response}
 
 Instructions for Skill Extraction:
-- If a task was successful and repeatable, define a new procedural Skill!
-- Give it a name like 'gmail-searching' or 'classroom-management'.
-- Write a step-by-step 'procedure' explaining exactly what commands, APIs, or tools were utilized and how to replicate the success.
-- If no complex workflow was run, keep new_skills empty.
+- **CRITICAL RESTRICTION**: Do NOT create a skill for every task. Keep `new_skills` EMPTY for standard/simple tasks, or for one-off tasks that are highly specific (e.g., classifying a specific agent, looking up a specific github user, writing a single one-off python script, retrieving user profile details).
+- **GENERALIZATION REQUIREMENT**: A skill MUST represent a generalized capability that makes the system faster and more efficient at handling FUTURE, broader classes of queries. It should not be a log/recap of the specific task that was run.
+- **AUTOMATION SCRIPT BYPASS**: Whenever possible, if the workflow/procedure can be automated using a helper Python script or Bash script (e.g., to query APIs, manipulate local files, scan directories, perform structured lookups) to bypass long multi-agent planning/tool calls, write the full script in `script_code` and name it in `script_filename`. Ensure the markdown `procedure` in the `SKILL.md` file explicitly describes how the agent should run this script (e.g., using `python3` or `bash` and correct relative paths) to bypass the long manual process.
+- **EXAMPLE CRITERIA**:
+  - BAD SKILL (Too specific / simple): `hermes-agent-classification` (steps to classify the agent), `github-profile-status-check` (steps to check a user's github status), `python-script-generation-and-delivery` (steps to write and email a script).
+  - GOOD SKILL (Generalized / reusable): `browser-based-knowledge-retrieval` (how to search google using the browser agent and read page content to learn about unknown concepts/topics), `multi-account-email-handling` (how to manage multiple email sessions).
+- If you do extract a Skill:
+  - Give it a generalized name in lowercase-kebab-case (e.g. 'browser-information-retrieval', 'obsidian-vault-refactoring').
+  - Assign it a descriptive category (e.g. 'dev-utils', 'information-retrieval', 'productivity', 'communication').
+  - Ensure the 'procedure' is written as generic markdown step-by-step instructions. Explain exactly how future agents should run the automated script (if generated) or utilize specific tools, commands, or APIs to speed up execution.
+- If no complex, generalized workflow was run, keep `new_skills` empty.
 """
 
 def is_personal_query(query: str) -> bool:
@@ -147,10 +162,10 @@ def memory_injector_node(state: AgentState):
     available_skills_index = []
     
     if os.path.exists(skills_dir) and os.path.isdir(skills_dir):
-        for item in os.listdir(skills_dir):
-            skill_folder = os.path.join(skills_dir, item)
-            skill_file = os.path.join(skill_folder, "SKILL.md")
-            if os.path.isdir(skill_folder) and os.path.exists(skill_file):
+        for root, dirs, files in os.walk(skills_dir):
+            if "SKILL.md" in files:
+                skill_file = os.path.join(root, "SKILL.md")
+                item = os.path.basename(root)
                 try:
                     with open(skill_file, "r", encoding="utf-8") as f:
                         content = f.read()
@@ -294,7 +309,12 @@ def reflection_node(state: AgentState):
             os.makedirs(skills_dir, exist_ok=True)
             
             for skill in new_skills:
-                skill_folder = os.path.join(skills_dir, skill.name)
+                # Clean category name for folder
+                clean_category = re.sub(r'[^a-zA-Z0-9_-]', '-', skill.category.strip().lower())
+                if not clean_category:
+                    clean_category = "general"
+                
+                skill_folder = os.path.join(skills_dir, clean_category, skill.name)
                 os.makedirs(skill_folder, exist_ok=True)
                 skill_path = os.path.join(skill_folder, "SKILL.md")
                 
@@ -321,7 +341,16 @@ Use this skill when you need to execute workflows related to {", ".join(skill.ta
 """
                 with open(skill_path, "w", encoding="utf-8") as f:
                     f.write(skill_markdown.strip())
-                print(f"  \033[32m✔\033[0m Saved Skill document: Skills/{skill.name}/SKILL.md")
+                print(f"  \033[32m✔\033[0m Saved Skill document: Skills/{clean_category}/{skill.name}/SKILL.md")
+                
+                # If script is generated, save it in scripts/
+                if skill.script_code and skill.script_filename:
+                    scripts_folder = os.path.join(skill_folder, "scripts")
+                    os.makedirs(scripts_folder, exist_ok=True)
+                    script_path = os.path.join(scripts_folder, skill.script_filename)
+                    with open(script_path, "w", encoding="utf-8") as f_script:
+                        f_script.write(skill.script_code.strip())
+                    print(f"  \033[32m✔\033[0m Saved Automation Script: Skills/{clean_category}/{skill.name}/scripts/{skill.script_filename}")
                 
     except Exception as e:
         print(f"  ⚠️ Error during reflection/skill extraction: {e}")

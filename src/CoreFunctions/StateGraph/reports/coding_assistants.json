@@ -1,0 +1,24 @@
+{
+  "coding_assistants": [
+    {
+      "name": "GitHub Copilot",
+      "source": "C# Corner",
+      "notes": "Comprehensive list provided, pricing details missing due to source limitations."
+    },
+    {
+      "name": "Tabnine",
+      "source": "C# Corner",
+      "notes": "Comprehensive list provided, pricing details missing due to source limitations."
+    },
+    {
+      "name": "Amazon CodeWhisperer",
+      "source": "C# Corner",
+      "notes": "Comprehensive list provided, pricing details missing due to source limitations."
+    },
+    {
+      "name": "Zapier",
+      "source": "Blocked",
+      "notes": "Access denied due to cookie consent wall."
+    }
+  ]
+}

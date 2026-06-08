@@ -37,7 +37,7 @@ from src.CoreFunctions.tools import (
     get_note_backlinks, get_note_properties, update_note_properties, create_or_update_obsidian_canvas,
     
     # Browser Control
-    browser_navigate, browser_click, browser_click_selector, browser_input, browser_input_selector, browser_go_back, browser_read_current_page,
+    browser_navigate, browser_click, browser_click_selector, browser_input, browser_input_selector, browser_go_back, browser_read_current_page, browser_read_page_content, request_human_intervention,
     
     # GitHub
     get_github_profile_tool, list_github_repos_tool, get_github_recent_activity_tool, list_github_commits_tool, list_github_branches_tool
@@ -47,10 +47,18 @@ from src.CoreFunctions.tools import (
 # TOOL GROUPINGS
 # ==========================================
 
+# --- Human Intervention Tool (Common) ---
+human_intervention_tool = StructuredTool.from_function(
+    name="request_human_intervention",
+    description="Pauses the automated process and requests manual intervention from the human user. Use this when you hit CAPTCHAs, bot checks, 2FA prompts, or roadblocks/issues you cannot solve yourself.",
+    coroutine=request_human_intervention
+)
+
 # --- Memory ---
 memory_tools = [
     StructuredTool.from_function(recall),
     StructuredTool.from_function(remember),
+    human_intervention_tool
 ]
 
 # --- Communication ---
@@ -62,6 +70,7 @@ gmail_tools = [
     StructuredTool.from_function(trash_gmail_msg),
     StructuredTool.from_function(mark_gmail_read),
     StructuredTool.from_function(reply_to_gmail),
+    human_intervention_tool
 ]
 
 
@@ -70,6 +79,7 @@ calendar_tools = [
     StructuredTool.from_function(add_google_task),
     StructuredTool.from_function(check_calendar_events),
     StructuredTool.from_function(add_calendar_event),
+    human_intervention_tool
 ]
 
 # --- Classroom ---
@@ -78,6 +88,7 @@ classroom_tools = [
     StructuredTool.from_function(fetch_classroom_assignments),
     StructuredTool.from_function(fetch_classroom_announcements),
     StructuredTool.from_function(fetch_classroom_assignment_details),
+    human_intervention_tool
 ]
 
 # --- System Info ---
@@ -86,6 +97,7 @@ system_info_tools = [
     StructuredTool.from_function(get_weather),
     StructuredTool.from_function(get_time),
     StructuredTool.from_function(web_search),
+    human_intervention_tool
 ]
 
 # --- File Operations ---
@@ -98,6 +110,7 @@ file_management_tools = [
     StructuredTool.from_function(index_directory_tool),
     StructuredTool.from_function(search_files_semantically_tool),
     StructuredTool.from_function(rag_file_qa_tool),
+    human_intervention_tool
 ]
 
 # --- System Control / Execution ---
@@ -115,6 +128,7 @@ system_control_tools = [
     StructuredTool.from_function(terminate_process_tool),
     StructuredTool.from_function(lock_desktop_screen),
     StructuredTool.from_function(suspend_desktop_system),
+    human_intervention_tool
 ]
 
 # --- Obsidian ---
@@ -126,6 +140,7 @@ obsidian_tools = [
     StructuredTool.from_function(get_note_properties),
     StructuredTool.from_function(update_note_properties),
     StructuredTool.from_function(create_or_update_obsidian_canvas),
+    human_intervention_tool
 ]
 
 browser_tools = [
@@ -136,6 +151,8 @@ browser_tools = [
     StructuredTool.from_function(name="browser_input_selector", description="Input text into an element using a CSS/XPath selector", coroutine=browser_input_selector),
     StructuredTool.from_function(name="browser_go_back", description="Navigate back to the previous page", coroutine=browser_go_back),
     StructuredTool.from_function(name="browser_read_current_page", description="Read the current active tab's URL, page title, and interactive elements without navigating", coroutine=browser_read_current_page),
+    StructuredTool.from_function(name="browser_read_page_content", description="Read or query the textual content (paragraphs, headings) of the current page in chunks or using a local LLM summary/query mode", coroutine=browser_read_page_content),
+    human_intervention_tool,
 ]
 
 # --- GitHub ---
@@ -144,7 +161,8 @@ github_tools = [
     StructuredTool.from_function(list_github_repos_tool, name="list_github_repos"),
     StructuredTool.from_function(get_github_recent_activity_tool, name="get_github_recent_activity"),
     StructuredTool.from_function(list_github_commits_tool, name="list_github_commits"),
-    StructuredTool.from_function(list_github_branches_tool, name="list_github_branches")
+    StructuredTool.from_function(list_github_branches_tool, name="list_github_branches"),
+    human_intervention_tool
 ]
 
 # ==========================================
@@ -160,6 +178,9 @@ TOOL_MAP = {
     "browser_input": browser_tools[3],
     "browser_input_selector": browser_tools[4],
     "browser_go_back": browser_tools[5],
+    "browser_read_current_page": browser_tools[6],
+    "browser_read_page_content": browser_tools[7],
+    "request_human_intervention": browser_tools[8],
 
     # Memory
     "recall": memory_tools[0],

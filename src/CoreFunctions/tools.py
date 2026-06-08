@@ -1013,8 +1013,14 @@ async def _get_browser_page():
             browser_type_str = "chromium"
             
         user_data_dir = os.getenv("BROWSER_USER_DATA_DIR", "").strip()
+        profile_directory = None
         if user_data_dir:
             user_data_dir = os.path.expanduser(user_data_dir)
+            if browser_type_str == "chromium":
+                basename = os.path.basename(user_data_dir)
+                if basename == "Default" or basename.startswith("Profile "):
+                    profile_directory = basename
+                    user_data_dir = os.path.dirname(user_data_dir)
             
         executable_path = os.getenv("BROWSER_EXECUTABLE_PATH", "").strip()
         if executable_path:
@@ -1027,12 +1033,16 @@ async def _get_browser_page():
         
         if _browser_context is None:
             if user_data_dir:
-                print(f"🌐 [Browser] Launching {browser_type_str} with persistent context at {user_data_dir} (headless={headless_mode}, slow_mo={slow_mo_ms}ms)...", flush=True)
+                launch_args = []
+                if profile_directory:
+                    launch_args.append(f"--profile-directory={profile_directory}")
+                print(f"🌐 [Browser] Launching {browser_type_str} with persistent context at {user_data_dir} (profile={profile_directory or 'Default'}, headless={headless_mode}, slow_mo={slow_mo_ms}ms)...", flush=True)
                 _browser_context = await browser_launcher.launch_persistent_context(
                     user_data_dir=user_data_dir,
                     headless=headless_mode,
                     slow_mo=slow_mo_ms,
-                    executable_path=executable_path if executable_path else None
+                    executable_path=executable_path if executable_path else None,
+                    args=launch_args
                 )
             else:
                 if _browser is None:
@@ -1131,6 +1141,105 @@ async def browser_read_current_page() -> str:
         return f"Current Page Title: {title}\nCurrent Page URL: {url}\n\nInteractive Elements:\n{elements_str}"
     except Exception as e:
         return f"Error reading current page: {e}"
+
+def _get_local_llm():
+    try:
+        from langchain_ollama import ChatOllama
+        return ChatOllama(
+            model=os.getenv("OLLAMA_MODEL", "gemma4:e2b"),
+            temperature=0
+        )
+    except Exception:
+        return None
+
+async def browser_read_page_content(mode: str = "summary", query: str = None, chunk_index: int = 0) -> str:
+    """Reads or queries the textual content (paragraphs, headings, articles) of the current active browser tab.
+    
+    Args:
+        mode (str): The reading mode:
+            - 'summary': Uses a local model to summarize the main content of the page. Recommended for long pages.
+            - 'query': Uses a local model to answer a specific question ('query') based on the page content.
+            - 'chunk': Returns a specific paragraph/text chunk of the page (specified by 'chunk_index') to keep context small.
+            - 'metadata': Returns title, URL, and a quick snippet.
+        query (str, optional): The question to answer about the page content (only used when mode='query').
+        chunk_index (int): The zero-based index of the text chunk to retrieve (only used when mode='chunk'). Each chunk is roughly 1500 words.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: browser_read_page_content")
+    print(f"   Args: mode={mode}, query={query}, chunk_index={chunk_index}")
+    try:
+        page = await _get_browser_page()
+        url = page.url
+        title = await page.title()
+        
+        script = """
+        () => {
+            const elements = document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, article, section');
+            const texts = [];
+            elements.forEach(el => {
+                if (el.closest('nav') || el.closest('footer') || el.closest('header') || el.closest('script') || el.closest('style')) {
+                    return;
+                }
+                const text = el.innerText.trim();
+                if (text && text.length > 20) {
+                    texts.push(text);
+                }
+            });
+            return texts.join('\\n\\n');
+        }
+        """
+        full_text = await page.evaluate(script)
+        if not full_text:
+            return f"Page Title: {title}\nURL: {url}\nNo readable text content found on this page."
+            
+        words = full_text.split()
+        chunk_size = 1500
+        total_chunks = (len(words) + chunk_size - 1) // chunk_size
+        
+        if mode == "metadata":
+            snippet = " ".join(words[:100])
+            return f"Title: {title}\nURL: {url}\nTotal Words: {len(words)}\nTotal Chunks: {total_chunks}\nSnippet: {snippet}..."
+            
+        elif mode == "chunk":
+            if chunk_index < 0 or chunk_index >= total_chunks:
+                return f"Error: chunk_index {chunk_index} is out of range. Total chunks available: {total_chunks}."
+            start_word = chunk_index * chunk_size
+            end_word = start_word + chunk_size
+            chunk_text = " ".join(words[start_word:end_word])
+            return f"Chunk {chunk_index + 1}/{total_chunks} of page content (Title: {title}, URL: {url}):\n\n{chunk_text}"
+            
+        elif mode == "summary":
+            local_llm = _get_local_llm()
+            if not local_llm:
+                chunk_text = " ".join(words[:chunk_size])
+                return f"[Local LLM not available. Returning first chunk of {total_chunks} chunks] Page Content:\n\n{chunk_text}"
+                
+            prompt = f"Summarize the following text content from the webpage '{title}' ({url}) concisely, extracting the key points and main arguments:\n\n{full_text[:12000]}"
+            try:
+                response = await local_llm.ainvoke(prompt)
+                return f"Summary of the webpage '{title}' (generated by local model):\n\n{response.content}"
+            except Exception as e:
+                chunk_text = " ".join(words[:chunk_size])
+                return f"[Local LLM error: {e}. Returning first chunk of {total_chunks} chunks] Page Content:\n\n{chunk_text}"
+                
+        elif mode == "query":
+            if not query:
+                return "Error: mode='query' requires a 'query' argument."
+            local_llm = _get_local_llm()
+            if not local_llm:
+                chunk_text = " ".join(words[:chunk_size])
+                return f"[Local LLM not available. Returning first chunk for manual query: '{query}'] Page Content:\n\n{chunk_text}"
+                
+            prompt = f"Based on the following text content from the webpage '{title}', answer this question: '{query}'. Provide a concise and accurate answer based only on the text.\n\nContent:\n{full_text[:12000]}"
+            try:
+                response = await local_llm.ainvoke(prompt)
+                return f"Answer (generated by local model): {response.content}"
+            except Exception as e:
+                chunk_text = " ".join(words[:chunk_size])
+                return f"[Local LLM error: {e}. Returning first chunk for manual search: '{query}'] Page Content:\n\n{chunk_text}"
+        else:
+            return f"Error: Invalid mode '{mode}'."
+    except Exception as e:
+        return f"Error extracting page text content: {e}"
 
 async def browser_navigate(url: str) -> str:
     """Navigates the browser to the specified URL and returns its interactive elements.
@@ -1331,12 +1440,41 @@ def list_github_branches_tool(repo_name: str, username: str = None) -> str:
         return f"Error listing branches: {e}"
 
 
+async def request_human_intervention(reason: str) -> str:
+    """Pauses the automated process and requests manual intervention from the human user.
+    
+    Use this tool when:
+    - You encounter a CAPTCHA, Cloudflare verification, or bot detection.
+    - You need a 2FA / OTP code, or the user needs to log in manually.
+    - You are stuck, encounter a roadblock, or need clarification on how to proceed.
+    
+    Args:
+        reason (str): The specific reason or barrier you encountered.
+    """
+    import asyncio
+    print(f"\n🚨 [HUMAN INTERVENTION REQUESTED] 🚨", flush=True)
+    print(f"Reason: {reason}", flush=True)
+    print(f"👉 Please perform any necessary actions in the open browser window.", flush=True)
+    
+    # Run the input call in a separate thread so we don't block the async event loop
+    user_input = await asyncio.to_thread(
+        input, 
+        "\nPress [Enter] when done, or type a message/code to send back to the agent: "
+    )
+    user_input = user_input.strip()
+    if not user_input:
+        user_input = "done"
+    print(f"✅ Resuming automation. User responded: '{user_input}'\n", flush=True)
+    return f"Human responded: {user_input}"
+
+
 # ===========================
 # 5. THE REGISTRY (The Menu)
 # ===========================
 # The AI will output these keys to call the functions.
 
 AVAILABLE_TOOLS = {
+    "request_human_intervention": request_human_intervention,
     # GitHub
     "get_github_profile": get_github_profile_tool,
     "list_github_repos": list_github_repos_tool,
