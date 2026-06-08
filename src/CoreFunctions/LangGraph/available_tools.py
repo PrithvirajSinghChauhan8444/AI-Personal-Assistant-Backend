@@ -37,7 +37,7 @@ from src.CoreFunctions.tools import (
     get_note_backlinks, get_note_properties, update_note_properties, create_or_update_obsidian_canvas,
     
     # Browser Control
-    browser_navigate, browser_click, browser_click_selector, browser_input, browser_input_selector, browser_go_back,
+    browser_navigate, browser_click, browser_click_selector, browser_input, browser_input_selector, browser_go_back, browser_read_current_page,
     
     # GitHub
     get_github_profile_tool, list_github_repos_tool, get_github_recent_activity_tool, list_github_commits_tool, list_github_branches_tool
@@ -135,6 +135,7 @@ browser_tools = [
     StructuredTool.from_function(name="browser_input", description="Input text into an element by its numerical data-agent-id", coroutine=browser_input),
     StructuredTool.from_function(name="browser_input_selector", description="Input text into an element using a CSS/XPath selector", coroutine=browser_input_selector),
     StructuredTool.from_function(name="browser_go_back", description="Navigate back to the previous page", coroutine=browser_go_back),
+    StructuredTool.from_function(name="browser_read_current_page", description="Read the current active tab's URL, page title, and interactive elements without navigating", coroutine=browser_read_current_page),
 ]
 
 # --- GitHub ---

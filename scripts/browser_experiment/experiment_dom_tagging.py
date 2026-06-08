@@ -39,6 +39,20 @@ async def _get_page():
         if _playwright is None:
             _playwright = await async_playwright().start()
             
+        cdp_url = os.getenv("BROWSER_CDP_URL", "").strip()
+        if cdp_url:
+            if _browser_context is None:
+                print(f"🌐 [Browser] Connecting to active browser session over CDP at {cdp_url}...", flush=True)
+                _browser = await _playwright.chromium.connect_over_cdp(cdp_url)
+                _browser_context = _browser.contexts[0] if _browser.contexts else await _browser.new_context()
+            
+            # Reuse existing active page/tab if available
+            if _browser_context.pages:
+                _page = _browser_context.pages[-1]
+            else:
+                _page = await _browser_context.new_page()
+            return _page
+            
         browser_type_str = os.getenv("BROWSER_TYPE", "chromium").lower()
         if browser_type_str not in ["chromium", "firefox", "webkit"]:
             browser_type_str = "chromium"
@@ -46,6 +60,10 @@ async def _get_page():
         user_data_dir = os.getenv("BROWSER_USER_DATA_DIR", "").strip()
         if user_data_dir:
             user_data_dir = os.path.expanduser(user_data_dir)
+            
+        executable_path = os.getenv("BROWSER_EXECUTABLE_PATH", "").strip()
+        if executable_path:
+            executable_path = os.path.expanduser(executable_path)
             
         headless_mode = os.getenv("BROWSER_HEADLESS", "True").lower() == "true"
         slow_mo_ms = int(os.getenv("BROWSER_SLOW_MO", "0"))
@@ -58,7 +76,8 @@ async def _get_page():
                 _browser_context = await browser_launcher.launch_persistent_context(
                     user_data_dir=user_data_dir,
                     headless=headless_mode,
-                    slow_mo=slow_mo_ms
+                    slow_mo=slow_mo_ms,
+                    executable_path=executable_path if executable_path else None
                 )
             else:
                 if _browser is None:
@@ -67,6 +86,8 @@ async def _get_page():
                         "headless": headless_mode,
                         "slow_mo": slow_mo_ms,
                     }
+                    if executable_path:
+                        launch_kwargs["executable_path"] = executable_path
                     if browser_type_str == "chromium":
                         launch_kwargs["args"] = ["--password-store=basic"]
                     _browser = await browser_launcher.launch(**launch_kwargs)
@@ -186,9 +207,15 @@ async def fill_element(element_id: int, text: str) -> str:
         return f"Error filling element [{element_id}]: {e}"
 
 async def get_page_state() -> str:
-    """Returns the list of interactive elements currently available on the page."""
-    elements_str = await get_elements_formatted()
-    return f"Current Page Elements:\n{elements_str}"
+    """Returns the current page URL, title, and interactive elements currently available on the page."""
+    try:
+        page = await _get_page()
+        url = page.url
+        title = await page.title()
+        elements_str = await get_elements_formatted()
+        return f"Current Page Title: {title}\nCurrent Page URL: {url}\n\nCurrent Page Elements:\n{elements_str}"
+    except Exception as e:
+        return f"Error reading page state: {e}"
 
 # Compile Agent
 tools = [browser_navigate, click_element, fill_element, get_page_state]
