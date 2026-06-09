@@ -4,7 +4,11 @@ import os
 import json
 import sys
 import platform
+from dotenv import load_dotenv
 from CoreFunctions.security_utils import is_path_safe, is_command_safe
+
+# Load environmental variables
+load_dotenv()
 
 open_app = None
 if os.name == "nt":
@@ -51,6 +55,13 @@ def run_terminal_command(command):
     if not is_command_safe(command):
         return f"❌ Security Violation: Terminal command execution blocked (contains prohibited command/pattern)."
 
+    # Get working directory from AGENT_WORKSPACE
+    agent_ws = os.getenv("AGENT_WORKSPACE")
+    cwd = None
+    if agent_ws:
+        cwd = os.path.abspath(os.path.expanduser(agent_ws))
+        os.makedirs(cwd, exist_ok=True)
+
     try:
         import sys
         process = subprocess.Popen(
@@ -59,7 +70,8 @@ def run_terminal_command(command):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1
+            bufsize=1,
+            cwd=cwd
         )
         
         output_chunks = []
@@ -81,7 +93,12 @@ def run_terminal_command(command):
 def run_python_script(path):
     """Executes a Python script in the current environment. Protected by sandbox validation."""
     real_path = resolve_path_alias(path)
-    abs_path = os.path.abspath(real_path)
+    
+    agent_ws = os.getenv("AGENT_WORKSPACE")
+    if agent_ws and not os.path.isabs(real_path):
+        abs_path = os.path.abspath(os.path.join(os.path.expanduser(agent_ws), real_path))
+    else:
+        abs_path = os.path.abspath(real_path)
 
     # Check path safety (sandboxing)
     if not is_path_safe(abs_path):
@@ -90,6 +107,11 @@ def run_python_script(path):
     if not os.path.exists(abs_path):
         return f"❌ Error: Script not found at {abs_path}"
     
+    cwd = None
+    if agent_ws:
+        cwd = os.path.abspath(os.path.expanduser(agent_ws))
+        os.makedirs(cwd, exist_ok=True)
+    
     try:
         import sys
         process = subprocess.Popen(
@@ -97,7 +119,8 @@ def run_python_script(path):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1
+            bufsize=1,
+            cwd=cwd
         )
         
         output_chunks = []

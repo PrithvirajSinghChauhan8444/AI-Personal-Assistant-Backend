@@ -1,5 +1,9 @@
 import os
 import re
+from dotenv import load_dotenv
+
+# Load environmental variables
+load_dotenv()
 
 # Base directory of the repository
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -9,6 +13,13 @@ ALLOWED_DIRECTORIES = [
     os.path.realpath(BASE_DIR),
     os.path.realpath(os.environ.get("OBSIDIAN_VAULT_PATH", "/home/prit/Documents/Obsidian Vaultt")),
 ]
+
+agent_ws = os.getenv("AGENT_WORKSPACE")
+if agent_ws:
+    resolved_ws = os.path.realpath(os.path.expanduser(agent_ws))
+    os.makedirs(resolved_ws, exist_ok=True)
+    if resolved_ws not in ALLOWED_DIRECTORIES:
+        ALLOWED_DIRECTORIES.append(resolved_ws)
 
 BLOCKED_COMMAND_PATTERNS = [
     r"\brm\b",          # Remove files (potentially destructive)

@@ -996,6 +996,44 @@ async def _get_browser_page():
             
         cdp_url = os.getenv("BROWSER_CDP_URL", "").strip()
         if cdp_url:
+            import socket
+            import subprocess
+            import time
+            
+            # Check if local port (e.g. 9222) is open
+            try:
+                # Extract port from URL (e.g., http://localhost:9222)
+                port = 9222
+                if ":" in cdp_url:
+                    port = int(cdp_url.split(":")[-1].strip("/"))
+                
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(1)
+                    port_open = (s.connect_ex(('127.0.0.1', port)) == 0)
+            except Exception:
+                port_open = False
+                
+            if not port_open and ("localhost" in cdp_url or "127.0.0.1" in cdp_url):
+                print(f"🌐 [Browser] CDP port {port} is closed. Auto-launching Brave in debugging mode...", flush=True)
+                exec_path = os.getenv("BROWSER_EXECUTABLE_PATH", "/usr/bin/brave")
+                exec_path = os.path.expanduser(exec_path)
+                
+                # Use the configured profile directory
+                user_data = os.getenv("BROWSER_USER_DATA_DIR", "").strip()
+                if not user_data:
+                    user_data = "~/.config/brave-assistant-profile"
+                user_data = os.path.expanduser(user_data)
+                os.makedirs(user_data, exist_ok=True)
+                
+                # Start Brave as a detached subprocess
+                subprocess.Popen(
+                    [exec_path, f"--remote-debugging-port={port}", f"--user-data-dir={user_data}", "--no-first-run"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True
+                )
+                time.sleep(3.0)  # Give the browser time to launch
+                
             if _browser_context is None:
                 print(f"🌐 [Browser] Connecting to active browser session over CDP at {cdp_url}...", flush=True)
                 _browser = await _playwright_ctx.chromium.connect_over_cdp(cdp_url)
@@ -1461,6 +1499,18 @@ async def request_human_intervention(reason: str) -> str:
         input, 
         "\nPress [Enter] when done, or type a message/code to send back to the agent: "
     )
+    user_input = user_input.strip()
+    if not user_input:
+        user_input = "done"
+    print(f"✅ Resuming automation. User responded: '{user_input}'\n", flush=True)
+    return f"Human responded: {user_input}"
+
+def request_human_intervention_sync(reason: str) -> str:
+    """Synchronous version of request_human_intervention."""
+    print(f"\n🚨 [HUMAN INTERVENTION REQUESTED] 🚨", flush=True)
+    print(f"Reason: {reason}", flush=True)
+    print(f"👉 Please perform any necessary actions in the open browser window.", flush=True)
+    user_input = input("\nPress [Enter] when done, or type a message/code to send back to the agent: ")
     user_input = user_input.strip()
     if not user_input:
         user_input = "done"

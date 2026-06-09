@@ -30,56 +30,22 @@ def orchestrator_node(state: AgentState):
                 "next_node": "OutputFinalizer"
             }
 
-    # If multiple tasks can be executed concurrently, run them in parallel!
+    # If multiple tasks can be executed concurrently, route to them in parallel using LangGraph branching!
     if len(executable_tasks) > 1:
-        print(f"\n⚡ [Parallel Executor] Concurrently executing {len(executable_tasks)} independent tasks:")
+        print(f"\n⚡ [Parallel DAG Branching] Concurrently routing to {len(executable_tasks)} independent workers:")
+        next_nodes = []
         for t in executable_tasks:
-            print(f"  - [{t['assigned_worker']}] {t['description']}")
-            # Mark as in_progress immediately
+            worker = t["assigned_worker"]
+            print(f"  - [{worker}] {t['description']}")
+            next_nodes.append(worker)
+            # Mark as in_progress immediately so the worker can pick it up
             for st in active_subtasks:
                 if st["id"] == t["id"]:
                     st["status"] = "in_progress"
 
-        from src.CoreFunctions.StateGraph.workers import _run_ephemeral_agent
-
-        def run_task(task):
-            try:
-                result = _run_ephemeral_agent(task["assigned_worker"], task["description"], state.get("working_memory", {}) or {})
-                return task["id"], result, None
-            except Exception as ex:
-                return task["id"], None, str(ex)
-
-        results = []
-        with ThreadPoolExecutor(max_workers=len(executable_tasks)) as executor:
-            futures = [executor.submit(run_task, t) for t in executable_tasks]
-            for fut in futures:
-                results.append(fut.result())
-
-        # Update state sequentially after parallel threads join
-        working_memory = state.get("working_memory", {}) or {}
-        completed_tasks = state.get("completed_tasks", {}) or {}
-        error_logs = state.get("error_logs", "") or ""
-
-        for task_id, res_data, err in results:
-            for st in active_subtasks:
-                if st["id"] == task_id:
-                    if err:
-                        st["status"] = "failed"
-                        error_logs += f"\nTask {task_id} failed: {err}"
-                        print(f"  ❌ [{st['assigned_worker']}] Task {task_id} failed concurrently: {err}")
-                    else:
-                        st["status"] = "completed"
-                        working_memory[task_id] = res_data
-                        completed_tasks[task_id] = res_data
-                        print(f"  ✔ [\033[1;32m{st['assigned_worker']} Parallel Finish\033[0m]: Completed task {task_id} successfully.")
-
-        # Return to Orchestrator to evaluate next task steps
         return {
             "active_subtasks": active_subtasks,
-            "working_memory": working_memory,
-            "completed_tasks": completed_tasks,
-            "error_logs": error_logs if error_logs else None,
-            "next_node": "Orchestrator"
+            "next_node": next_nodes
         }
         
     else:
@@ -100,9 +66,9 @@ def orchestrator_node(state: AgentState):
         }
 
 def orchestrator_router(state: AgentState):
-    """Conditional edge function to map next_node to the actual node"""
-    next_node = state.get("next_node", "OutputFinalizer")
-    # Loop back to Orchestrator if specified
-    if next_node == "Orchestrator":
-        return "Orchestrator"
+    """Conditional edge function mapping next_node state to one or more execution nodes."""
+    next_node = state.get("next_node")
+    if not next_node:
+        return "OutputFinalizer"
+    # Can return a single string or a list of strings for parallel execution
     return next_node

@@ -37,7 +37,7 @@ from src.CoreFunctions.tools import (
     get_note_backlinks, get_note_properties, update_note_properties, create_or_update_obsidian_canvas,
     
     # Browser Control
-    browser_navigate, browser_click, browser_click_selector, browser_input, browser_input_selector, browser_go_back, browser_read_current_page, browser_read_page_content, request_human_intervention,
+    browser_navigate, browser_click, browser_click_selector, browser_input, browser_input_selector, browser_go_back, browser_read_current_page, browser_read_page_content, request_human_intervention, request_human_intervention_sync,
     
     # GitHub
     get_github_profile_tool, list_github_repos_tool, get_github_recent_activity_tool, list_github_commits_tool, list_github_branches_tool
@@ -49,6 +49,7 @@ from src.CoreFunctions.tools import (
 
 # --- Human Intervention Tool (Common) ---
 human_intervention_tool = StructuredTool.from_function(
+    func=request_human_intervention_sync,
     name="request_human_intervention",
     description="Pauses the automated process and requests manual intervention from the human user. Use this when you hit CAPTCHAs, bot checks, 2FA prompts, or roadblocks/issues you cannot solve yourself.",
     coroutine=request_human_intervention
@@ -165,6 +166,16 @@ github_tools = [
     human_intervention_tool
 ]
 
+# --- Miscellaneous ---
+misc_tools = [
+    StructuredTool.from_function(run_terminal_tool),
+    StructuredTool.from_function(run_python_tool),
+    StructuredTool.from_function(web_search),
+    StructuredTool.from_function(read_file_tool),
+    StructuredTool.from_function(create_file_tool),
+    human_intervention_tool
+]
+
 # ==========================================
 # EXPORTS
 # ==========================================
@@ -263,6 +274,7 @@ ALL_TOOLS = (
     system_control_tools +
     obsidian_tools +
     browser_tools +
-    github_tools
+    github_tools +
+    misc_tools
 )
 

@@ -1,7 +1,11 @@
 
 import os
 import datetime
+from dotenv import load_dotenv
 from CoreFunctions.security_utils import is_path_safe, is_extension_safe
+
+# Load environmental variables
+load_dotenv()
 
 def write_file(path, content):
     """
@@ -9,7 +13,11 @@ def write_file(path, content):
     Automatically creates parent directories. Protected by sandbox validation.
     """
     # 1. Resolve absolute path
-    abs_path = os.path.abspath(path)
+    agent_ws = os.getenv("AGENT_WORKSPACE")
+    if agent_ws and not os.path.isabs(path):
+        abs_path = os.path.abspath(os.path.join(os.path.expanduser(agent_ws), path))
+    else:
+        abs_path = os.path.abspath(path)
     
     # 2. Check path safety (sandboxing)
     if not is_path_safe(abs_path):
@@ -31,7 +39,11 @@ def write_file(path, content):
 
 def read_file(path):
     """Reads and returns the content of a file. Protected by sandbox validation."""
-    abs_path = os.path.abspath(path)
+    agent_ws = os.getenv("AGENT_WORKSPACE")
+    if agent_ws and not os.path.isabs(path):
+        abs_path = os.path.abspath(os.path.join(os.path.expanduser(agent_ws), path))
+    else:
+        abs_path = os.path.abspath(path)
     
     # Check path safety (sandboxing)
     if not is_path_safe(abs_path):
@@ -48,7 +60,11 @@ def read_file(path):
 
 def list_files(path):
     """Lists all files and folders in a specified directory. Protected by sandbox validation."""
-    abs_path = os.path.abspath(path)
+    agent_ws = os.getenv("AGENT_WORKSPACE")
+    if agent_ws and not os.path.isabs(path):
+        abs_path = os.path.abspath(os.path.join(os.path.expanduser(agent_ws), path))
+    else:
+        abs_path = os.path.abspath(path)
     
     # Check path safety (sandboxing)
     if not is_path_safe(abs_path):
@@ -67,7 +83,11 @@ def list_files(path):
 
 def create_directory(path):
     """Creates a new folder. Protected by sandbox validation."""
-    abs_path = os.path.abspath(path)
+    agent_ws = os.getenv("AGENT_WORKSPACE")
+    if agent_ws and not os.path.isabs(path):
+        abs_path = os.path.abspath(os.path.join(os.path.expanduser(agent_ws), path))
+    else:
+        abs_path = os.path.abspath(path)
     
     # Check path safety (sandboxing)
     if not is_path_safe(abs_path):
@@ -92,8 +112,12 @@ def save_python_code(content, suggested_name=None):
         suggested_name += '.py'
         
     # Get base directory dynamically
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    save_dir = os.path.join(base_dir, "CompiledScripts")
+    agent_ws = os.getenv("AGENT_WORKSPACE")
+    if agent_ws:
+        save_dir = os.path.join(os.path.expanduser(agent_ws), "CompiledScripts")
+    else:
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        save_dir = os.path.join(base_dir, "CompiledScripts")
     
     os.makedirs(save_dir, exist_ok=True)
     full_path = os.path.join(save_dir, suggested_name)

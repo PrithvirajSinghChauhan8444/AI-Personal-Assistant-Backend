@@ -13,7 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.
 from src.CoreFunctions.LangGraph.available_tools import (
     system_control_tools, file_management_tools, system_info_tools,
     gmail_tools, calendar_tools, memory_tools, classroom_tools, obsidian_tools,
-    browser_tools, github_tools
+    browser_tools, github_tools, misc_tools
 )
 
 # LLM for workers. Using Gemini with native cloud thinking enabled.
@@ -33,9 +33,19 @@ local_llm = ChatOllama(
 # Define prompts
 # Thinking directive to force both cloud and local models to populate msg.content before invoking tools
 THINKING_INSTRUCTION = " CRITICAL: You MUST always output your reasoning and intermediate thought process in natural language BEFORE calling any tools. Never invoke tools silently."
-HUMAN_INTERVENTION_INSTRUCTION = " If you encounter a roadblock, need manual approval, get stuck, need user credentials/2FA, or if the user asks you to wait/perform an action manually, you MUST call `request_human_intervention` to pause execution and ask the human for assistance."
+HUMAN_INTERVENTION_INSTRUCTION = """
+### 🚨 HUMAN-IN-THE-LOOP (HITL) PROTOCOL:
+You have access to the `request_human_intervention` tool. You MUST call this tool immediately to pause execution and request manual help from the human user in the following scenarios:
+1. **Authentication, Login & 2FA**: If you require credentials, passwords, 2FA/OTP codes, API keys, OAuth approval, or if you hit CAPTCHAs, bot blocks, or verification screens.
+2. **Permissions & System Prompts**: If you encounter 'Permission Denied' errors, a `sudo` password request, or system security blocks.
+3. **Potentially Destructive Actions**: If you need to delete files, overwrite code, terminate critical processes, or make system-wide changes, and need confirmation.
+4. **Roadblocks & Ambiguities**: If tools fail repeatedly, if you get stuck, or if the task instructions are ambiguous.
+5. **User Manual Control**: If the user requests to perform an action manually or asks you to pause and wait.
+Always explain the exact reason for pausing when calling the tool.
+"""
 
 SYSTEM_PROMPT_SYSTEM = "You are SystemWorker. You manage OS tasks, files, commands, and health metrics." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
+SYSTEM_PROMPT_MISC = "You are MiscWorker. You handle miscellaneous tasks, general API integrations (such as YouTube Music API operations using external libraries like ytmusicapi or scripts), calculations, custom scripting, or general utility tasks that do not fit into other specialized workers." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
 SYSTEM_PROMPT_GMAIL = "You are GmailWorker. You manage email fetching, searching, and sending." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
 SYSTEM_PROMPT_PRODUCTIVITY = "You are ProductivityWorker. You manage calendars, tasks, scheduling, and weather/time checks." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
 SYSTEM_PROMPT_MEMORY = "You are MemoryWorker. You save and retrieve long-term user preferences." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
@@ -119,6 +129,7 @@ OBSIDIAN_CANVAS_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYS
 OBSIDIAN_REFACTOR_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTEM_PROMPT_OBSIDIAN_REFACTOR)
 
 GITHUB_AGENT = create_react_agent(llm, github_tools, prompt="You are GithubWorker. You retrieve profile details, list repositories, list repository branches, check repository commit history, and get recent public activity from GitHub. Unless the user explicitly specifies a different username, you MUST default to searching/listing repositories under the authenticated user account first (which checks both public and private repositories)." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION)
+MISC_AGENT = create_react_agent(llm, misc_tools, prompt=SYSTEM_PROMPT_MISC)
 
 AGENT_MAP = {
     "SystemWorker": SYSTEM_AGENT,
@@ -132,13 +143,14 @@ AGENT_MAP = {
     "GithubWorker": GITHUB_AGENT,
     "ObsidianNoteWorker": OBSIDIAN_NOTE_AGENT,
     "ObsidianCanvasWorker": OBSIDIAN_CANVAS_AGENT,
-    "ObsidianRefactorWorker": OBSIDIAN_REFACTOR_AGENT
+    "ObsidianRefactorWorker": OBSIDIAN_REFACTOR_AGENT,
+    "MiscWorker": MISC_AGENT
 }
 
-def _get_active_task(state: AgentState):
-    """Finds the task currently marked 'in_progress'"""
+def _get_active_task(state: AgentState, worker_name: str):
+    """Finds the task currently marked 'in_progress' and assigned to the given worker"""
     for task in state.get("active_subtasks", []):
-        if task["status"] == "in_progress":
+        if task["status"] == "in_progress" and task["assigned_worker"] == worker_name:
             return task
     return None
 
@@ -301,42 +313,44 @@ def _update_state_completed(state: AgentState, task_id: str, final_data: str):
         "completed_tasks": completed_tasks
     }
 
+# --- Specific Workers Helper ---
+
+def _execute_worker_node(state: AgentState, worker_name: str):
+    task = _get_active_task(state, worker_name)
+    if not task:
+        return {}
+    try:
+        final_data = _run_ephemeral_agent(worker_name, task["description"], state.get("working_memory", {}))
+        return _update_state_completed(state, task["id"], final_data)
+    except Exception as ex:
+        print(f"  ❌ [{worker_name}] Task {task['id']} failed: {ex}")
+        subtasks = state.get("active_subtasks", [])
+        for st in subtasks:
+            if st["id"] == task["id"]:
+                st["status"] = "failed"
+        error_logs = state.get("error_logs") or ""
+        error_logs += f"\nWorker {worker_name} failed on task {task['id']}: {ex}"
+        return {
+            "active_subtasks": subtasks,
+            "error_logs": error_logs
+        }
+
 # --- Specific Workers ---
 
 def system_worker_node(state: AgentState):
-    task = _get_active_task(state)
-    if not task: return {}
-    
-    final_data = _run_ephemeral_agent("SystemWorker", task["description"], state.get("working_memory", {}))
-    return _update_state_completed(state, task["id"], final_data)
+    return _execute_worker_node(state, "SystemWorker")
 
 def gmail_worker_node(state: AgentState):
-    task = _get_active_task(state)
-    if not task: return {}
-    
-    final_data = _run_ephemeral_agent("GmailWorker", task["description"], state.get("working_memory", {}))
-    return _update_state_completed(state, task["id"], final_data)
+    return _execute_worker_node(state, "GmailWorker")
 
 def productivity_worker_node(state: AgentState):
-    task = _get_active_task(state)
-    if not task: return {}
-    
-    final_data = _run_ephemeral_agent("ProductivityWorker", task["description"], state.get("working_memory", {}))
-    return _update_state_completed(state, task["id"], final_data)
+    return _execute_worker_node(state, "ProductivityWorker")
 
 def memory_worker_node(state: AgentState):
-    task = _get_active_task(state)
-    if not task: return {}
-    
-    final_data = _run_ephemeral_agent("MemoryWorker", task["description"], state.get("working_memory", {}))
-    return _update_state_completed(state, task["id"], final_data)
+    return _execute_worker_node(state, "MemoryWorker")
 
 def classroom_worker_node(state: AgentState):
-    task = _get_active_task(state)
-    if not task: return {}
-    
-    final_data = _run_ephemeral_agent("ClassroomWorker", task["description"], state.get("working_memory", {}))
-    return _update_state_completed(state, task["id"], final_data)
+    return _execute_worker_node(state, "ClassroomWorker")
 
 class ObsidianSubTask(BaseModel):
     id: str = Field(description="Subtask ID (e.g., 'obs_1')")
@@ -352,7 +366,7 @@ class ObsidianSubPlan(BaseModel):
     subtasks: List[ObsidianSubTask] = Field(description="Sequential list of specialized tasks to execute")
 
 def obsidian_worker_node(state: AgentState):
-    task = _get_active_task(state)
+    task = _get_active_task(state, "ObsidianWorker")
     if not task: return {}
     
     print(f"\n🧠 [Obsidian Manager] Decomposing high-level plan into specialized Obsidian sub-tasks...")
@@ -420,12 +434,13 @@ class BrowserSubPlan(BaseModel):
     subtasks: List[BrowserSubTask] = Field(description="Sequential list of browser subtasks")
 
 def browser_worker_node(state: AgentState):
-    task = _get_active_task(state)
+    task = _get_active_task(state, "BrowserWorker")
     if not task: return {}
     
-    print(f"\n🧠 [Browser Manager] Decomposing high-level plan into specialized browser sub-tasks...")
-    
-    manager_prompt = f"""You are the Browser Manager. Your job is to orchestrate a team of specialized sub-workers:
+    try:
+        print(f"\n🧠 [Browser Manager] Decomposing high-level plan into specialized browser sub-tasks...")
+        
+        manager_prompt = f"""You are the Browser Manager. Your job is to orchestrate a team of specialized sub-workers:
 - BrowserNavigator: Navigates websites, clicks interactive elements, and types inputs.
 - BrowserReader: Reads page state, scrapes content, and extracts relevant information.
 
@@ -436,57 +451,68 @@ Working Memory Context:
 
 Create a detailed sequential sub-plan to execute this goal.
 """
-    try:
-        structured_llm = llm.with_structured_output(BrowserSubPlan)
-        plan: BrowserSubPlan = structured_llm.invoke(manager_prompt)
-        print(f"  🤔 [Browser Manager Thought]: {plan.reasoning}")
-        print(f"  📋 Generated subtasks for Browser team:")
-        for st in plan.subtasks:
-            print(f"     -> [{st.assigned_worker}] {st.description}")
-    except Exception as e:
-        print(f"⚠️ Browser Manager planning failed: {e}. Falling back to default plan...")
-        plan = BrowserSubPlan(
-            reasoning="Fallback due to structured model error",
-            subtasks=[
-                BrowserSubTask(
-                    id="br_1", 
-                    assigned_worker="BrowserNavigator", 
-                    description=task["description"]
-                )
-            ]
-        )
+        try:
+            structured_llm = llm.with_structured_output(BrowserSubPlan)
+            plan: BrowserSubPlan = structured_llm.invoke(manager_prompt)
+            print(f"  🤔 [Browser Manager Thought]: {plan.reasoning}")
+            print(f"  📋 Generated subtasks for Browser team:")
+            for st in plan.subtasks:
+                print(f"     -> [{st.assigned_worker}] {st.description}")
+        except Exception as e:
+            print(f"⚠️ Browser Manager planning failed: {e}. Falling back to default plan...")
+            plan = BrowserSubPlan(
+                reasoning="Fallback due to structured model error",
+                subtasks=[
+                    BrowserSubTask(
+                        id="br_1", 
+                        assigned_worker="BrowserNavigator", 
+                        description=task["description"]
+                    )
+                ]
+            )
 
-    # Run the plan asynchronously
-    import asyncio
-    
-    async def run_plan():
-        shared_memory = dict(state.get("working_memory", {}))
-        for st in plan.subtasks:
-            print(f"\n🚀 [Browser Manager] Activating Worker: {st.assigned_worker} ({st.id})...")
-            output = await _run_async_ephemeral_agent(st.assigned_worker, st.description, shared_memory)
-            shared_memory[st.id] = output
-        return shared_memory
-
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # Run the plan asynchronously
+        import asyncio
         
-    if loop.is_running():
-        import nest_asyncio
-        nest_asyncio.apply()
-        shared_memory = loop.run_until_complete(run_plan())
-    else:
-        shared_memory = loop.run_until_complete(run_plan())
+        async def run_plan():
+            shared_memory = dict(state.get("working_memory", {}))
+            for st in plan.subtasks:
+                print(f"\n🚀 [Browser Manager] Activating Worker: {st.assigned_worker} ({st.id})...")
+                output = await _run_async_ephemeral_agent(st.assigned_worker, st.description, shared_memory)
+                shared_memory[st.id] = output
+            return shared_memory
 
-    final_result = list(shared_memory.values())[-1] if shared_memory else "No actions performed"
-    return _update_state_completed(state, task["id"], final_result)
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+        if loop.is_running():
+            import nest_asyncio
+            nest_asyncio.apply()
+            shared_memory = loop.run_until_complete(run_plan())
+        else:
+            shared_memory = loop.run_until_complete(run_plan())
+
+        final_result = list(shared_memory.values())[-1] if shared_memory else "No actions performed"
+        return _update_state_completed(state, task["id"], final_result)
+    except Exception as ex:
+        print(f"  ❌ [BrowserWorker] Task {task['id']} failed: {ex}")
+        subtasks = state.get("active_subtasks", [])
+        for st in subtasks:
+            if st["id"] == task["id"]:
+                st["status"] = "failed"
+        error_logs = state.get("error_logs") or ""
+        error_logs += f"\nWorker BrowserWorker failed on task {task['id']}: {ex}"
+        return {
+            "active_subtasks": subtasks,
+            "error_logs": error_logs
+        }
 
 def github_worker_node(state: AgentState):
-    task = _get_active_task(state)
-    if not task: return {}
-    
-    final_data = _run_ephemeral_agent("GithubWorker", task["description"], state.get("working_memory", {}))
-    return _update_state_completed(state, task["id"], final_data)
+    return _execute_worker_node(state, "GithubWorker")
+
+def misc_worker_node(state: AgentState):
+    return _execute_worker_node(state, "MiscWorker")
 

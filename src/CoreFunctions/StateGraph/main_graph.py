@@ -19,7 +19,7 @@ from src.CoreFunctions.StateGraph.workers import (
     system_worker_node, gmail_worker_node, 
     productivity_worker_node, memory_worker_node,
     classroom_worker_node, obsidian_worker_node, browser_worker_node,
-    github_worker_node
+    github_worker_node, misc_worker_node
 )
 from src.CoreFunctions.StateGraph.finalizer import output_finalizer_node
 from src.CoreFunctions.StateGraph.memory_nodes import memory_injector_node, reflection_node
@@ -45,6 +45,7 @@ def create_graph():
     # workflow.add_node("ObsidianWorker", obsidian_worker_node)
     workflow.add_node("BrowserWorker", browser_worker_node)
     workflow.add_node("GithubWorker", github_worker_node)
+    workflow.add_node("MiscWorker", misc_worker_node)
     workflow.add_node("OutputFinalizer", output_finalizer_node)
     workflow.add_node("Reflection", reflection_node)
     
@@ -77,6 +78,7 @@ def create_graph():
             # "ObsidianWorker": "ObsidianWorker",
             "BrowserWorker": "BrowserWorker",
             "GithubWorker": "GithubWorker",
+            "MiscWorker": "MiscWorker",
             "OutputFinalizer": "OutputFinalizer",
             "Orchestrator": "Orchestrator"
         }
@@ -91,6 +93,7 @@ def create_graph():
     # workflow.add_edge("ObsidianWorker", "Orchestrator")
     workflow.add_edge("BrowserWorker", "Orchestrator")
     workflow.add_edge("GithubWorker", "Orchestrator")
+    workflow.add_edge("MiscWorker", "Orchestrator")
     
     # OutputFinalizer completes the user-facing graph synchronously
     workflow.add_edge("OutputFinalizer", END)
@@ -288,8 +291,10 @@ def process_request_interactive():
                                 if st["status"] == "in_progress":
                                     task_desc = st['description']
                                     break
-                            print(f"  -> Next Node Target: {next_node} | Task: {task_desc}")
-                            visualizer.start(f"Running {next_node}", "33") # Yellow
+                            
+                            next_node_str = ", ".join(next_node) if isinstance(next_node, list) else next_node
+                            print(f"  -> Next Node Target: {next_node_str} | Task: {task_desc}")
+                            visualizer.start(f"Running {next_node_str}", "33") # Yellow
                     
                     elif node_name in ["SystemWorker", "GmailWorker", "ProductivityWorker", "MemoryWorker", "ClassroomWorker", "BrowserWorker", "GithubWorker"]:
                         visualizer.stop()

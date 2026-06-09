@@ -16,7 +16,7 @@ class SubTaskModel(BaseModel):
     description: str = Field(description="Clear instructions for the worker")
     assigned_worker: Literal[
         "SystemWorker", "GmailWorker", "ProductivityWorker", 
-        "MemoryWorker", "ClassroomWorker", "BrowserWorker", "GithubWorker"
+        "MemoryWorker", "ClassroomWorker", "BrowserWorker", "GithubWorker", "MiscWorker"
     ] = Field(
         description="The worker assigned to this task"
     )
@@ -38,6 +38,7 @@ Available workers:
 - SystemWorker: OS terminal commands, file management, scripts, system health.
 - BrowserWorker: Navigates websites, searches information, logs in, clicks elements, and automates online tasks using accessibility trees without screenshots.
 - GithubWorker: Interfaces with GitHub API to retrieve account profile details, list repositories, and track recent public events/activities.
+- MiscWorker: General-purpose worker that handles miscellaneous API integrations (such as using ytmusicapi to manage playlists or retrieve library tracks), complex calculations, custom scripts, or general utility work that does not fit into other specialized workers.
 
 RULES & WORKFLOW FOR SPECIALIZED TASKS:
 1. Break down the request into the smallest logical steps.
@@ -48,6 +49,10 @@ RULES & WORKFLOW FOR SPECIALIZED TASKS:
 4. **Browser/Web Automation Workflow**:
    - Web automation sessions (e.g. navigating to a website, searching, clicking, logging in, or playing media) MUST be kept as a single, combined subtask assigned to BrowserWorker.
    - Do NOT break a single web session into multiple sequential BrowserWorker subtasks (e.g. step 1 navigate, step 2 search, step 3 click), because the browser page state and context are lost between different worker runs. Keep them combined in one subtask description (e.g., 'Navigate to music.youtube.com, search for j-pop, and play the first result').
+5. **Media Control / Music Playback Workflow**:
+   - Any requests to control playback (play, pause, toggle, next, previous, status check) for Spotify or YouTube Music should be routed to SystemWorker. SystemWorker must run the local helper python scripts using the project's virtual environment interpreter (e.g. `.venv/bin/python3 Skills/media-control/youtube-music-control/scripts/youtube_music_control.py` or `.venv/bin/python3 Skills/media-control/spotify-playback-control/scripts/spotify_playback_control.py`) to execute these actions. Do NOT use system `python3` or try to install packages.
+6. **Miscellaneous API & Playlist Management**:
+   - Any requests to manage playlists (creating, adding songs, removing songs, listing library/favorite songs) on YouTube Music or other APIs should be routed to MiscWorker. MiscWorker can run custom background API scripts or libraries (like `ytmusicapi`) to complete these commands instantly.
 """
 
 def task_router_node(state: AgentState):
