@@ -35,6 +35,7 @@ graph TD
         N_Orch -->|Delegates next pending subtask| W_Class["🏫 ClassroomWorker Node"]
         N_Orch -->|Delegates next pending subtask| W_Mem["🧠 MemoryWorker Node"]
         N_Orch -->|Delegates next pending subtask| W_Obs["📓 ObsidianWorker Manager"]
+        N_Orch -->|Delegates next pending subtask| W_Git["🐙 GithubWorker Node"]
         N_Orch -->|Delegates next pending subtask| W_Misc["⚙️ MiscWorker Node"]
         
         %% Worker updates
@@ -44,6 +45,7 @@ graph TD
         W_Class -->|Writes tool results| N_Update
         W_Mem -->|Writes tool results| N_Update
         W_Obs -->|Writes nested team results| N_Update
+        W_Git -->|Writes tool results| N_Update
         W_Misc -->|Writes tool results| N_Update
         
         N_Update --> State
@@ -72,6 +74,7 @@ graph TD
     style W_Class fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
     style W_Mem fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
     style W_Obs fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
+    style W_Git fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
     style W_Misc fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
     style DB_JSON fill:#064e3b,stroke:#10b981,stroke-width:1px,color:#fff
     style DB_Vector fill:#064e3b,stroke:#10b981,stroke-width:1px,color:#fff
@@ -118,6 +121,7 @@ To prevent token bloat and agent confusion, each worker is pre-compiled as an in
 | **🏫 ClassroomWorker** | Google Classroom synchronization, assignments tracking, and announcements. | `list_classroom_courses`, `list_classroom_assignments`, `list_classroom_announcements`, `get_classroom_assignment_details` |
 | **🧠 MemoryWorker** | Direct key fact retention and retrieval from persistent vector storage. | `recall`, `remember` |
 | **📓 ObsidianWorker** | Orchestrates a specialized nested team to programmatically manage your knowledge base. | `create_obsidian_note`, `append_to_obsidian_note`, `search_obsidian_vault`, `get_note_backlinks`, `get_note_properties`, `update_note_properties`, `create_or_update_obsidian_canvas` |
+| **🐙 GithubWorker** | GitHub profile tracking, repository/branch exploration, code search, and file contents inspection (supporting both public & private scopes and local git fallback). | `get_github_profile`, `list_github_repos`, `get_github_recent_activity`, `list_github_commits`, `list_github_branches`, `get_github_file_content`, `search_github_code` |
 | **⚙️ MiscWorker** | Background API integrations, non-blocking automation, and library controls (e.g. YouTube Music). | `ytmusicapi` integrations, playlist management tools, background utility scripts. |
 
 > [!IMPORTANT]
@@ -178,6 +182,7 @@ AI-Personal-Assistant-Backend/
 │   │   ├── Calendar/       # Google Calendar API Client
 │   │   ├── Gmail/          # Google Gmail API Client
 │   │   ├── Classroom/      # Google Classroom API Sync Client
+│   │   ├── Github/         # GitHub API Integration (Profile, repos, commits, code search, file contents)
 │   │   ├── FileOperations/ # Protected sandboxed file operations
 │   │   ├── System/         # OS Diagnostic Diagnostics (CPU, RAM, Battery)
 │   │   ├── SystemControl/  # Shell execution and terminal automation
