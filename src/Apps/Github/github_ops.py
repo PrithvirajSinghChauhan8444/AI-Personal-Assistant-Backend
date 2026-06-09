@@ -3,7 +3,7 @@ import requests
 from dotenv import load_dotenv
 
 # Load env variables
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 config_path = os.path.join(BASE_DIR, "config", ".env")
 load_dotenv(config_path)
 
@@ -159,9 +159,9 @@ def list_github_repos(username: str = None, sort: str = "updated", count: int = 
     except Exception as e:
         return [{"error": f"Error listing repositories: {str(e)}"}]
 
-def get_github_recent_activity(username: str = None, count: int = 5) -> list:
+def get_github_recent_activity(username: str = None, count: int = 5, include_private: bool = True) -> list:
     """
-    Retrieves recent activity events for a GitHub user.
+    Retrieves recent activity events for a GitHub user (including private events if authenticated).
     """
     headers = get_headers()
     local_owner, _ = get_local_git_info()
@@ -173,7 +173,9 @@ def get_github_recent_activity(username: str = None, count: int = 5) -> list:
     if not target_username:
         return [{"error": "No GitHub username or GITHUB_TOKEN provided."}]
         
-    url = f"https://api.github.com/users/{target_username}/events/public?per_page={count}"
+    # Use /events for private events if authenticated, else /events/public
+    endpoint_suffix = "events" if (include_private and GITHUB_TOKEN) else "events/public"
+    url = f"https://api.github.com/users/{target_username}/{endpoint_suffix}?per_page={count}"
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
@@ -341,4 +343,164 @@ def list_github_branches(repo_name: str, username: str = None) -> list:
             if local_res and isinstance(local_res, list) and "error" not in local_res[0]:
                 return local_res
         return [{"error": f"Error fetching branches: {str(e)}"}]
+
+
+def get_github_file_content(repo_name: str, path: str, username: str = None, branch: str = None) -> dict:
+    """
+    Fetches the content of a file or lists a directory from a GitHub repository via the GitHub Contents API.
+    """
+    headers = get_headers()
+    local_owner, local_repo = get_local_git_info()
+    owner = username or GITHUB_USERNAME or local_owner
+    if not owner and GITHUB_TOKEN:
+        profile = get_github_profile()
+        if profile and "login" in profile:
+            owner = profile.get("login")
+        
+    if not owner:
+        return {"error": "No GitHub username/owner or GITHUB_TOKEN provided."}
+        
+    # Remove leading slash from path if present
+    clean_path = path.lstrip("/")
+    url = f"https://api.github.com/repos/{owner}/{repo_name}/contents/{clean_path}"
+    if branch:
+        url += f"?ref={branch}"
+        
+    try:
+        import base64
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if isinstance(data, list):
+                # It is a directory listing
+                items = []
+                for item in data:
+                    items.append({
+                        "name": item.get("name"),
+                        "path": item.get("path"),
+                        "type": item.get("type"),
+                        "size": item.get("size"),
+                        "html_url": item.get("html_url")
+                    })
+                return {
+                    "type": "directory",
+                    "path": clean_path,
+                    "items": items
+                }
+            elif isinstance(data, dict):
+                # It is a single file (or symlink, submodule, etc.)
+                item_type = data.get("type")
+                if item_type == "file":
+                    encoding = data.get("encoding")
+                    content_str = data.get("content", "")
+                    if encoding == "base64":
+                        try:
+                            # Remove newlines
+                            clean_content = content_str.replace("\n", "").replace("\r", "")
+                            decoded_bytes = base64.b64decode(clean_content)
+                            # Try to decode as utf-8 string
+                            try:
+                                decoded_text = decoded_bytes.decode("utf-8")
+                                return {
+                                    "type": "file",
+                                    "name": data.get("name"),
+                                    "path": data.get("path"),
+                                    "size": data.get("size"),
+                                    "encoding": "utf-8",
+                                    "content": decoded_text,
+                                    "html_url": data.get("html_url")
+                                }
+                            except UnicodeDecodeError:
+                                # Binary file
+                                return {
+                                    "type": "file",
+                                    "name": data.get("name"),
+                                    "path": data.get("path"),
+                                    "size": data.get("size"),
+                                    "encoding": "binary",
+                                    "content": "[Binary File content cannot be displayed]",
+                                    "html_url": data.get("html_url")
+                                }
+                        except Exception as e:
+                            return {"error": f"Failed to decode base64 content: {str(e)}"}
+                    else:
+                        # Return raw content if not base64
+                        return {
+                            "type": "file",
+                            "name": data.get("name"),
+                            "path": data.get("path"),
+                            "size": data.get("size"),
+                            "encoding": encoding,
+                            "content": content_str,
+                            "html_url": data.get("html_url")
+                        }
+                else:
+                    return {
+                        "type": item_type,
+                        "name": data.get("name"),
+                        "path": data.get("path"),
+                        "html_url": data.get("html_url"),
+                        "info": f"Content type is {item_type}"
+                    }
+            else:
+                return {"error": "Unexpected API response format."}
+        else:
+            return {"error": f"Failed to fetch content: Status {response.status_code} - {response.text}"}
+    except Exception as e:
+        return {"error": f"Error fetching GitHub repository contents: {str(e)}"}
+
+
+def search_github_code(query: str, username: str = None, repo_name: str = None, page: int = 1, count: int = 10) -> dict:
+    """
+    Searches for code inside GitHub repositories using the GitHub Search Code API.
+    """
+    headers = get_headers()
+    local_owner, local_repo = get_local_git_info()
+    
+    owner = username or GITHUB_USERNAME or local_owner
+    if not owner and GITHUB_TOKEN:
+        profile = get_github_profile()
+        if profile and "login" in profile:
+            owner = profile.get("login")
+        
+    # Construct the query string
+    q_parts = [query]
+    if repo_name:
+        if owner:
+            q_parts.append(f"repo:{owner}/{repo_name}")
+        else:
+            q_parts.append(f"repo:{repo_name}")
+    elif owner:
+        # Search within owner's repositories by default if query doesn't specify any repo filter
+        if "repo:" not in query and "user:" not in query and "org:" not in query:
+            q_parts.append(f"user:{owner}")
+            
+    q_str = " ".join(q_parts)
+    url = "https://api.github.com/search/code"
+    params = {
+        "q": q_str,
+        "page": page,
+        "per_page": count
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        if response.status_code == 200:
+            data = response.json()
+            items = []
+            for item in data.get("items", []):
+                items.append({
+                    "name": item.get("name"),
+                    "path": item.get("path"),
+                    "repository": item.get("repository", {}).get("full_name"),
+                    "html_url": item.get("html_url")
+                })
+            return {
+                "total_count": data.get("total_count"),
+                "items": items
+            }
+        else:
+            return {"error": f"Failed to search code: Status {response.status_code} - {response.text}"}
+    except Exception as e:
+        return {"error": f"Error searching code: {str(e)}"}
 

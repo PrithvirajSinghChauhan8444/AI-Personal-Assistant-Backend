@@ -35,6 +35,7 @@ graph TD
         N_Orch -->|Delegates next pending subtask| W_Class["🏫 ClassroomWorker Node"]
         N_Orch -->|Delegates next pending subtask| W_Mem["🧠 MemoryWorker Node"]
         N_Orch -->|Delegates next pending subtask| W_Obs["📓 ObsidianWorker Manager"]
+        N_Orch -->|Delegates next pending subtask| W_Misc["⚙️ MiscWorker Node"]
         
         %% Worker updates
         W_System -->|Writes tool results| N_Update["💾 Update State Node"]
@@ -43,6 +44,7 @@ graph TD
         W_Class -->|Writes tool results| N_Update
         W_Mem -->|Writes tool results| N_Update
         W_Obs -->|Writes nested team results| N_Update
+        W_Misc -->|Writes tool results| N_Update
         
         N_Update --> State
     end
@@ -70,6 +72,7 @@ graph TD
     style W_Class fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
     style W_Mem fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
     style W_Obs fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
+    style W_Misc fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
     style DB_JSON fill:#064e3b,stroke:#10b981,stroke-width:1px,color:#fff
     style DB_Vector fill:#064e3b,stroke:#10b981,stroke-width:1px,color:#fff
 ```
@@ -115,6 +118,7 @@ To prevent token bloat and agent confusion, each worker is pre-compiled as an in
 | **🏫 ClassroomWorker** | Google Classroom synchronization, assignments tracking, and announcements. | `list_classroom_courses`, `list_classroom_assignments`, `list_classroom_announcements`, `get_classroom_assignment_details` |
 | **🧠 MemoryWorker** | Direct key fact retention and retrieval from persistent vector storage. | `recall`, `remember` |
 | **📓 ObsidianWorker** | Orchestrates a specialized nested team to programmatically manage your knowledge base. | `create_obsidian_note`, `append_to_obsidian_note`, `search_obsidian_vault`, `get_note_backlinks`, `get_note_properties`, `update_note_properties`, `create_or_update_obsidian_canvas` |
+| **⚙️ MiscWorker** | Background API integrations, non-blocking automation, and library controls (e.g. YouTube Music). | `ytmusicapi` integrations, playlist management tools, background utility scripts. |
 
 > [!IMPORTANT]
 > **Zero-Trust Security Gateway**: Any worker calling destructive or high-risk OS operations (e.g. `run_terminal_tool`, `create_file_tool`, `launch_app_tool`) is automatically intercepted by a password verification layer (`verify_password()` in `auth_utils.py`). The system prompts a secure password verification challenge in the terminal before allowing the system level tool to execute.
@@ -146,6 +150,20 @@ graph TD
 * **🔗 ObsidianRefactorWorker**: Quality-assurance agent. Evaluates vault backlinks and parses/merges frontmatter YAML properties, ensuring no data is ever erased.
 
 * **📂 Auto-Directory Generator**: Every Obsidian tool dynamically supports tree-creation. If the note is saved as `Friends/College/Prithvi.md`, the folders are recursively generated.
+
+---
+
+### ⚙️ 7. General-Purpose Background Worker (`MiscWorker`)
+To execute API tasks that don't fit into specialized workers or would block the active browser-based interfaces:
+* **Hybrid Media Architecture**: Standard playback and media control operations are executed by browser automation skills (Playwright), while heavy media management (e.g. YouTube Music playlist updates, library modifications) is delegated to direct background APIs using `ytmusicapi`.
+* **Asynchronous Integration**: Uses locally saved browser session credentials (`config/ytmusic_headers.json`) to invoke backend operations without blocking playback UI.
+
+---
+
+### 🚦 8. Global Human-in-the-Loop (HITL) Protocol
+A unified validation system implemented across the entire agent StateGraph to handle authorization blockages:
+* **Roadblock Interception**: When any worker (including synchronous ones) encounters credentials check, authentication popups, or critical confirmation flags, it pauses the graph execution thread.
+* **Unified Request Mechanics**: Standardized under `request_human_intervention` (async) and `request_human_intervention_sync` (sync). The agent displays a description of the blocker in the terminal and waits securely in a sleep-loop until the user resolves the obstacle and confirms completion.
 
 ---
 
@@ -201,6 +219,9 @@ Create a `.env` file in the root directory:
 ```ini
 GEMINI_API_KEY=your_gemini_api_key_here
 SYSTEM_PASSWORD=your_secure_authorization_password
+
+# Redirect Agent Workspace (all file creations and terminal executions will run here)
+AGENT_WORKSPACE=/absolute/path/to/workspace_folder
 ```
 
 ### 3. Execution

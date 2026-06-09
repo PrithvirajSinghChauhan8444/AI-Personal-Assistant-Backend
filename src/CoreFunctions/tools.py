@@ -1430,17 +1430,18 @@ def list_github_repos_tool(username: str = None, sort: str = "updated", count: i
     except Exception as e:
         return f"Error listing repositories: {e}"
 
-def get_github_recent_activity_tool(username: str = None, count: int = 5) -> str:
-    """Retrieves recent public activity events for a GitHub user.
+def get_github_recent_activity_tool(username: str = None, count: int = 5, include_private: bool = True) -> str:
+    """Retrieves recent activity events (including private events if authenticated) for a GitHub user.
     
     Args:
         username (str, optional): The target GitHub username.
         count (int, optional): The number of recent events to retrieve. Defaults to 5.
+        include_private (bool, optional): Whether to include private events (requires authentication). Defaults to True.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: get_github_recent_activity_tool")
     try:
         from Apps.Github.github_ops import get_github_recent_activity
-        res = get_github_recent_activity(username, count=count)
+        res = get_github_recent_activity(username, count=count, include_private=include_private)
         return json.dumps(res, indent=2)
     except Exception as e:
         return f"Error retrieving recent activity: {e}"
@@ -1476,6 +1477,43 @@ def list_github_branches_tool(repo_name: str, username: str = None) -> str:
         return json.dumps(res, indent=2)
     except Exception as e:
         return f"Error listing branches: {e}"
+
+
+def get_github_file_content_tool(repo_name: str, path: str, username: str = None, branch: str = None) -> str:
+    """Fetches the content of a file or lists a directory from a GitHub repository via the GitHub Contents API.
+    
+    Args:
+        repo_name (str): The name of the repository.
+        path (str): The path to the file or directory in the repository (e.g. 'src/main.py' or 'docs/').
+        username (str, optional): The owner/organization of the repository. If not provided, falls back to the configured username.
+        branch (str, optional): The branch/ref name to fetch content from (e.g. 'main', 'dev').
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: get_github_file_content_tool")
+    try:
+        from Apps.Github.github_ops import get_github_file_content
+        res = get_github_file_content(repo_name, path, username=username, branch=branch)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error fetching GitHub contents: {e}"
+
+
+def search_github_code_tool(query: str, username: str = None, repo_name: str = None, page: int = 1, count: int = 10) -> str:
+    """Searches for code inside GitHub repositories using the GitHub Search Code API.
+    
+    Args:
+        query (str): The search query (e.g. 'def my_function'). Supports GitHub qualifiers like 'extension:py'.
+        username (str, optional): The owner/organization of the repository to scope search. Defaults to configured username.
+        repo_name (str, optional): Scope search to a specific repository.
+        page (int, optional): The page number for pagination. Defaults to 1.
+        count (int, optional): The number of search results to return per page. Defaults to 10.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: search_github_code_tool")
+    try:
+        from Apps.Github.github_ops import search_github_code
+        res = search_github_code(query, username=username, repo_name=repo_name, page=page, count=count)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error searching GitHub code: {e}"
 
 
 async def request_human_intervention(reason: str) -> str:
@@ -1531,6 +1569,8 @@ AVAILABLE_TOOLS = {
     "get_github_recent_activity": get_github_recent_activity_tool,
     "list_github_commits": list_github_commits_tool,
     "list_github_branches": list_github_branches_tool,
+    "get_github_file_content": get_github_file_content_tool,
+    "search_github_code": search_github_code_tool,
 
     # Browser Control
     "browser_navigate": browser_navigate,
