@@ -40,7 +40,7 @@ from src.CoreFunctions.tools import (
     browser_navigate, browser_click, browser_click_selector, browser_input, browser_input_selector, browser_go_back, browser_read_current_page, browser_read_page_content, request_human_intervention, request_human_intervention_sync,
     
     # GitHub
-    get_github_profile_tool, list_github_repos_tool, get_github_recent_activity_tool, list_github_commits_tool, list_github_branches_tool
+    get_github_profile_tool, list_github_repos_tool, get_github_recent_activity_tool, list_github_commits_tool, list_github_branches_tool, get_github_file_content_tool, search_github_code_tool
 )
 
 # ==========================================
@@ -163,6 +163,8 @@ github_tools = [
     StructuredTool.from_function(get_github_recent_activity_tool, name="get_github_recent_activity"),
     StructuredTool.from_function(list_github_commits_tool, name="list_github_commits"),
     StructuredTool.from_function(list_github_branches_tool, name="list_github_branches"),
+    StructuredTool.from_function(get_github_file_content_tool, name="get_github_file_content"),
+    StructuredTool.from_function(search_github_code_tool, name="search_github_code"),
     human_intervention_tool
 ]
 
@@ -260,7 +262,9 @@ TOOL_MAP = {
     "list_github_repos": github_tools[1],
     "get_github_recent_activity": github_tools[2],
     "list_github_commits": github_tools[3],
-    "list_github_branches": github_tools[4]
+    "list_github_branches": github_tools[4],
+    "get_github_file_content": github_tools[5],
+    "search_github_code": github_tools[6]
 }
 
 # Consolidate all for the Supervisor or Generalist
