@@ -5,8 +5,9 @@ from dotenv import load_dotenv
 # Ensure we can import from sibling modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
-# Load env from config/.env
-config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../config/.env'))
+# Load env from root .env or fallback config/.env
+root_env = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../.env'))
+config_path = root_env if os.path.exists(root_env) else os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../config/.env'))
 load_dotenv(config_path)
 
 try:

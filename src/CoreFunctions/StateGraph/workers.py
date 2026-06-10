@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import re
 from typing import List, Literal
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage
@@ -143,7 +144,6 @@ AGENT_MAP = {
     "GithubWorker": GITHUB_AGENT,
     "ObsidianNoteWorker": OBSIDIAN_NOTE_AGENT,
     "ObsidianCanvasWorker": OBSIDIAN_CANVAS_AGENT,
-    "ObsidianRefactorWorker": OBSIDIAN_REFACTOR_AGENT,
     "MiscWorker": MISC_AGENT
 }
 
@@ -153,6 +153,68 @@ def _get_active_task(state: AgentState, worker_name: str):
         if task["status"] == "in_progress" and task["assigned_worker"] == worker_name:
             return task
     return None
+
+WORKER_CATEGORY_MAP = {
+    "SystemWorker": ["system-management", "system-monitoring", "system-automation", "SystemWorker"],
+    "GmailWorker": ["communication", "GmailWorker"],
+    "ProductivityWorker": ["productivity", "ProductivityWorker"],
+    "GithubWorker": ["development", "dev-utils", "GithubWorker"],
+    "ClassroomWorker": ["academic", "education", "ClassroomWorker"],
+    "BrowserWorker": ["browser", "information-retrieval", "BrowserWorker"],
+    "BrowserNavigator": ["browser", "BrowserNavigator"],
+    "BrowserReader": ["browser", "BrowserReader"],
+    "ObsidianNoteWorker": ["obsidian", "knowledge-management", "ObsidianNoteWorker"],
+    "ObsidianCanvasWorker": ["obsidian", "ObsidianCanvasWorker"],
+    "ObsidianRefactorWorker": ["obsidian", "ObsidianRefactorWorker"],
+    "MiscWorker": ["general", "misc", "MiscWorker"]
+}
+
+def _load_worker_skills(worker_name: str) -> str:
+    """Dynamically loads and formats procedural skills matching the categories assigned to a worker."""
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    skills_dir = os.path.join(base_dir, "Skills")
+    if not os.path.exists(skills_dir) or not os.path.isdir(skills_dir):
+        return ""
+        
+    categories = WORKER_CATEGORY_MAP.get(worker_name, [worker_name])
+    skills_content = []
+    
+    for category in categories:
+        clean_category = re.sub(r'[^a-zA-Z0-9_-]', '-', category.strip().lower())
+        cat_path = os.path.join(skills_dir, clean_category)
+        if os.path.exists(cat_path) and os.path.isdir(cat_path):
+            for skill_folder in os.listdir(cat_path):
+                skill_md_path = os.path.join(cat_path, skill_folder, "SKILL.md")
+                if os.path.exists(skill_md_path):
+                    try:
+                        with open(skill_md_path, "r", encoding="utf-8") as f:
+                            content = f.read()
+                        # Clean frontmatter but extract name/description for worker context
+                        meta_match = re.search(r'^---\s*\n(.*?)\n---\s*\n', content, re.DOTALL)
+                        name = ""
+                        desc = ""
+                        if meta_match:
+                            meta_text = meta_match.group(1)
+                            name_match = re.search(r'name:\s*(.*)', meta_text)
+                            if name_match:
+                                name = name_match.group(1).strip()
+                            desc_match = re.search(r'description:\s*(.*)', meta_text)
+                            if desc_match:
+                                desc = desc_match.group(1).strip().strip('"').strip("'")
+                                
+                        content_clean = re.sub(r'^---\s*\n.*?\n---\s*\n', '', content, flags=re.DOTALL).strip()
+                        if name:
+                            header = f"## Skill: {name}"
+                            if desc:
+                                header += f" - {desc}"
+                            content_clean = f"{header}\n{content_clean}"
+                        skills_content.append(content_clean)
+                    except Exception:
+                        pass
+                        
+    if not skills_content:
+        return ""
+    return "\n\n---\n\n".join(skills_content)
 
 def _run_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict):
     """Runs a pre-compiled ReAct agent in complete isolation, returning only the final answer."""
@@ -169,6 +231,11 @@ Working Memory (Data from previous tasks):
 
 Execute the tools necessary to complete this task. Return a concise, data-rich summary of your findings or actions.
 """
+
+    # Dynamically inject worker-specific skills
+    skills_str = _load_worker_skills(worker_name)
+    if skills_str:
+        prompt += f"\n\n### Specialized Skills for {worker_name}:\nUse the following step-by-step procedures when resolving tasks in your domain:\n{skills_str}"
     
     # Try to pause the active visualizer spinner during the entire agent execution
     import builtins
@@ -223,7 +290,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
     finally:
         if vis and vis.active:
             vis.is_paused = False
-
+ 
 async def _run_async_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict):
     """Runs a pre-compiled async ReAct agent in complete isolation, returning only the final answer."""
     agent = AGENT_MAP[worker_name]
@@ -239,6 +306,11 @@ Working Memory (Data from previous tasks):
 
 Execute the tools necessary to complete this task. Return a concise, data-rich summary of your findings or actions.
 """
+
+    # Dynamically inject worker-specific skills
+    skills_str = _load_worker_skills(worker_name)
+    if skills_str:
+        prompt += f"\n\n### Specialized Skills for {worker_name}:\nUse the following step-by-step procedures when resolving tasks in your domain:\n{skills_str}"
     
     # Try to pause the active visualizer spinner during the entire agent execution
     import builtins

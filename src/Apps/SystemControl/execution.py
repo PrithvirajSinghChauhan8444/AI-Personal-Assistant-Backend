@@ -62,6 +62,15 @@ def run_terminal_command(command):
         cwd = os.path.abspath(os.path.expanduser(agent_ws))
         os.makedirs(cwd, exist_ok=True)
 
+    # Prepend virtual environment .venv/bin to PATH to enforce venv context and prevent system PEP 668 errors
+    import copy
+    sub_env = copy.deepcopy(os.environ)
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    venv_bin = os.path.join(base_dir, ".venv", "bin")
+    if os.path.exists(venv_bin):
+        sub_env["PATH"] = venv_bin + os.pathsep + sub_env.get("PATH", "")
+        sub_env["VIRTUAL_ENV"] = os.path.join(base_dir, ".venv")
+
     try:
         import sys
         process = subprocess.Popen(
@@ -71,7 +80,8 @@ def run_terminal_command(command):
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            cwd=cwd
+            cwd=cwd,
+            env=sub_env
         )
         
         output_chunks = []
@@ -111,6 +121,15 @@ def run_python_script(path):
     if agent_ws:
         cwd = os.path.abspath(os.path.expanduser(agent_ws))
         os.makedirs(cwd, exist_ok=True)
+
+    # Prepend virtual environment .venv/bin to PATH for consistency in nested script executions
+    import copy
+    sub_env = copy.deepcopy(os.environ)
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    venv_bin = os.path.join(base_dir, ".venv", "bin")
+    if os.path.exists(venv_bin):
+        sub_env["PATH"] = venv_bin + os.pathsep + sub_env.get("PATH", "")
+        sub_env["VIRTUAL_ENV"] = os.path.join(base_dir, ".venv")
     
     try:
         import sys
@@ -120,7 +139,8 @@ def run_python_script(path):
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            cwd=cwd
+            cwd=cwd,
+            env=sub_env
         )
         
         output_chunks = []

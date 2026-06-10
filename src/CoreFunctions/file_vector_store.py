@@ -293,8 +293,9 @@ def rag_qa_file(query, filepath):
         from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_core.messages import HumanMessage
         
-        # Load API keys from config/.env
-        config_env_path = os.path.join(BASE_DIR, "config", ".env")
+        # Load API keys from root .env or config/.env fallback
+        root_env_path = os.path.join(BASE_DIR, ".env")
+        config_env_path = root_env_path if os.path.exists(root_env_path) else os.path.join(BASE_DIR, "config", ".env")
         from dotenv import load_dotenv
         load_dotenv(config_env_path)
         
