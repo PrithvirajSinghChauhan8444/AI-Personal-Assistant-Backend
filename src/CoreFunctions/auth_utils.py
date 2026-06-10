@@ -122,36 +122,53 @@ def get_valid_credentials(account: str = "personal"):
 def verify_password():
     """
     Prompts the user for a password to authorize sensitive actions.
-    Reads AGENT_PASSWORD from .env, handling potential encoding issues.
+    Reads SYSTEM_PASSWORD (or AGENT_PASSWORD) from root .env or config/.env.
     """
-    config_dir = get_config_dir()
-    env_path = os.path.join(config_dir, ".env")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.dirname(os.path.dirname(current_dir))
+    
+    # Try root .env first, fallback to config/.env
+    env_paths = [
+        os.path.join(root_dir, ".env"),
+        os.path.join(root_dir, "config", ".env")
+    ]
+    
     correct_password = None
 
     # Manually load .env to handle encodings
-    if os.path.exists(env_path):
-        for encoding in ['utf-8', 'utf-16', 'utf-8-sig', 'cp1252']:
-            try:
-                with open(env_path, 'r', encoding=encoding) as f:
-                    for line in f:
-                        if line.strip().startswith("AGENT_PASSWORD="):
-                            # Extract value after '=' and strip quotes/whitespace
-                            correct_password = line.split("=", 1)[1].strip().strip("'").strip('"')
-                            break # Found it
-                if correct_password is not None:
-                    break # Stop trying encodings if we found the key
-            except UnicodeDecodeError:
-                continue
-            except Exception:
-                continue
+    for env_path in env_paths:
+        if os.path.exists(env_path):
+            for encoding in ['utf-8', 'utf-16', 'utf-8-sig', 'cp1252']:
+                try:
+                    with open(env_path, 'r', encoding=encoding) as f:
+                        for line in f:
+                            stripped = line.strip()
+                            if stripped.startswith("SYSTEM_PASSWORD="):
+                                correct_password = stripped.split("=", 1)[1].strip().strip("'").strip('"')
+                                break
+                            elif stripped.startswith("AGENT_PASSWORD="):
+                                correct_password = stripped.split("=", 1)[1].strip().strip("'").strip('"')
+                                break
+                    if correct_password is not None:
+                        break # Stop trying encodings if we found the key
+                except UnicodeDecodeError:
+                    continue
+                except Exception:
+                    continue
+            if correct_password is not None:
+                break # Stop searching other env paths if found
 
     if not correct_password:
         # Fallback to standard load if manual failed (or if key wasn't found)
-        load_dotenv(env_path)
-        correct_password = os.getenv("AGENT_PASSWORD")
+        for env_path in env_paths:
+            if os.path.exists(env_path):
+                load_dotenv(env_path)
+                correct_password = os.getenv("SYSTEM_PASSWORD") or os.getenv("AGENT_PASSWORD")
+                if correct_password:
+                    break
 
     if not correct_password:
-        print("⚠️ Warning: AGENT_PASSWORD not set in .env. Allowing action (Unsafe).")
+        print("⚠️ Warning: SYSTEM_PASSWORD not set in .env. Allowing action (Unsafe).")
         return True
 
     try:

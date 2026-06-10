@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 
 # Load env variables
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-config_path = os.path.join(BASE_DIR, "config", ".env")
+root_env_path = os.path.join(BASE_DIR, ".env")
+config_path = root_env_path if os.path.exists(root_env_path) else os.path.join(BASE_DIR, "config", ".env")
 load_dotenv(config_path)
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
