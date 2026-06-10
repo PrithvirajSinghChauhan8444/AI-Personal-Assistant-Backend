@@ -128,7 +128,7 @@ OBSIDIAN_NOTE_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTE
 OBSIDIAN_CANVAS_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTEM_PROMPT_OBSIDIAN_CANVAS)
 OBSIDIAN_REFACTOR_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTEM_PROMPT_OBSIDIAN_REFACTOR)
 
-GITHUB_AGENT = create_react_agent(llm, github_tools, prompt="You are GithubWorker. You retrieve profile details, list repositories, list repository branches, check repository commit history, and get recent public activity from GitHub. Unless the user explicitly specifies a different username, you MUST default to searching/listing repositories under the authenticated user account first (which checks both public and private repositories)." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION)
+GITHUB_AGENT = create_react_agent(llm, github_tools, prompt="You are GithubWorker. You retrieve profile details, list repositories, list repository branches, check repository commit history, retrieve recent public and private activity/events, inspect repository file contents and directories, and search code across repositories. Unless the user explicitly specifies a different username, you MUST default to searching/listing repositories/code under the authenticated user account first (which checks both public and private repositories)." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION)
 MISC_AGENT = create_react_agent(llm, misc_tools, prompt=SYSTEM_PROMPT_MISC)
 
 AGENT_MAP = {
