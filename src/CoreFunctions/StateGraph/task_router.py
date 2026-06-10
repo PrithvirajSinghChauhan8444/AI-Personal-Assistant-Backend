@@ -37,7 +37,7 @@ Available workers:
 - MemoryWorker: Long-term memory storage and retrieval.
 - SystemWorker: OS terminal commands, file management, scripts, system health.
 - BrowserWorker: Navigates websites, searches information, logs in, clicks elements, and automates online tasks using accessibility trees without screenshots.
-- GithubWorker: Interfaces with GitHub API to retrieve account profile details, list repositories, and track recent public events/activities.
+- GithubWorker: Interfaces with GitHub API to retrieve account profile details, list repositories, track recent public and private events/activity, inspect repository file contents and directories, and search code across repositories.
 - MiscWorker: General-purpose worker that handles miscellaneous API integrations (such as using ytmusicapi to manage playlists or retrieve library tracks), complex calculations, custom scripts, or general utility work that does not fit into other specialized workers.
 
 RULES & WORKFLOW FOR SPECIALIZED TASKS:
