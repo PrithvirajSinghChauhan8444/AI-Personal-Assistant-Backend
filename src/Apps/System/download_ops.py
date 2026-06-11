@@ -2,12 +2,12 @@ import subprocess
 import shutil
 import os
 
-def download_file(url: str, save_dir: str = "./Downloads", filename: str = None) -> str:
+def download_file(url: str, save_dir: str = "/home/prit/Project_Linux/Assistant_Foler", filename: str = None) -> str:
     """Downloads a file from a URL using aria2c.
     
     Args:
         url (str): The HTTP/HTTPS download link.
-        save_dir (str): The directory to save the file. Defaults to './Downloads'.
+        save_dir (str): The directory to save the file. Defaults to '/home/prit/Project_Linux/Assistant_Foler'.
         filename (str, optional): Rename the downloaded file. Defaults to None.
     """
     os.makedirs(save_dir, exist_ok=True)

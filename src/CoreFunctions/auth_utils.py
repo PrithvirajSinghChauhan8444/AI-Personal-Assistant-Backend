@@ -1,4 +1,8 @@
 import os
+import json
+import base64
+import hashlib
+from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -39,6 +43,77 @@ def get_config_dir():
     
     return config_dir
 
+def get_encryption_key():
+    """
+    Retrieves or derives a 32-byte url-safe base64-encoded key for Fernet.
+    Checks TOKEN_ENCRYPTION_KEY env var, then falls back to deriving from SYSTEM_PASSWORD/AGENT_PASSWORD.
+    """
+    key_str = os.getenv("TOKEN_ENCRYPTION_KEY")
+    if not key_str:
+        # Fallback to deriving from password (or a default if neither password nor key is configured)
+        sys_pw = os.getenv("SYSTEM_PASSWORD") or os.getenv("AGENT_PASSWORD") or "default_secret_fallback_password"
+        key_bytes = hashlib.sha256(sys_pw.encode('utf-8')).digest()
+        key_str = base64.urlsafe_b64encode(key_bytes).decode('utf-8')
+    else:
+        # Generate a deterministic 32-byte key from the user-provided string
+        key_bytes = hashlib.sha256(key_str.encode('utf-8')).digest()
+        key_str = base64.urlsafe_b64encode(key_bytes).decode('utf-8')
+    return key_str.encode('utf-8')
+
+def load_encrypted_json(filepath):
+    """
+    Loads and decrypts a JSON file. Automatically handles unencrypted/plain JSON
+    (e.g., legacy token files) by loading and writing it back encrypted.
+    """
+    if not os.path.exists(filepath):
+        return None
+    
+    try:
+        with open(filepath, 'rb') as f:
+            content = f.read().strip()
+        
+        if not content:
+            return None
+            
+        # Handle backward compatibility: Check if it's plaintext JSON
+        if content.startswith(b'{'):
+            try:
+                data = json.loads(content.decode('utf-8'))
+                # Re-save as encrypted immediately
+                save_encrypted_json(filepath, data)
+                return data
+            except Exception as e:
+                print(f"❌ Failed to parse plain JSON in legacy file: {e}")
+                return None
+        
+        # Decrypt using Fernet
+        key = get_encryption_key()
+        fernet = Fernet(key)
+        decrypted = fernet.decrypt(content)
+        return json.loads(decrypted.decode('utf-8'))
+    except Exception as e:
+        print(f"❌ Decryption failed for {filepath}: {e}")
+        return None
+
+def save_encrypted_json(filepath, data):
+    """
+    Encrypts and saves a dictionary as a file, setting restricted permissions (owner read/write only).
+    """
+    try:
+        key = get_encryption_key()
+        fernet = Fernet(key)
+        plain_text = json.dumps(data).encode('utf-8')
+        encrypted = fernet.encrypt(plain_text)
+        with open(filepath, 'wb') as f:
+            f.write(encrypted)
+        try:
+            os.chmod(filepath, 0o600)
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"❌ Failed to save encrypted JSON to {filepath}: {e}")
+        raise e
+
 def get_valid_credentials(account: str = "personal"):
     """
     The Master Auth Function.
@@ -66,7 +141,11 @@ def get_valid_credentials(account: str = "personal"):
     # --- STEP 1: LOAD EXISTING TOKEN ---
     if os.path.exists(token_path):
         try:
-            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+            token_data = load_encrypted_json(token_path)
+            if token_data:
+                creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+            else:
+                creds = None
         except Exception as e:
             print(f"❌ REAL ERROR LOADING TOKEN: {type(e).__name__}: {e}") # <--- This reveals the truth
             creds = None
@@ -97,7 +176,7 @@ def get_valid_credentials(account: str = "personal"):
                     creds = flow.run_local_server(
                         port=9915,
                         access_type='offline', # Ask for offline access (refresh token)
-                    prompt='consent'       # Force the consent screen to ensure we get it
+                        prompt='consent'       # Force the consent screen to ensure we get it
                     )
                 except Exception:
                     print("⚠️ Port 8080 blocked. Trying random port (Check console for Redirect Mismatch)...")
@@ -108,11 +187,11 @@ def get_valid_credentials(account: str = "personal"):
 
         # --- STEP 4: SAVE THE NEW/REFRESHED TOKEN ---
         try:
-            with open(token_path, 'w') as token:
-                token.write(creds.to_json())
-            print(f"✅ Credentials saved to: {token_path}")
+            token_data = json.loads(creds.to_json())
+            save_encrypted_json(token_path, token_data)
+            print(f"✅ Credentials saved securely (encrypted) to: {token_path}")
         except Exception as e:
-            print(f"⚠️ Could not save token (Permission error?): {e}")
+            print(f"⚠️ Could not save token: {e}")
 
     return creds
 
@@ -168,8 +247,8 @@ def verify_password():
                     break
 
     if not correct_password:
-        print("⚠️ Warning: SYSTEM_PASSWORD not set in .env. Allowing action (Unsafe).")
-        return True
+        print("❌ Critical Security Block: SYSTEM_PASSWORD is not set in .env. Protected operations are denied.")
+        return False
 
     try:
         user_input = input("🔒 Enter Password to authorize action: ").strip()
