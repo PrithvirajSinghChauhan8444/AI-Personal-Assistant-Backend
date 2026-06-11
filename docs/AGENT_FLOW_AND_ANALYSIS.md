@@ -60,7 +60,7 @@ A command is submitted (e.g. *"Get system stats and save to report.txt"*).
   # Limit to last 10 messages to protect the context window
   trimmed_history = user_history[-10:] if user_history else []
   ```
-* **Interactive Plan Callback**: Rather than auto-approving plans in `agent_logic.py`, the REST API should save the generated plan in the state as "pending" and return a `401 Approval Required` JSON payload to the React frontend. The frontend then prompts the user and hits a `/api/chat/approve` endpoint, allowing secure human-in-the-loop execution via REST!
+* **Interactive Plan Callback**: Rather than auto-approving plans in `agent_logic.py`, the REST API should save the generated plan in the state as "pending" and return a `401 Approval Required` JSON payload. The client application then prompts the user and hits a `/api/chat/approve` endpoint, allowing secure human-in-the-loop execution via REST!
 
 ---
 

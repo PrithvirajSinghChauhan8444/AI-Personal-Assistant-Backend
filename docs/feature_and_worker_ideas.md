@@ -20,7 +20,7 @@ To expand the capabilities of your AI Personal Assistant under the decoupled loc
 * **Capabilities**:
   - **Container Watchdog**: Monitors running Docker containers. If a container crashes, it automatically attempts a restart and logs the stack trace.
   - **Network Device Scanner**: Periodically runs network scans (e.g., via `nmap` or `arp-scan`). If an unrecognized device connects to your Wi-Fi network, it pushes an urgent desktop notification.
-  - **Server Status Checker**: Pings your local development ports (e.g., React frontend on 3000, Flask on 5000) to ensure they are healthy.
+  - **Server Status Checker**: Pings your local development ports (e.g., Flask server on 5000) to ensure they are healthy.
 
 ---
 
