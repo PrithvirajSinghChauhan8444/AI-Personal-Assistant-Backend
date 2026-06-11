@@ -85,9 +85,124 @@ def test_scheduler():
         # Restore original tasks
         save_tasks(existing)
 
+def test_token_encryption():
+    print("\n🔒 Testing Token Encryption & Decryption...")
+    from CoreFunctions.auth_utils import load_encrypted_json, save_encrypted_json
+    import tempfile
+    
+    # Create a temporary file path
+    temp_dir = tempfile.mkdtemp()
+    test_path = os.path.join(temp_dir, "test_token.json")
+    
+    test_data = {
+        "access_token": "secret_access_token_123",
+        "refresh_token": "secret_refresh_token_456",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "client_id": "client_id_789"
+    }
+    
+    try:
+        # Test 1: Write raw json first to test backward compatibility migration
+        import json
+        with open(test_path, 'w') as f:
+            json.dump(test_data, f)
+            
+        print("  - Created legacy unencrypted token file.")
+        
+        # Test 2: Load the file (should transparently read plaintext, then save encrypted)
+        loaded_data = load_encrypted_json(test_path)
+        assert loaded_data == test_data, f"Legacy data mismatch! Expected: {test_data}, Loaded: {loaded_data}"
+        print("  - Successfully read legacy plaintext token.")
+        
+        # Verify it was re-saved encrypted (starts with non-{ bytes)
+        with open(test_path, 'rb') as f:
+            encrypted_content = f.read()
+        assert not encrypted_content.startswith(b'{'), "Token file was not encrypted automatically!"
+        print("  - Verified token was automatically upgraded to encrypted format.")
+        
+        # Test 3: Load the newly encrypted file
+        loaded_encrypted = load_encrypted_json(test_path)
+        assert loaded_encrypted == test_data, f"Encrypted load mismatch! Expected: {test_data}, Loaded: {loaded_encrypted}"
+        print("  - Successfully decrypted and loaded encrypted token file.")
+        
+        # Test 4: Save directly using save_encrypted_json
+        new_data = {"updated_key": "new_secret_val"}
+        save_encrypted_json(test_path, new_data)
+        loaded_new = load_encrypted_json(test_path)
+        assert loaded_new == new_data, f"Saved encrypted data mismatch! Expected: {new_data}, Loaded: {loaded_new}"
+        print("  - Successfully wrote and read encrypted token using save_encrypted_json.")
+        
+        # Verify permissions (if Unix)
+        if os.name != 'nt':
+            mode = os.stat(test_path).st_mode & 0o777
+            assert mode == 0o600, f"Token file permission is not secure! Expected 0600 (octal), got {oct(mode)}"
+            print("  - Verified secure file permissions (0600) on Linux.")
+            
+        print("  ✅ Token Encryption test passed.")
+    finally:
+        if os.path.exists(test_path):
+            os.remove(test_path)
+        os.rmdir(temp_dir)
+
+def test_update_skill():
+    print("\n🛠️ Testing Skill Update Capability...")
+    from unittest.mock import patch
+    from CoreFunctions.tools import update_skill_tool
+    import shutil
+    
+    # We will mock verify_password to return True for testing
+    with patch('CoreFunctions.tools.verify_password', return_value=True):
+        skill_name = "test-temp-skill"
+        category = "general"
+        description = "This is a temporary test skill."
+        procedure = "1. Step one\n2. Step two"
+        script_code = "print('hello from temp script')"
+        script_filename = "temp_run.py"
+        
+        try:
+            # 1. Update/create the skill
+            res = update_skill_tool(
+                skill_name=skill_name,
+                description=description,
+                category=category,
+                procedure=procedure,
+                script_code=script_code,
+                script_filename=script_filename
+            )
+            print("  Update result:", res)
+            assert "Successfully updated skill" in res, f"Unexpected update response: {res}"
+            
+            # 2. Verify files exist
+            base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+            skill_folder = os.path.join(base_dir, "Skills", "general", skill_name)
+            skill_md_path = os.path.join(skill_folder, "SKILL.md")
+            script_path = os.path.join(skill_folder, "scripts", script_filename)
+            
+            assert os.path.exists(skill_md_path), f"SKILL.md not found at {skill_md_path}"
+            assert os.path.exists(script_path), f"Script not found at {script_path}"
+            
+            with open(skill_md_path, 'r', encoding='utf-8') as f:
+                md_content = f.read()
+            assert description in md_content, "Skill description not written to metadata!"
+            assert "Step one" in md_content, "Skill procedure not written to file!"
+            
+            with open(script_path, 'r', encoding='utf-8') as f:
+                script_content = f.read()
+            assert script_code in script_content, "Automation script code mismatch!"
+            
+            print("  ✅ Skill Update test passed.")
+        finally:
+            # Clean up the test skill folder
+            base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+            skill_folder = os.path.join(base_dir, "Skills", "general", skill_name)
+            if os.path.exists(skill_folder):
+                shutil.rmtree(skill_folder)
+
 if __name__ == "__main__":
     print("=== Starting Integration Tests ===")
     test_clipboard()
     test_downloader()
     test_scheduler()
+    test_token_encryption()
+    test_update_skill()
     print("\n=== All Integration Tests Completed successfully ===")

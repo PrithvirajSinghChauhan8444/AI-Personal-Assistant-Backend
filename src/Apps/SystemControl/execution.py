@@ -1,9 +1,9 @@
-
 import subprocess
 import os
 import json
 import sys
 import platform
+import shlex
 from dotenv import load_dotenv
 from CoreFunctions.security_utils import is_path_safe, is_command_safe
 
@@ -51,7 +51,7 @@ def resolve_path_alias(path_or_alias):
 
 
 def run_terminal_command(command):
-    """Executes a shell command with live real-time output streaming. Protected by safety checks."""
+    """Executes a terminal command with live real-time output streaming. Protected by safety checks."""
     if not is_command_safe(command):
         return f"❌ Security Violation: Terminal command execution blocked (contains prohibited command/pattern)."
 
@@ -72,10 +72,10 @@ def run_terminal_command(command):
         sub_env["VIRTUAL_ENV"] = os.path.join(base_dir, ".venv")
 
     try:
-        import sys
+        args = shlex.split(command)
         process = subprocess.Popen(
-            command,
-            shell=True,
+            args,
+            shell=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

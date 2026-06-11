@@ -31,10 +31,16 @@ def _save(path, data):
 # -------------------------
 # STORE MEMORY
 # -------------------------
+import re
+
 def store_memory(category, key, value):
     """
     category: current | user | past
     """
+    # Validate the memory key format to prevent JSON property injection or path traversals
+    if not isinstance(key, str) or not re.match(r"^[a-zA-Z0-9_\-]+$", key):
+        raise ValueError("Invalid memory key: only alphanumeric characters, underscores, and dashes are allowed.")
+
     # Normalize category mapping to prevent LLM parameter hallucinations from crashing the tool
     category_str = str(category).lower()
     if category_str not in FILES:
@@ -57,8 +63,14 @@ def store_memory(category, key, value):
                     return f"Stored {key} in {category} memory (already exists)."
             
     data = _load(FILES[category])
+    
+    # Strip HTML tags/scripts from value as a sanitization guard
+    sanitized_value = value
+    if isinstance(value, str):
+        sanitized_value = re.sub(r"<[^>]*>", "", value).strip()
+        
     data[key] = {
-        "value": value,
+        "value": sanitized_value,
         "timestamp": datetime.now().isoformat()
     }
     _save(FILES[category], data)

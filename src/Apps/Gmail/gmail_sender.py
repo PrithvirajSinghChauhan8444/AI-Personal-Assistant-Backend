@@ -2,22 +2,16 @@ import os
 import base64
 from email.mime.text import MIMEText
 from googleapiclient.discovery import build
-from google.oauth2.credentials import Credentials
-from CoreFunctions.path_utils import get_config_path
+from CoreFunctions.auth_utils import get_valid_credentials
 
 def get_gmail_service():
     """Authenticates and returns the Gmail service object."""
-    token_path = get_config_path('token.json')
-    if not os.path.exists(token_path):
-        raise Exception("token.json not found. Please authenticate first.")
-    
-    creds = Credentials.from_authorized_user_file(token_path, [
-        'https://www.googleapis.com/auth/gmail.send',
-        'https://www.googleapis.com/auth/gmail.readonly',
-        'https://www.googleapis.com/auth/calendar'
-    ])
+    creds = get_valid_credentials("personal")
+    if not creds:
+        raise Exception("Google credentials could not be loaded or authorized.")
     service = build('gmail', 'v1', credentials=creds)
     return service
+
 
 def send_email(to_address, subject, body_text):
     """

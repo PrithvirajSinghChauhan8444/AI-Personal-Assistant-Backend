@@ -1,5 +1,6 @@
 import json
 import os
+from typing import List, Dict, Any
 try:
     import requests
 except ImportError:
@@ -915,7 +916,7 @@ def update_note_properties(filename: str, properties: dict, folder: str = "") ->
     except Exception as e:
         return f"Error updating properties: {e}"
 
-def create_or_update_obsidian_canvas(canvas_name: str, nodes: list, edges: list = None, folder: str = "") -> str:
+def create_or_update_obsidian_canvas(canvas_name: str, nodes: List[dict], edges: List[dict] = None, folder: str = "") -> str:
     """Creates or updates an Obsidian Canvas (.canvas) infinite whiteboard.
 
     Args:
@@ -1574,7 +1575,7 @@ def update_skill_tool(
     skill_name: str,
     description: str = None,
     category: str = None,
-    tags: list = None,
+    tags: List[str] = None,
     procedure: str = None,
     script_code: str = None,
     script_filename: str = None
@@ -1785,58 +1786,58 @@ def paste_from_clipboard_tool() -> str:
     """Retrieves and returns the text currently stored in the system clipboard."""
     return _paste_clip()
 
-def download_url_tool(url: str, save_dir: str = "./Downloads", filename: str = None) -> str:
+def download_url_tool(url: str, save_dir: str = "/home/prit/Project_Linux/Assistant_Foler", filename: str = None) -> str:
     """Downloads a file from a URL to the local system using aria2c.
     
     Args:
         url (str): The HTTP/HTTPS download link.
-        save_dir (str): The directory to save the file. Defaults to './Downloads'.
+        save_dir (str): The directory to save the file. Defaults to '/home/prit/Project_Linux/Assistant_Foler'.
         filename (str, optional): The filename to save the file as.
     """
     return _download_url(url, save_dir, filename)
 
-def download_email_attachment_tool(email_id: str, attachment_id: str, filename: str, save_dir: str = "./Downloads", account: str = "personal") -> str:
+def download_email_attachment_tool(email_id: str, attachment_id: str, filename: str, save_dir: str = "/home/prit/Project_Linux/Assistant_Foler", account: str = "personal") -> str:
     """Downloads an attachment from a specific Gmail message.
     
     Args:
         email_id (str): The unique message ID of the email.
         attachment_id (str): The unique ID of the attachment (found in email details).
         filename (str): The name to save the file as.
-        save_dir (str): Local directory path to save the attachment. Defaults to './Downloads'.
+        save_dir (str): Local directory path to save the attachment. Defaults to '/home/prit/Project_Linux/Assistant_Foler'.
         account (str): The Google account ('personal' or 'college'). Defaults to 'personal'.
     """
     return _download_gmail_att(email_id, attachment_id, filename, save_dir, account)
 
-def send_gmail_with_attachment_tool(to: str, subject: str, body: str, attachment_paths: list, account: str = "personal") -> str:
+def send_gmail_with_attachment_tool(to: str, subject: str, body: str, attachment_paths: List[str], account: str = "personal") -> str:
     """Sends an email with one or more local file attachments from a specific Google account.
     
     Args:
         to (str): Recipient email address.
         subject (str): Subject line of the email.
         body (str): Plain-text body of the email.
-        attachment_paths (list): A list of local file paths to attach (e.g. ['/path/to/report.pdf']).
+        attachment_paths (List[str]): A list of local file paths to attach (e.g. ['/path/to/report.pdf']).
         account (str): The Google account ('personal' or 'college'). Defaults to 'personal'.
     """
     return _send_gmail_att(to, subject, body, attachment_paths, account)
 
-def download_classroom_materials_tool(course_id: str, coursework_id: str, save_dir: str = "./Downloads", account: str = "personal") -> str:
+def download_classroom_materials_tool(course_id: str, coursework_id: str, save_dir: str = "/home/prit/Project_Linux/Assistant_Foler", account: str = "personal") -> str:
     """Downloads all attachments/materials associated with a Google Classroom assignment.
     
     Args:
         course_id (str): The Classroom course ID.
         coursework_id (str): The coursework (assignment) ID.
-        save_dir (str): Local directory to save materials. Defaults to './Downloads'.
+        save_dir (str): Local directory to save materials. Defaults to '/home/prit/Project_Linux/Assistant_Foler'.
         account (str): The Google account ('personal' or 'college'). Defaults to 'personal'.
     """
     return _download_class_mat(course_id, coursework_id, save_dir, account)
 
-def submit_classroom_assignment_tool(course_id: str, coursework_id: str, file_paths: list, account: str = "personal") -> str:
+def submit_classroom_assignment_tool(course_id: str, coursework_id: str, file_paths: List[str], account: str = "personal") -> str:
     """Uploads local files to Google Drive, attaches them to a Google Classroom coursework submission, and turns it in.
     
     Args:
         course_id (str): The Classroom course ID.
         coursework_id (str): The coursework (assignment) ID.
-        file_paths (list): A list of local file paths to upload and submit.
+        file_paths (List[str]): A list of local file paths to upload and submit.
         account (str): The Google account ('personal' or 'college'). Defaults to 'personal'.
     """
     return _submit_class_assign(course_id, coursework_id, file_paths, account)
