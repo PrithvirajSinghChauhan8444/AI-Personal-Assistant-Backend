@@ -95,6 +95,26 @@ def search_gmail_emails(query: str, max_results: int = 10, page_token: str = Non
         print(f"Error searching emails for {account}: {e}")
         return {"error": str(e)}
 
+def get_attachments_meta(payload, attachments=None):
+    """Recursively scans payload parts to extract attachment metadata."""
+    if attachments is None:
+        attachments = []
+    if 'parts' in payload:
+        for part in payload['parts']:
+            get_attachments_meta(part, attachments)
+    else:
+        filename = payload.get('filename')
+        body = payload.get('body', {})
+        attachment_id = body.get('attachmentId')
+        if filename and attachment_id:
+            attachments.append({
+                "attachmentId": attachment_id,
+                "filename": filename,
+                "mimeType": payload.get('mimeType'),
+                "size": body.get('size')
+            })
+    return attachments
+
 def read_gmail_email(email_id: str, account: str = "personal") -> dict:
     """
     Retrieve the full detailed contents of a specific email, including the complete body.
@@ -117,6 +137,8 @@ def read_gmail_email(email_id: str, account: str = "personal") -> dict:
         if not body:
             body = msg_data.get('snippet', '(No Body Content)')
 
+        attachments = get_attachments_meta(msg_data.get('payload', {}))
+
         return {
             "id": email_id,
             "sender": clean_sender(sender),
@@ -124,7 +146,8 @@ def read_gmail_email(email_id: str, account: str = "personal") -> dict:
             "subject": subject,
             "date": date,
             "body": body,
-            "threadId": msg_data.get('threadId', '')
+            "threadId": msg_data.get('threadId', ''),
+            "attachments": attachments
         }
     except Exception as e:
         print(f"Error reading email {email_id} for {account}: {e}")

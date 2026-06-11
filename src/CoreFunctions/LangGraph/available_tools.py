@@ -39,8 +39,13 @@ from src.CoreFunctions.tools import (
     # Browser Control
     browser_navigate, browser_click, browser_click_selector, browser_input, browser_input_selector, browser_go_back, browser_read_current_page, browser_read_page_content, request_human_intervention, request_human_intervention_sync,
     
-    # GitHub
-    get_github_profile_tool, list_github_repos_tool, get_github_recent_activity_tool, list_github_commits_tool, list_github_branches_tool, get_github_file_content_tool, search_github_code_tool
+    get_github_profile_tool, list_github_repos_tool, get_github_recent_activity_tool, list_github_commits_tool, list_github_branches_tool, get_github_file_content_tool, search_github_code_tool,
+    # New Tools
+    copy_to_clipboard_tool, paste_from_clipboard_tool, download_url_tool,
+    download_email_attachment_tool, send_gmail_with_attachment_tool,
+    download_classroom_materials_tool, submit_classroom_assignment_tool,
+    schedule_delayed_task_tool, schedule_task_at_time_tool,
+    list_scheduled_tasks_tool, cancel_scheduled_task_tool
 )
 
 # ==========================================
@@ -71,6 +76,8 @@ gmail_tools = [
     StructuredTool.from_function(trash_gmail_msg),
     StructuredTool.from_function(mark_gmail_read),
     StructuredTool.from_function(reply_to_gmail),
+    StructuredTool.from_function(download_email_attachment_tool),
+    StructuredTool.from_function(send_gmail_with_attachment_tool),
     human_intervention_tool
 ]
 
@@ -89,6 +96,8 @@ classroom_tools = [
     StructuredTool.from_function(fetch_classroom_assignments),
     StructuredTool.from_function(fetch_classroom_announcements),
     StructuredTool.from_function(fetch_classroom_assignment_details),
+    StructuredTool.from_function(download_classroom_materials_tool),
+    StructuredTool.from_function(submit_classroom_assignment_tool),
     human_intervention_tool
 ]
 
@@ -129,6 +138,13 @@ system_control_tools = [
     StructuredTool.from_function(terminate_process_tool),
     StructuredTool.from_function(lock_desktop_screen),
     StructuredTool.from_function(suspend_desktop_system),
+    StructuredTool.from_function(copy_to_clipboard_tool),
+    StructuredTool.from_function(paste_from_clipboard_tool),
+    StructuredTool.from_function(download_url_tool),
+    StructuredTool.from_function(schedule_delayed_task_tool),
+    StructuredTool.from_function(schedule_task_at_time_tool),
+    StructuredTool.from_function(list_scheduled_tasks_tool),
+    StructuredTool.from_function(cancel_scheduled_task_tool),
     human_intervention_tool
 ]
 

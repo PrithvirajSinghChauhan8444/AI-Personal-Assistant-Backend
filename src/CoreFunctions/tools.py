@@ -20,6 +20,11 @@ try:
     # New Imports
     from Apps.FileOperations.file_manager import write_file as _write_file, read_file, list_files, create_directory as _create_dir, save_python_code as _save_code
     from Apps.SystemControl.execution import run_terminal_command as _run_term, run_python_script as _run_py, launch_app as _launch
+    from Apps.System.clipboard_ops import copy_to_clipboard as _copy_clip, paste_from_clipboard as _paste_clip
+    from Apps.System.download_ops import download_file as _download_url
+    from Apps.Gmail.gmail_file_ops import download_gmail_attachment as _download_gmail_att, send_gmail_with_attachment as _send_gmail_att
+    from Apps.Classroom.classroom_file_ops import download_classroom_materials as _download_class_mat, submit_classroom_assignment as _submit_class_assign
+    from Apps.Automation.scheduler_ops import schedule_delayed_task as _sched_delay, schedule_task_at_time as _sched_at, list_scheduled_tasks as _sched_list, cancel_scheduled_task as _sched_cancel
 except ImportError as e:
     print(f"⚠️ Warning: Some modules could not be imported. {e}")
 from CoreFunctions.memory import store_memory, fetch_memory
@@ -1768,6 +1773,105 @@ metadata:
         return f"❌ Error updating skill: {e}"
 
 
+def copy_to_clipboard_tool(text: str) -> str:
+    """Copies specified text to the system clipboard.
+    
+    Args:
+        text (str): The text content to copy.
+    """
+    return _copy_clip(text)
+
+def paste_from_clipboard_tool() -> str:
+    """Retrieves and returns the text currently stored in the system clipboard."""
+    return _paste_clip()
+
+def download_url_tool(url: str, save_dir: str = "./Downloads", filename: str = None) -> str:
+    """Downloads a file from a URL to the local system using aria2c.
+    
+    Args:
+        url (str): The HTTP/HTTPS download link.
+        save_dir (str): The directory to save the file. Defaults to './Downloads'.
+        filename (str, optional): The filename to save the file as.
+    """
+    return _download_url(url, save_dir, filename)
+
+def download_email_attachment_tool(email_id: str, attachment_id: str, filename: str, save_dir: str = "./Downloads", account: str = "personal") -> str:
+    """Downloads an attachment from a specific Gmail message.
+    
+    Args:
+        email_id (str): The unique message ID of the email.
+        attachment_id (str): The unique ID of the attachment (found in email details).
+        filename (str): The name to save the file as.
+        save_dir (str): Local directory path to save the attachment. Defaults to './Downloads'.
+        account (str): The Google account ('personal' or 'college'). Defaults to 'personal'.
+    """
+    return _download_gmail_att(email_id, attachment_id, filename, save_dir, account)
+
+def send_gmail_with_attachment_tool(to: str, subject: str, body: str, attachment_paths: list, account: str = "personal") -> str:
+    """Sends an email with one or more local file attachments from a specific Google account.
+    
+    Args:
+        to (str): Recipient email address.
+        subject (str): Subject line of the email.
+        body (str): Plain-text body of the email.
+        attachment_paths (list): A list of local file paths to attach (e.g. ['/path/to/report.pdf']).
+        account (str): The Google account ('personal' or 'college'). Defaults to 'personal'.
+    """
+    return _send_gmail_att(to, subject, body, attachment_paths, account)
+
+def download_classroom_materials_tool(course_id: str, coursework_id: str, save_dir: str = "./Downloads", account: str = "personal") -> str:
+    """Downloads all attachments/materials associated with a Google Classroom assignment.
+    
+    Args:
+        course_id (str): The Classroom course ID.
+        coursework_id (str): The coursework (assignment) ID.
+        save_dir (str): Local directory to save materials. Defaults to './Downloads'.
+        account (str): The Google account ('personal' or 'college'). Defaults to 'personal'.
+    """
+    return _download_class_mat(course_id, coursework_id, save_dir, account)
+
+def submit_classroom_assignment_tool(course_id: str, coursework_id: str, file_paths: list, account: str = "personal") -> str:
+    """Uploads local files to Google Drive, attaches them to a Google Classroom coursework submission, and turns it in.
+    
+    Args:
+        course_id (str): The Classroom course ID.
+        coursework_id (str): The coursework (assignment) ID.
+        file_paths (list): A list of local file paths to upload and submit.
+        account (str): The Google account ('personal' or 'college'). Defaults to 'personal'.
+    """
+    return _submit_class_assign(course_id, coursework_id, file_paths, account)
+
+def schedule_delayed_task_tool(description: str, delay_seconds: int) -> str:
+    """Schedules a task/prompt to run after a delay in seconds.
+    
+    Args:
+        description (str): The assistant task instruction or prompt to run.
+        delay_seconds (int): Delay in seconds before running the task.
+    """
+    return _sched_delay(description, delay_seconds)
+
+def schedule_task_at_time_tool(description: str, time_str: str) -> str:
+    """Schedules a task/prompt to run at a specific calendar date and time.
+    
+    Args:
+        description (str): The assistant task instruction or prompt to run.
+        time_str (str): Target time string (e.g., '14:30:00' for 2:30 PM today, or 'YYYY-MM-DD HH:MM:SS').
+    """
+    return _sched_at(description, time_str)
+
+def list_scheduled_tasks_tool() -> str:
+    """Lists all pending scheduled tasks."""
+    return _sched_list()
+
+def cancel_scheduled_task_tool(task_id: str) -> str:
+    """Cancels a pending scheduled task by its unique ID.
+    
+    Args:
+        task_id (str): The ID of the scheduled task to cancel.
+    """
+    return _sched_cancel(task_id)
+
+
 # ===========================
 # 5. THE REGISTRY (The Menu)
 # ===========================
@@ -1854,7 +1958,20 @@ AVAILABLE_TOOLS = {
     "get_note_backlinks": get_note_backlinks,
     "get_note_properties": get_note_properties,
     "update_note_properties": update_note_properties,
-    "create_or_update_obsidian_canvas": create_or_update_obsidian_canvas
+    "create_or_update_obsidian_canvas": create_or_update_obsidian_canvas,
+    
+    # New Tools
+    "copy_to_clipboard": copy_to_clipboard_tool,
+    "paste_from_clipboard": paste_from_clipboard_tool,
+    "download_url": download_url_tool,
+    "download_email_attachment": download_email_attachment_tool,
+    "send_gmail_with_attachment": send_gmail_with_attachment_tool,
+    "download_classroom_materials": download_classroom_materials_tool,
+    "submit_classroom_assignment": submit_classroom_assignment_tool,
+    "schedule_delayed_task": schedule_delayed_task_tool,
+    "schedule_task_at_time": schedule_task_at_time_tool,
+    "list_scheduled_tasks": list_scheduled_tasks_tool,
+    "cancel_scheduled_task": cancel_scheduled_task_tool
 }
 
 
