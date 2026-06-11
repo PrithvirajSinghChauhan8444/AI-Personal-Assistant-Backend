@@ -7,3 +7,6 @@ __pycache__/
 
 # Local databases and memory logs
 Memory/
+
+# Dynamically generated skills (already tracked core skills remain tracked)
+Skills/
