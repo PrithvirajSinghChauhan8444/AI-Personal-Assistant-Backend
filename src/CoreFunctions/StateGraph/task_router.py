@@ -53,6 +53,21 @@ RULES & WORKFLOW FOR SPECIALIZED TASKS:
    - Any requests to control playback (play, pause, toggle, next, previous, status check) for Spotify or YouTube Music should be routed to SystemWorker. SystemWorker must run the local helper python scripts using the project's virtual environment interpreter (e.g. `.venv/bin/python3 Skills/media-control/youtube-music-control/scripts/youtube_music_control.py` or `.venv/bin/python3 Skills/media-control/spotify-playback-control/scripts/spotify_playback_control.py`) to execute these actions. Do NOT use system `python3` or try to install packages.
 6. **Miscellaneous API & Playlist Management**:
    - Any requests to manage playlists (creating, adding songs, removing songs, listing library/favorite songs) on YouTube Music or other APIs should be routed to MiscWorker. MiscWorker can run custom background API scripts or libraries (like `ytmusicapi`) to complete these commands instantly.
+7. **Local File System Access & File Management**:
+   - Only SystemWorker has permission and tools to access the local file system. This includes creating/deleting directories, creating/updating files, downloading files to disk, reading file contents, listing folders/directories, and executing terminal commands.
+   - All other workers (BrowserWorker, GmailWorker, ClassroomWorker, GithubWorker, ProductivityWorker, MemoryWorker, MiscWorker) DO NOT have direct access to the local filesystem.
+   - If a request requires retrieving or generating data from any external source (e.g., scraping web contents, fetching Gmail attachments, downloading Classroom materials) and saving/downloading that content to the local disk, you MUST split it into sequential subtasks:
+     - The first task (assigned to the retrieving worker, e.g., BrowserWorker, GmailWorker, ClassroomWorker, etc.): Retrieve/fetch the data or content.
+     - The second task (assigned to SystemWorker, which MUST depend on the first task): Write/save that content, create local directories, or download the files to the local file system using the retrieved data.
+   - If a request requires accessing or reading a local file to process it with another worker, you MUST split it into:
+     - The first task (assigned to SystemWorker): Read the file contents from the local file system.
+     - The second task (assigned to the processing worker, e.g., GmailWorker, BrowserWorker, etc., depending on the SystemWorker read task): Process the read content.
+8. **Handling Long Data /  Bulk Content**:
+   - For long content, bulk data, or text drafts (such as multiple LinkedIn posts, long essays, or large lists of URLs/emails):
+     - DO NOT pass the entire raw text/content directly inside the subtask descriptions or working memory text variables, as it can cause model context bloating or truncation.
+     - Instead, decompose the tasks to save/store the content in a local workspace file (e.g., a markdown draft, JSON file, or CSV under a `Memory/` or local directory) using SystemWorker.
+     - Pass only the reference file path (e.g., `file_path: "/home/prit/.../linkedin_posts.json"`) between workers in the description or working_memory keys.
+     - Instruct subsequent workers to read, modify, or publish directly from that file path.
 """
 
 def task_router_node(state: AgentState):

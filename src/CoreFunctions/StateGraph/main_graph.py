@@ -173,7 +173,76 @@ class CLIStatusVisualizer:
             time.sleep(0.08)
             i += 1
 
+# Path for session context persistence
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+SESSION_CONTEXT_PATH = os.path.join(BASE_DIR, "Memory", "session_context.json")
+
+def save_session_context_async(chat_history, working_memory, completed_tasks):
+    def run_save():
+        import json
+        try:
+            # 1. Filter out transient keys from working memory to keep context clean
+            transient_keys = ["active_skills", "skills_index", "user_profile", "relevant_memories", "fast_path_matched"]
+            filtered_wm = {k: v for k, v in working_memory.items() if k not in transient_keys}
+            
+            # 2. Save the raw context immediately (to ensure persistence even if summarization fails)
+            context_data = {
+                "chat_history": chat_history,
+                "working_memory": filtered_wm,
+                "completed_tasks": completed_tasks,
+                "session_summary": working_memory.get("previous_session_summary", "")
+            }
+            
+            os.makedirs(os.path.dirname(SESSION_CONTEXT_PATH), exist_ok=True)
+            with open(SESSION_CONTEXT_PATH, "w", encoding="utf-8") as f:
+                json.dump(context_data, f, indent=4)
+                
+            # 3. Generate a quick summary of the conversation using Gemini
+            if chat_history:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                from langchain_core.messages import SystemMessage, HumanMessage
+                
+                llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0)
+                summary_prompt = """
+                You are a context saver. Summarize the user's goals and what actions the assistant completed in this session in 2-3 concise sentences.
+                Focus on outcomes: what files were created, what decisions were made, and what data was retrieved.
+                Do not include system instructions or formatting tags. Keep it plain text.
+                """
+                
+                history_str = ""
+                for msg in chat_history[-6:]:  # summary of the last few turns
+                    history_str += f"{msg['role']}: {msg['content']}\n"
+                    
+                response = llm.invoke([
+                    SystemMessage(content=summary_prompt),
+                    HumanMessage(content=f"History of recent turns:\n{history_str}")
+                ])
+                
+                content = response.content
+                if isinstance(content, list):
+                    text_parts = []
+                    for item in content:
+                        if isinstance(item, dict) and "text" in item:
+                            text_parts.append(item["text"])
+                        elif isinstance(item, str):
+                            text_parts.append(item)
+                    summary_text = "".join(text_parts).strip()
+                else:
+                    summary_text = str(content).strip()
+                
+                # Update JSON with the new summary
+                context_data["session_summary"] = summary_text
+                with open(SESSION_CONTEXT_PATH, "w", encoding="utf-8") as f:
+                    json.dump(context_data, f, indent=4)
+                    
+        except Exception as e:
+            print(f"\n  ⚠️ Background Context Saver Error: {e}", flush=True)
+
+    thread = threading.Thread(target=run_save, daemon=True)
+    thread.start()
+
 def process_request_interactive():
+    import json
     # Check for missing/placeholder API key
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key or api_key == "your_gemini_api_key_here":
@@ -185,7 +254,24 @@ def process_request_interactive():
 
     print("🤖 \033[1;32mAgent Manager (Dynamic State-Graph)\033[0m - Type 'exit' to quit.")
     
+    # Load session context on startup
     chat_history = []
+    working_memory_init = {}
+    if os.path.exists(SESSION_CONTEXT_PATH):
+        try:
+            with open(SESSION_CONTEXT_PATH, "r", encoding="utf-8") as f:
+                context = json.load(f)
+                chat_history = context.get("chat_history", [])
+                working_memory_init = context.get("working_memory", {})
+                previous_summary = context.get("session_summary", "")
+                
+                print(f"📖 Loaded {len(chat_history)} previous conversation exchanges.")
+                if previous_summary:
+                    working_memory_init["previous_session_summary"] = previous_summary
+                    print(f"📝 Previous Session Summary: {previous_summary}")
+        except Exception as e:
+            print(f"⚠️ Failed to load previous session context: {e}")
+            
     while True:
         try:
             user_input = input("\nYou: ").strip()
@@ -231,7 +317,7 @@ def process_request_interactive():
         initial_state = {
             "primary_goal": user_input,
             "active_subtasks": [],
-            "working_memory": {},
+            "working_memory": working_memory_init,
             "completed_tasks": {},
             "final_response": "",
             "chat_history": chat_history
@@ -320,13 +406,20 @@ def process_request_interactive():
             final_resp = state_data.values.get("final_response", "")
             
             # Trigger Asynchronous Background Self-Reflection (Phase 1 Optimization)
-            if final_resp:
+            if final_resp and state_data.values.get("completed_tasks"):
                 state_snapshot = dict(state_data.values)
                 def run_background_reflection(snap):
                     try:
                         reflection_node(snap)
                     except Exception as ex:
-                        print(f"\n  ⚠️ Background Reflection Error: {ex}")
+                        # Log error silently to reflection log instead of polluting stdout
+                        try:
+                            log_path = os.path.join(BASE_DIR, "Memory", "reflection.log")
+                            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                            with open(log_path, "a", encoding="utf-8") as f:
+                                f.write(f"\nBackground Reflection Error: {ex}\n")
+                        except Exception:
+                            pass
                 
                 bg_thread = threading.Thread(target=run_background_reflection, args=(state_snapshot,), daemon=True)
                 bg_thread.start()
@@ -339,6 +432,14 @@ def process_request_interactive():
             # Keep history to last 10 messages (5 turns) for token safety
             if len(chat_history) > 10:
                 chat_history = chat_history[-10:]
+                
+            # Update working memory and completed tasks for local persistence across turns
+            working_memory_init = state_data.values.get("working_memory", {})
+            completed_tasks_init = state_data.values.get("completed_tasks", {})
+            
+            # Trigger Asynchronous Background Context Saver
+            save_session_context_async(chat_history, working_memory_init, completed_tasks_init)
+            
         except Exception as e:
             visualizer.stop()
             print(f"❌ Execution Error: {e}")

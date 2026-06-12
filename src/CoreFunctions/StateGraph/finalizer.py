@@ -74,8 +74,16 @@ def output_finalizer_node(state: AgentState):
                         elif isinstance(item, str):
                             text_chunk += item
                 
-                full_response += text_chunk
-                print(text_chunk, end="", flush=True)
+                if text_chunk:
+                    # Detect and handle cumulative streaming vs incremental streaming
+                    if text_chunk.startswith(full_response) and len(text_chunk) > len(full_response):
+                        new_text = text_chunk[len(full_response):]
+                        full_response = text_chunk
+                    else:
+                        new_text = text_chunk
+                        full_response += text_chunk
+                    
+                    print(new_text, end="", flush=True)
         print("\n")
     except Exception as e:
         # Fallback to invoke if stream fails

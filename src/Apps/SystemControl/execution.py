@@ -52,15 +52,17 @@ def resolve_path_alias(path_or_alias):
 
 def run_terminal_command(command):
     """Executes a terminal command with live real-time output streaming. Protected by safety checks."""
-    if not is_command_safe(command):
-        return f"❌ Security Violation: Terminal command execution blocked (contains prohibited command/pattern)."
-
     # Get working directory from AGENT_WORKSPACE
     agent_ws = os.getenv("AGENT_WORKSPACE")
     cwd = None
     if agent_ws:
         cwd = os.path.abspath(os.path.expanduser(agent_ws))
         os.makedirs(cwd, exist_ok=True)
+    else:
+        cwd = os.getcwd()
+
+    if not is_command_safe(command, cwd=cwd):
+        return f"❌ Security Violation: Terminal command execution blocked (contains prohibited command/pattern or accesses paths outside the allowed sandbox)."
 
     # Prepend virtual environment .venv/bin to PATH to enforce venv context and prevent system PEP 668 errors
     import copy
