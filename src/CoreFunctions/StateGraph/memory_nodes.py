@@ -263,6 +263,24 @@ def memory_injector_node(state: AgentState):
     }
 
 def reflection_node(state: AgentState):
+    def print(*args, sep=" ", end="\n", file=None, flush=True):
+        import threading
+        message = sep.join(map(str, args))
+        if threading.current_thread() is not threading.main_thread():
+            try:
+                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                log_path = os.path.join(base_dir, "Memory", "reflection.log")
+                os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(message + end)
+            except Exception:
+                pass
+        else:
+            import sys
+            sys.stdout.write(message + end)
+            if flush:
+                sys.stdout.flush()
+
     print("\n[Node: Reflection] Reflecting on conversation & extracting Hermes Skills...")
     primary_goal = state.get("primary_goal", "")
     completed_tasks = state.get("completed_tasks", {}) or {}

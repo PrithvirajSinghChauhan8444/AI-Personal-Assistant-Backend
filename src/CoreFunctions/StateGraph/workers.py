@@ -129,7 +129,7 @@ OBSIDIAN_NOTE_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTE
 OBSIDIAN_CANVAS_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTEM_PROMPT_OBSIDIAN_CANVAS)
 OBSIDIAN_REFACTOR_AGENT = create_react_agent(local_llm, obsidian_tools, prompt=SYSTEM_PROMPT_OBSIDIAN_REFACTOR)
 
-GITHUB_AGENT = create_react_agent(llm, github_tools, prompt="You are GithubWorker. You retrieve profile details, list repositories, list repository branches, check repository commit history, retrieve recent public and private activity/events, inspect repository file contents and directories, and search code across repositories. Unless the user explicitly specifies a different username, you MUST default to searching/listing repositories/code under the authenticated user account first (which checks both public and private repositories)." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION)
+GITHUB_AGENT = create_react_agent(llm, github_tools, prompt="You are GithubWorker. You retrieve profile details, list repositories, list repository branches, check repository commit history, retrieve recent public and private activity/events, inspect repository file contents and directories, and search code across repositories. You MUST always list and include private repositories by default when listing or searching repositories, unless the user explicitly specifies not to include them. Unless the user explicitly specifies a different username, you MUST default to searching/listing repositories/code under the authenticated user account first (which checks both public and private repositories)." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION)
 MISC_AGENT = create_react_agent(llm, misc_tools, prompt=SYSTEM_PROMPT_MISC)
 
 AGENT_MAP = {
@@ -229,6 +229,9 @@ Task: {task_desc}
 Working Memory (Data from previous tasks):
 {memory_str}
 
+IMPORTANT NOTE ON LARGE DATA:
+If any entry in the Working Memory contains a `"__file_reference__"`, the actual large data has been saved to that local file path to avoid context bloat. You can directly read the content of that file using your file-reading tools (like `read_file_tool` or running python/terminal commands), copy/move the file, or use the file path as an attachment/input for other tools.
+
 Execute the tools necessary to complete this task. Return a concise, data-rich summary of your findings or actions.
 """
 
@@ -246,7 +249,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         sys.stdout.flush()
 
     try:
-        final_message = ""
+        last_ai_message = None
         # Stream internal agent execution events in real-time to show thoughts/tool-calls
         for chunk in agent.stream({"messages": [HumanMessage(content=prompt)]}):
             for node_name, node_update in chunk.items():
@@ -257,7 +260,16 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
                         # Extract and print the model's active reasoning thought process before tool invocation
                         thought = ""
                         if msg.content:
-                            thought = msg.content.strip()
+                            if isinstance(msg.content, str):
+                                thought = msg.content.strip()
+                            elif isinstance(msg.content, list):
+                                text_parts = []
+                                for item in msg.content:
+                                    if isinstance(item, dict) and "text" in item:
+                                        text_parts.append(item["text"])
+                                    elif isinstance(item, str):
+                                        text_parts.append(item)
+                                thought = "".join(text_parts).strip()
                         elif hasattr(msg, "additional_kwargs") and msg.additional_kwargs.get("reasoning_content"):
                             thought = msg.additional_kwargs["reasoning_content"].strip()
                         
@@ -277,14 +289,39 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
                     elif msg.type == "tool":
                         print(f"  📥 [{worker_name}] Tool \033[1;32m{msg.name}\033[0m successfully returned response.")
                     
-                    # 3. Capture the final synthesized AI thought / message
-                    elif msg.type == "ai" and not (hasattr(msg, "tool_calls") and msg.tool_calls):
-                        final_message = msg.content
+                    # 3. Keep track of the last AI message
+                    if msg.type == "ai":
+                        last_ai_message = msg
+        
+        # Capture final message content from the last AI message that doesn't have tool calls
+        if last_ai_message and not (hasattr(last_ai_message, "tool_calls") and last_ai_message.tool_calls):
+            content = last_ai_message.content
+            if isinstance(content, list):
+                text_parts = []
+                for item in content:
+                    if isinstance(item, dict) and "text" in item:
+                        text_parts.append(item["text"])
+                    elif isinstance(item, str):
+                        text_parts.append(item)
+                final_message = "".join(text_parts)
+            else:
+                final_message = str(content)
         
         # Fallback to invoke if streaming did not capture final message
         if not final_message:
+            print(f"  ⚠️ [{worker_name}] Warning: Final message not captured via stream. Triggering fallback invoke...")
             result = agent.invoke({"messages": [HumanMessage(content=prompt)]})
-            final_message = result["messages"][-1].content
+            content = result["messages"][-1].content
+            if isinstance(content, list):
+                text_parts = []
+                for item in content:
+                    if isinstance(item, dict) and "text" in item:
+                        text_parts.append(item["text"])
+                    elif isinstance(item, str):
+                        text_parts.append(item)
+                final_message = "".join(text_parts)
+            else:
+                final_message = str(content)
             
         return final_message
     finally:
@@ -304,6 +341,9 @@ Task: {task_desc}
 Working Memory (Data from previous tasks):
 {memory_str}
 
+IMPORTANT NOTE ON LARGE DATA:
+If any entry in the Working Memory contains a `"__file_reference__"`, the actual large data has been saved to that local file path to avoid context bloat. You can directly read the content of that file using your file-reading tools (like `read_file_tool` or running python/terminal commands), copy/move the file, or use the file path as an attachment/input for other tools.
+
 Execute the tools necessary to complete this task. Return a concise, data-rich summary of your findings or actions.
 """
 
@@ -321,7 +361,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         sys.stdout.flush()
 
     try:
-        final_message = ""
+        last_ai_message = None
         # Stream internal agent execution events in real-time to show thoughts/tool-calls
         async for chunk in agent.astream({"messages": [HumanMessage(content=prompt)]}):
             for node_name, node_update in chunk.items():
@@ -332,7 +372,16 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
                         # Extract and print the model's active reasoning thought process before tool invocation
                         thought = ""
                         if msg.content:
-                            thought = msg.content.strip()
+                            if isinstance(msg.content, str):
+                                thought = msg.content.strip()
+                            elif isinstance(msg.content, list):
+                                text_parts = []
+                                for item in msg.content:
+                                    if isinstance(item, dict) and "text" in item:
+                                        text_parts.append(item["text"])
+                                    elif isinstance(item, str):
+                                        text_parts.append(item)
+                                thought = "".join(text_parts).strip()
                         elif hasattr(msg, "additional_kwargs") and msg.additional_kwargs.get("reasoning_content"):
                             thought = msg.additional_kwargs["reasoning_content"].strip()
                         
@@ -352,14 +401,39 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
                     elif msg.type == "tool":
                         print(f"  📥 [{worker_name}] Tool \033[1;32m{msg.name}\033[0m successfully returned response.")
                     
-                    # 3. Capture the final synthesized AI thought / message
-                    elif msg.type == "ai" and not (hasattr(msg, "tool_calls") and msg.tool_calls):
-                        final_message = msg.content
+                    # 3. Keep track of the last AI message
+                    if msg.type == "ai":
+                        last_ai_message = msg
+        
+        # Capture final message content from the last AI message that doesn't have tool calls
+        if last_ai_message and not (hasattr(last_ai_message, "tool_calls") and last_ai_message.tool_calls):
+            content = last_ai_message.content
+            if isinstance(content, list):
+                text_parts = []
+                for item in content:
+                    if isinstance(item, dict) and "text" in item:
+                        text_parts.append(item["text"])
+                    elif isinstance(item, str):
+                        text_parts.append(item)
+                final_message = "".join(text_parts)
+            else:
+                final_message = str(content)
         
         # Fallback to invoke if streaming did not capture final message
         if not final_message:
+            print(f"  ⚠️ [{worker_name}] Warning: Final message not captured via stream. Triggering fallback invoke...")
             result = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
-            final_message = result["messages"][-1].content
+            content = result["messages"][-1].content
+            if isinstance(content, list):
+                text_parts = []
+                for item in content:
+                    if isinstance(item, dict) and "text" in item:
+                        text_parts.append(item["text"])
+                    elif isinstance(item, str):
+                        text_parts.append(item)
+                final_message = "".join(text_parts)
+            else:
+                final_message = str(content)
             
         return final_message
     finally:
@@ -374,6 +448,44 @@ def _update_state_completed(state: AgentState, task_id: str, final_data: str):
             st["status"] = "completed"
     
     working_memory = state.get("working_memory", {})
+    
+    # Offload large content to a file reference to avoid context bloat in the prompt
+    is_large = False
+    serialized_data = None
+    file_ext = ".txt"
+    
+    if isinstance(final_data, str):
+        if len(final_data) > 2000:
+            is_large = True
+            serialized_data = final_data
+            file_ext = ".txt"
+    elif isinstance(final_data, (dict, list)):
+        try:
+            serialized = json.dumps(final_data, indent=2)
+            if len(serialized) > 2000:
+                is_large = True
+                serialized_data = serialized
+                file_ext = ".json"
+        except Exception:
+            pass
+
+    if is_large and serialized_data is not None:
+        try:
+            cache_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.session_cache"))
+            os.makedirs(cache_dir, exist_ok=True)
+            file_path = os.path.join(cache_dir, f"{task_id}{file_ext}")
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(serialized_data)
+            
+            final_data = {
+                "__file_reference__": file_path,
+                "size_bytes": len(serialized_data),
+                "preview": serialized_data[:200] + "... (truncated due to large size)"
+            }
+            print(f"  📂 [State Cache] Large output from {task_id} offloaded to: {file_path}")
+        except Exception as cache_ex:
+            print(f"  ⚠️ [State Cache] Failed to cache large output: {cache_ex}")
+            
     working_memory[task_id] = final_data
     
     completed_tasks = state.get("completed_tasks", {})
