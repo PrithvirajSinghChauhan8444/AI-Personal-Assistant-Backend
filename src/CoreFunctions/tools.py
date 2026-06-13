@@ -1115,73 +1115,113 @@ DOM_TAGGING_SCRIPT = """
     const oldTags = document.querySelectorAll('[data-agent-id]');
     oldTags.forEach(el => el.removeAttribute('data-agent-id'));
 
-    const candidates = document.querySelectorAll(
-        'button, a, input, select, textarea, [role="button"], [onclick], [tabindex="0"]'
-    );
+    const allElements = document.getElementsByTagName('*');
+    const candidates = [];
+    
+    for (let i = 0; i < allElements.length; i++) {
+        const el = allElements[i];
+        const rect = el.getBoundingClientRect();
+        
+        // Skip elements that are completely off-screen or zero-sized
+        if (rect.width <= 0 || rect.height <= 0) continue;
+        
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+        
+        const tag = el.tagName.toUpperCase();
+        const isStandardInteractive = ['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].includes(tag);
+        const hasInteractiveRole = ['button', 'link', 'checkbox', 'radio', 'tab', 'option', 'menuitem'].includes(el.getAttribute('role'));
+        const hasClickAttr = el.hasAttribute('onclick') || el.getAttribute('tabindex') === '0';
+        const hasCursorPointer = style.cursor === 'pointer';
+        
+        if (isStandardInteractive || hasInteractiveRole || hasClickAttr || hasCursorPointer) {
+            candidates.push(el);
+        }
+    }
     
     let idCounter = 0;
     const interactiveElements = [];
 
     candidates.forEach(el => {
-        // Filter out elements that are not visible or off-screen
-        const rect = el.getBoundingClientRect();
-        const style = window.getComputedStyle(el);
-        const isVisible = rect.width > 0 && 
-                          rect.height > 0 && 
-                          style.display !== 'none' && 
-                          style.visibility !== 'hidden' &&
-                          style.opacity !== '0';
-                          
-        if (isVisible) {
-            const id = idCounter++;
-            el.setAttribute('data-agent-id', id.toString());
-            
-            // Build a friendly name / description
-            let text = el.innerText.trim();
-            if (!text && el.placeholder) text = el.placeholder.trim();
-            if (!text && el.getAttribute('aria-label')) text = el.getAttribute('aria-label').trim();
-            if (!text && el.value) text = el.value.trim();
-            if (!text && el.title) text = el.title.trim();
-            if (!text) text = el.name || "";
-            
-            interactiveElements.push({
-                id: id,
-                tag: el.tagName.toLowerCase(),
-                type: el.type || "",
-                text: text,
-                role: el.getAttribute('role') || ""
-            });
+        // If an ancestor of this element is already in the candidates list and is a standard interactive element
+        // (like a BUTTON or A), avoid tagging the child separately to reduce noise.
+        let ancestor = el.parentElement;
+        let hasInteractiveAncestor = false;
+        while (ancestor) {
+            if (candidates.includes(ancestor) && ['BUTTON', 'A'].includes(ancestor.tagName)) {
+                hasInteractiveAncestor = true;
+                break;
+            }
+            ancestor = ancestor.parentElement;
         }
+        if (hasInteractiveAncestor) return;
+
+        const id = idCounter++;
+        el.setAttribute('data-agent-id', id.toString());
+        
+        // Build a friendly name / description
+        let text = el.innerText.trim();
+        if (!text && el.placeholder) text = el.placeholder.trim();
+        if (!text && el.getAttribute('aria-label')) text = el.getAttribute('aria-label').trim();
+        if (!text && el.value) text = el.value.trim();
+        if (!text && el.title) text = el.title.trim();
+        if (!text) text = el.name || "";
+        
+        // Truncate long text
+        if (text.length > 100) {
+            text = text.substring(0, 97) + "...";
+        }
+        
+        interactiveElements.push({
+            id: id,
+            tag: el.tagName.toLowerCase(),
+            type: el.type || "",
+            text: text,
+            role: el.getAttribute('role') || ""
+        });
     });
 
     return interactiveElements;
 }
 """
 
-async def _get_elements_formatted() -> str:
+async def _get_elements_formatted(offset: int = 0, limit: int = 30) -> str:
     page = await _get_browser_page()
     try:
         elements = await page.evaluate(DOM_TAGGING_SCRIPT)
         if not elements:
             return "No interactive elements found on this page."
         
+        total_elements = len(elements)
+        paginated_elements = elements[offset:offset+limit]
+        
+        if not paginated_elements:
+            return f"No interactive elements found in range [{offset} to {offset+limit}]. (Total elements: {total_elements})"
+        
         lines = []
-        for el in elements:
+        for el in paginated_elements:
             type_str = f" (type='{el['type']}')" if el['type'] else ""
             role_str = f" [role='{el['role']}']" if el['role'] else ""
             lines.append(f"[{el['id']}] {el['tag'].upper()}: \"{el['text']}\"{type_str}{role_str}")
-        return "\n".join(lines)
+        
+        header = f"Showing elements {offset} to {offset + len(paginated_elements) - 1} of {total_elements} total. (To see more, increase the offset parameter)\n"
+        return header + "\n".join(lines)
     except Exception as e:
         return f"Error gathering page elements: {e}"
 
-async def browser_read_current_page() -> str:
-    """Reads the current active tab's URL, page title, and interactive elements without navigating."""
+async def browser_read_current_page(offset: int = 0, limit: int = 30) -> str:
+    """Reads the current active tab's URL, page title, and interactive elements without navigating.
+    
+    Args:
+        offset (int): Starting index of interactive elements to list (for pagination). Defaults to 0.
+        limit (int): Maximum number of interactive elements to return. Defaults to 30.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: browser_read_current_page")
     try:
         page = await _get_browser_page()
         url = page.url
         title = await page.title()
-        elements_str = await _get_elements_formatted()
+        elements_str = await _get_elements_formatted(offset=offset, limit=limit)
         return f"Current Page Title: {title}\nCurrent Page URL: {url}\n\nInteractive Elements:\n{elements_str}"
     except Exception as e:
         return f"Error reading current page: {e}"
@@ -1190,7 +1230,7 @@ def _get_local_llm():
     try:
         from langchain_ollama import ChatOllama
         return ChatOllama(
-            model=os.getenv("OLLAMA_MODEL", "gemma4:e2b"),
+            model=os.getenv("OLLAMA_MODEL", "gemma4:e4b"),
             temperature=0
         )
     except Exception:
@@ -1285,14 +1325,16 @@ async def browser_read_page_content(mode: str = "summary", query: str = None, ch
     except Exception as e:
         return f"Error extracting page text content: {e}"
 
-async def browser_navigate(url: str) -> str:
+async def browser_navigate(url: str, offset: int = 0, limit: int = 30) -> str:
     """Navigates the browser to the specified URL and returns its interactive elements.
 
     Args:
         url (str): The web address to navigate to (e.g. 'https://github.com').
+        offset (int): Starting index of interactive elements to list. Defaults to 0.
+        limit (int): Maximum number of interactive elements to return. Defaults to 30.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: browser_navigate")
-    print(f"   Args: url={url}")
+    print(f"   Args: url={url}, offset={offset}, limit={limit}")
     try:
         page = await _get_browser_page()
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
@@ -1301,19 +1343,21 @@ async def browser_navigate(url: str) -> str:
         except Exception:
             pass
         await page.wait_for_timeout(2000)
-        elements_str = await _get_elements_formatted()
+        elements_str = await _get_elements_formatted(offset=offset, limit=limit)
         return elements_str
     except Exception as e:
         return f"Error navigating browser: {e}"
 
-async def browser_click(element_id: int) -> str:
+async def browser_click(element_id: int, offset: int = 0, limit: int = 30) -> str:
     """Clicks an interactive element matching a specific numerical element_id.
 
     Args:
         element_id (int): The unique numerical ID of the element on the page.
+        offset (int): Starting index of interactive elements to list. Defaults to 0.
+        limit (int): Maximum number of interactive elements to return. Defaults to 30.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: browser_click")
-    print(f"   Args: element_id={element_id}")
+    print(f"   Args: element_id={element_id}, offset={offset}, limit={limit}")
     try:
         page = await _get_browser_page()
         selector = f'[data-agent-id="{element_id}"]'
@@ -1323,19 +1367,21 @@ async def browser_click(element_id: int) -> str:
         except Exception:
             pass
         await page.wait_for_timeout(2000)
-        elements_str = await _get_elements_formatted()
+        elements_str = await _get_elements_formatted(offset=offset, limit=limit)
         return elements_str
     except Exception as e:
         return f"Error clicking element [{element_id}]: {e}"
 
-async def browser_click_selector(selector: str) -> str:
+async def browser_click_selector(selector: str, offset: int = 0, limit: int = 30) -> str:
     """Clicks an element matching a CSS or text selector. Helpful if role or ID-based matching fails.
 
     Args:
         selector (str): The CSS selector (e.g. 'button#submit').
+        offset (int): Starting index of interactive elements to list. Defaults to 0.
+        limit (int): Maximum number of interactive elements to return. Defaults to 30.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: browser_click_selector")
-    print(f"   Args: selector={selector}")
+    print(f"   Args: selector={selector}, offset={offset}, limit={limit}")
     try:
         page = await _get_browser_page()
         await page.click(selector, timeout=10000)
@@ -1344,50 +1390,59 @@ async def browser_click_selector(selector: str) -> str:
         except Exception:
             pass
         await page.wait_for_timeout(2000)
-        elements_str = await _get_elements_formatted()
+        elements_str = await _get_elements_formatted(offset=offset, limit=limit)
         return elements_str
     except Exception as e:
         return f"Error clicking selector '{selector}': {e}"
 
-async def browser_input(element_id: int, text: str) -> str:
+async def browser_input(element_id: int, text: str, offset: int = 0, limit: int = 30) -> str:
     """Fills a text input field matching a specific numerical element_id with text.
 
     Args:
         element_id (int): The unique numerical ID of the input field.
         text (str): The text string to enter.
+        offset (int): Starting index of interactive elements to list. Defaults to 0.
+        limit (int): Maximum number of interactive elements to return. Defaults to 30.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: browser_input")
-    print(f"   Args: element_id={element_id}, text={text}")
+    print(f"   Args: element_id={element_id}, text={text}, offset={offset}, limit={limit}")
     try:
         page = await _get_browser_page()
         selector = f'[data-agent-id="{element_id}"]'
         await page.fill(selector, text, timeout=10000)
         await page.wait_for_timeout(1000)
-        elements_str = await _get_elements_formatted()
+        elements_str = await _get_elements_formatted(offset=offset, limit=limit)
         return elements_str
     except Exception as e:
         return f"Error filling element [{element_id}]: {e}"
 
-async def browser_input_selector(selector: str, text: str) -> str:
+async def browser_input_selector(selector: str, text: str, offset: int = 0, limit: int = 30) -> str:
     """Fills an input field matching a CSS or text selector with text.
 
     Args:
         selector (str): The CSS or text selector of the input field.
         text (str): The text to type.
+        offset (int): Starting index of interactive elements to list. Defaults to 0.
+        limit (int): Maximum number of interactive elements to return. Defaults to 30.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: browser_input_selector")
-    print(f"   Args: selector={selector}, text={text}")
+    print(f"   Args: selector={selector}, text={text}, offset={offset}, limit={limit}")
     try:
         page = await _get_browser_page()
         await page.fill(selector, text, timeout=10000)
         await page.wait_for_timeout(1000)
-        elements_str = await _get_elements_formatted()
+        elements_str = await _get_elements_formatted(offset=offset, limit=limit)
         return elements_str
     except Exception as e:
         return f"Error filling selector '{selector}': {e}"
 
-async def browser_go_back() -> str:
-    """Navigates back to the previous page in the browser history."""
+async def browser_go_back(offset: int = 0, limit: int = 30) -> str:
+    """Navigates back to the previous page in the browser history.
+
+    Args:
+        offset (int): Starting index of interactive elements to list. Defaults to 0.
+        limit (int): Maximum number of interactive elements to return. Defaults to 30.
+    """
     print(f"\n[DEBUG] 🛠️ Calling Tool: browser_go_back")
     try:
         page = await _get_browser_page()
@@ -1397,7 +1452,7 @@ async def browser_go_back() -> str:
         except Exception:
             pass
         await page.wait_for_timeout(2000)
-        elements_str = await _get_elements_formatted()
+        elements_str = await _get_elements_formatted(offset=offset, limit=limit)
         return elements_str
     except Exception as e:
         return f"Error going back: {e}"
@@ -1534,32 +1589,68 @@ async def request_human_intervention(reason: str) -> str:
         reason (str): The specific reason or barrier you encountered.
     """
     import asyncio
-    print(f"\n🚨 [HUMAN INTERVENTION REQUESTED] 🚨", flush=True)
-    print(f"Reason: {reason}", flush=True)
-    print(f"👉 Please perform any necessary actions in the open browser window.", flush=True)
+    import sys
+    import builtins
     
-    # Run the input call in a separate thread so we don't block the async event loop
-    user_input = await asyncio.to_thread(
-        input, 
-        "\nPress [Enter] when done, or type a message/code to send back to the agent: "
-    )
-    user_input = user_input.strip()
-    if not user_input:
-        user_input = "done"
-    print(f"✅ Resuming automation. User responded: '{user_input}'\n", flush=True)
-    return f"Human responded: {user_input}"
+    vis = getattr(builtins, "active_cli_visualizer", None)
+    was_active_and_not_paused = False
+    if vis and vis.active and not vis.is_paused:
+        was_active_and_not_paused = True
+        vis.is_paused = True
+        sys.stdout.write("\r\033[K")
+        sys.stdout.flush()
+    elif vis and vis.active and vis.is_paused:
+        sys.stdout.write("\r\033[K")
+        sys.stdout.flush()
+
+    try:
+        print(f"\n🚨 [HUMAN INTERVENTION REQUESTED] 🚨", flush=True)
+        print(f"Reason: {reason}", flush=True)
+        print(f"👉 Please perform any necessary actions in the open browser window.", flush=True)
+        
+        # Run the input call in a separate thread so we don't block the async event loop
+        user_input = await asyncio.to_thread(
+            input, 
+            "\nPress [Enter] when done, or type a message/code to send back to the agent: "
+        )
+        user_input = user_input.strip()
+        if not user_input:
+            user_input = "done"
+        print(f"✅ Resuming automation. User responded: '{user_input}'\n", flush=True)
+        return f"Human responded: {user_input}"
+    finally:
+        if was_active_and_not_paused and vis and vis.active:
+            vis.is_paused = False
 
 def request_human_intervention_sync(reason: str) -> str:
     """Synchronous version of request_human_intervention."""
-    print(f"\n🚨 [HUMAN INTERVENTION REQUESTED] 🚨", flush=True)
-    print(f"Reason: {reason}", flush=True)
-    print(f"👉 Please perform any necessary actions in the open browser window.", flush=True)
-    user_input = input("\nPress [Enter] when done, or type a message/code to send back to the agent: ")
-    user_input = user_input.strip()
-    if not user_input:
-        user_input = "done"
-    print(f"✅ Resuming automation. User responded: '{user_input}'\n", flush=True)
-    return f"Human responded: {user_input}"
+    import sys
+    import builtins
+    
+    vis = getattr(builtins, "active_cli_visualizer", None)
+    was_active_and_not_paused = False
+    if vis and vis.active and not vis.is_paused:
+        was_active_and_not_paused = True
+        vis.is_paused = True
+        sys.stdout.write("\r\033[K")
+        sys.stdout.flush()
+    elif vis and vis.active and vis.is_paused:
+        sys.stdout.write("\r\033[K")
+        sys.stdout.flush()
+
+    try:
+        print(f"\n🚨 [HUMAN INTERVENTION REQUESTED] 🚨", flush=True)
+        print(f"Reason: {reason}", flush=True)
+        print(f"👉 Please perform any necessary actions in the open browser window.", flush=True)
+        user_input = input("\nPress [Enter] when done, or type a message/code to send back to the agent: ")
+        user_input = user_input.strip()
+        if not user_input:
+            user_input = "done"
+        print(f"✅ Resuming automation. User responded: '{user_input}'\n", flush=True)
+        return f"Human responded: {user_input}"
+    finally:
+        if was_active_and_not_paused and vis and vis.active:
+            vis.is_paused = False
 
 def _get_current_worker_name() -> str:
     """Helper to detect the name of the active worker node calling this tool from inspect stack."""
