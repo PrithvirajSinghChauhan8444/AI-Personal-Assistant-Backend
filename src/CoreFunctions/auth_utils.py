@@ -250,6 +250,19 @@ def verify_password():
         print("❌ Critical Security Block: SYSTEM_PASSWORD is not set in .env. Protected operations are denied.")
         return False
 
+    import sys
+    import builtins
+    vis = getattr(builtins, "active_cli_visualizer", None)
+    was_active_and_not_paused = False
+    if vis and vis.active and not vis.is_paused:
+        was_active_and_not_paused = True
+        vis.is_paused = True
+        sys.stdout.write("\r\033[K")
+        sys.stdout.flush()
+    elif vis and vis.active and vis.is_paused:
+        sys.stdout.write("\r\033[K")
+        sys.stdout.flush()
+
     try:
         user_input = input("🔒 Enter Password to authorize action: ").strip()
         if user_input == correct_password:
@@ -260,3 +273,6 @@ def verify_password():
     except Exception as e:
         print(f"Error during password verification: {e}")
         return False
+    finally:
+        if was_active_and_not_paused and vis and vis.active:
+            vis.is_paused = False

@@ -311,7 +311,8 @@ def process_request_interactive():
                 print("Hi there! How can I assist you today?\n")
             continue
 
-        thread_id = "interactive_session"
+        import uuid
+        thread_id = f"session_{uuid.uuid4().hex[:8]}"
         config = {"configurable": {"thread_id": thread_id}}
 
         initial_state = {
