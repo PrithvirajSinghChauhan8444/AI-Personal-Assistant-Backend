@@ -14,15 +14,42 @@ def orchestrator_node(state: AgentState):
             deps_satisfied = all(dep in completed_task_ids for dep in depends_on)
             if deps_satisfied:
                 executable_tasks.append(task)
+
+    # Filter executable_tasks to ensure we only run one task per worker at a time,
+    # and do not run a task for a worker that is already executing an in_progress task.
+    if executable_tasks:
+        running_workers = {t["assigned_worker"] for t in active_subtasks if t["status"] == "in_progress"}
+        unique_worker_tasks = []
+        for task in executable_tasks:
+            worker = task["assigned_worker"]
+            if worker not in running_workers:
+                running_workers.add(worker)
+                unique_worker_tasks.append(task)
+        executable_tasks = unique_worker_tasks
                 
     if not executable_tasks:
         # Check if there are still pending/in_progress tasks
-        has_unfinished = any(t["status"] in ["pending", "in_progress"] for t in active_subtasks)
-        if has_unfinished:
-            print("  -> Execution waiting on active subtask dependencies.")
-            # Yield to Orchestrator self-loop or a pause
+        has_in_progress = any(t["status"] == "in_progress" for t in active_subtasks)
+        has_pending = any(t["status"] == "pending" for t in active_subtasks)
+        
+        if has_in_progress:
+            print("  ⚠️ Found orphaned 'in_progress' tasks (likely from a previous interrupted run). Resetting to 'pending'...")
+            for t in active_subtasks:
+                if t["status"] == "in_progress":
+                    t["status"] = "pending"
             return {
+                "active_subtasks": active_subtasks,
                 "next_node": "Orchestrator"
+            }
+        elif has_pending:
+            # Deadlock: pending tasks exist but nothing is running to satisfy them (e.g. dependency failed)
+            print("  ⚠️ Dependency deadlock detected! Aborting blocked pending tasks.")
+            for t in active_subtasks:
+                if t["status"] == "pending":
+                    t["status"] = "failed"
+            return {
+                "active_subtasks": active_subtasks,
+                "next_node": "OutputFinalizer"
             }
         else:
             print("  -> All tasks completed. Routing to Output Finalizer.")

@@ -9,7 +9,7 @@ from langchain_core.tools import StructuredTool
 # Import existing tool functions
 from src.CoreFunctions.tools import (
     # Memory
-    remember, recall, update_skill_tool,
+    remember, recall, update_skill_tool, search_skills_tool,
     
     # Communication
     fetch_unread_mails, send_gmail, search_gmail, read_gmail_msg, trash_gmail_msg, mark_gmail_read, reply_to_gmail,
@@ -60,11 +60,18 @@ human_intervention_tool = StructuredTool.from_function(
     coroutine=request_human_intervention
 )
 
+search_skills_tool_wrapped = StructuredTool.from_function(
+    func=search_skills_tool,
+    name="search_skills",
+    description="Semantically searches for available system skills matching the query. This tool is read-only and does not require password verification."
+)
+
 # --- Memory ---
 memory_tools = [
     StructuredTool.from_function(recall),
     StructuredTool.from_function(remember),
     StructuredTool.from_function(update_skill_tool, name="update_skill"),
+    search_skills_tool_wrapped,
     human_intervention_tool
 ]
 
@@ -194,6 +201,7 @@ misc_tools = [
     StructuredTool.from_function(read_file_tool),
     StructuredTool.from_function(create_file_tool),
     StructuredTool.from_function(update_skill_tool, name="update_skill"),
+    search_skills_tool_wrapped,
     human_intervention_tool
 ]
 
@@ -218,6 +226,7 @@ TOOL_MAP = {
     "recall": memory_tools[0],
     "remember": memory_tools[1],
     "update_skill": memory_tools[2],
+    "search_skills": memory_tools[3],
     
     # Communication
     "fetch_unread_mails": gmail_tools[0],

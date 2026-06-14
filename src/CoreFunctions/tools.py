@@ -1577,6 +1577,14 @@ def search_github_code_tool(query: str, username: str = None, repo_name: str = N
         return f"Error searching GitHub code: {e}"
 
 
+def locked_intervention_prompt(reason: str, prompt_text: str) -> str:
+    from src.CoreFunctions.auth_utils import _stdin_lock, get_stdin_prompt_banner
+    with _stdin_lock:
+        banner = get_stdin_prompt_banner("INTERVENTION", reason)
+        print(banner, flush=True)
+        return input(prompt_text)
+
+
 async def request_human_intervention(reason: str) -> str:
     """Pauses the automated process and requests manual intervention from the human user.
     
@@ -1604,13 +1612,10 @@ async def request_human_intervention(reason: str) -> str:
         sys.stdout.flush()
 
     try:
-        print(f"\n🚨 [HUMAN INTERVENTION REQUESTED] 🚨", flush=True)
-        print(f"Reason: {reason}", flush=True)
-        print(f"👉 Please perform any necessary actions in the open browser window.", flush=True)
-        
         # Run the input call in a separate thread so we don't block the async event loop
         user_input = await asyncio.to_thread(
-            input, 
+            locked_intervention_prompt,
+            reason,
             "\nPress [Enter] when done, or type a message/code to send back to the agent: "
         )
         user_input = user_input.strip()
@@ -1639,10 +1644,10 @@ def request_human_intervention_sync(reason: str) -> str:
         sys.stdout.flush()
 
     try:
-        print(f"\n🚨 [HUMAN INTERVENTION REQUESTED] 🚨", flush=True)
-        print(f"Reason: {reason}", flush=True)
-        print(f"👉 Please perform any necessary actions in the open browser window.", flush=True)
-        user_input = input("\nPress [Enter] when done, or type a message/code to send back to the agent: ")
+        user_input = locked_intervention_prompt(
+            reason,
+            "\nPress [Enter] when done, or type a message/code to send back to the agent: "
+        )
         user_input = user_input.strip()
         if not user_input:
             user_input = "done"
@@ -1860,9 +1865,53 @@ metadata:
                 f_script.write(script_code.strip())
             result_msg += f"\nAnd saved/updated automation script at: {script_path}"
             
+        # Trigger rebuild of skills vector store
+        try:
+            from src.CoreFunctions.vector_memory import rebuild_skills_vector_store
+            rebuild_skills_vector_store()
+        except Exception as rebuild_ex:
+            print(f"  ⚠️ Warning: Failed to rebuild skills vector store: {rebuild_ex}")
+
         return result_msg
     except Exception as e:
         return f"❌ Error updating skill: {e}"
+
+
+def search_skills_tool(query: str, count: int = 2) -> str:
+    """Semantically searches for available system skills matching the query.
+    This tool is read-only and does not require password verification.
+    
+    Args:
+        query (str): The search query or goal description (e.g., 'send email via gmail', 'obsidian canvas coordinate grid').
+        count (int, optional): The number of top matching skills to return. Defaults to 2.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: search_skills_tool")
+    print(f"   Args: query='{query}', count={count}")
+    
+    try:
+        from src.CoreFunctions.vector_memory import search_skills_vector
+        matched = search_skills_vector(query, k=count)
+        if not matched:
+            return "No matching skills found."
+            
+        results = []
+        for skill in matched:
+            skill_path = skill.get("path")
+            if skill_path and os.path.exists(skill_path):
+                try:
+                    with open(skill_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    results.append(f"### Skill File: {skill_path}\n\n{content}")
+                except Exception as read_ex:
+                    results.append(f"### Skill: {skill.get('name')} (Error reading file: {read_ex})")
+            else:
+                results.append(f"### Skill: {skill.get('name')} (Description: {skill.get('description')}) - Path not found.")
+                
+        return "\n\n---\n\n".join(results)
+    except Exception as e:
+        return f"❌ Error searching skills: {e}"
+
+
 
 
 def copy_to_clipboard_tool(text: str) -> str:
@@ -1971,6 +2020,7 @@ def cancel_scheduled_task_tool(task_id: str) -> str:
 
 AVAILABLE_TOOLS = {
     "update_skill": update_skill_tool,
+    "search_skills": search_skills_tool,
     "request_human_intervention": request_human_intervention,
     # GitHub
     "get_github_profile": get_github_profile_tool,

@@ -315,6 +315,10 @@ def process_request_interactive():
         thread_id = f"session_{uuid.uuid4().hex[:8]}"
         config = {"configurable": {"thread_id": thread_id}}
 
+        # Initialize session logger for execution tracing
+        from src.CoreFunctions.logger import init_session_logger, end_session_logger, log_error
+        init_session_logger(thread_id, user_input)
+
         initial_state = {
             "primary_goal": user_input,
             "active_subtasks": [],
@@ -411,6 +415,8 @@ def process_request_interactive():
                 state_snapshot = dict(state_data.values)
                 def run_background_reflection(snap):
                     try:
+                        from src.CoreFunctions.logger import set_thread_session_id
+                        set_thread_session_id(thread_id)
                         reflection_node(snap)
                     except Exception as ex:
                         # Log error silently to reflection log instead of polluting stdout
@@ -441,9 +447,15 @@ def process_request_interactive():
             # Trigger Asynchronous Background Context Saver
             save_session_context_async(chat_history, working_memory_init, completed_tasks_init)
             
+            # End logging session successfully
+            end_session_logger(final_resp, success=True)
+            
         except Exception as e:
             visualizer.stop()
             print(f"❌ Execution Error: {e}")
+            from src.CoreFunctions.logger import log_error, end_session_logger
+            log_error("main_graph", str(e))
+            end_session_logger("", success=False)
 
 if __name__ == "__main__":
     process_request_interactive()
