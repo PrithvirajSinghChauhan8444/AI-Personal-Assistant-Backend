@@ -175,58 +175,78 @@ WORKER_CATEGORY_MAP = {
 }
 
 def _load_worker_skills(worker_name: str) -> str:
-    """Dynamically loads and formats procedural skills matching the categories assigned to a worker."""
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    skills_dir = os.path.join(base_dir, "Skills")
-    if not os.path.exists(skills_dir) or not os.path.isdir(skills_dir):
+    """Dynamically loads and formats procedural skills matching the categories assigned to a worker using the skills index cache."""
+    from src.CoreFunctions.vector_memory import _load_skills_data
+    
+    categories = WORKER_CATEGORY_MAP.get(worker_name, [worker_name])
+    categories_lower = [cat.strip().lower() for cat in categories]
+    
+    skills_data = _load_skills_data()
+    if not skills_data:
         return ""
         
-    categories = WORKER_CATEGORY_MAP.get(worker_name, [worker_name])
     skills_content = []
     
-    for category in categories:
-        clean_category = re.sub(r'[^a-zA-Z0-9_-]', '-', category.strip().lower())
-        cat_path = os.path.join(skills_dir, clean_category)
-        if os.path.exists(cat_path) and os.path.isdir(cat_path):
-            for skill_folder in os.listdir(cat_path):
-                skill_md_path = os.path.join(cat_path, skill_folder, "SKILL.md")
-                if os.path.exists(skill_md_path):
-                    try:
-                        with open(skill_md_path, "r", encoding="utf-8") as f:
-                            content = f.read()
-                        # Clean frontmatter but extract name/description for worker context
-                        meta_match = re.search(r'^---\s*\n(.*?)\n---\s*\n', content, re.DOTALL)
-                        name = ""
-                        desc = ""
-                        if meta_match:
-                            meta_text = meta_match.group(1)
-                            name_match = re.search(r'name:\s*(.*)', meta_text)
-                            if name_match:
-                                name = name_match.group(1).strip()
-                            desc_match = re.search(r'description:\s*(.*)', meta_text)
-                            if desc_match:
-                                desc = desc_match.group(1).strip().strip('"').strip("'")
-                                
-                        content_clean = re.sub(r'^---\s*\n.*?\n---\s*\n', '', content, flags=re.DOTALL).strip()
-                        if name:
-                            header = f"## Skill: {name}"
-                            if desc:
-                                header += f" - {desc}"
-                            content_clean = f"{header}\n{content_clean}"
-                        skills_content.append(content_clean)
-                    except Exception:
-                        pass
+    # Filter skills that match the worker's categories
+    for skill in skills_data:
+        skill_cat = skill.get("category", "").strip().lower()
+        if skill_cat in categories_lower:
+            skill_path = skill.get("path")
+            if skill_path and os.path.exists(skill_path):
+                try:
+                    with open(skill_path, "r", encoding="utf-8") as f:
+                        content = f.read()
                         
+                    name = skill.get("name", "")
+                    desc = skill.get("description", "")
+                    
+                    content_clean = re.sub(r'^---\s*\n.*?\n---\s*\n', '', content, flags=re.DOTALL).strip()
+                    if name:
+                        header = f"## Skill: {name}"
+                        if desc:
+                            header += f" - {desc}"
+                        content_clean = f"{header}\n{content_clean}"
+                    skills_content.append(content_clean)
+                except Exception:
+                    pass
+                    
     if not skills_content:
         return ""
     return "\n\n---\n\n".join(skills_content)
 
-def _run_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict):
+def _clean_working_memory_for_worker(working_memory: dict, depends_on: list = None) -> dict:
+    """Cleans up the working memory dictionary to remove system-wide keys and optionally filter to direct task dependencies to prevent prompt context bloat."""
+    cleaned = {}
+    
+    # 1. Retain user profile (general context)
+    if "user_profile" in working_memory:
+        cleaned["user_profile"] = working_memory["user_profile"]
+        
+    # 2. To save context, we only pass task outputs if explicitly defined in depends_on.
+    # We do NOT pass previous_session_summary, active_skills, or skills_index.
+    # We do NOT pass relevant_memories by default to avoid huge context bloat (planner should extract needed info into the task description).
+    
+    if depends_on is not None:
+        for dep in depends_on:
+            if dep in working_memory:
+                cleaned[dep] = working_memory[dep]
+    else:
+        # Fallback if depends_on is None: Include all task keys but exclude system metadata keys
+        system_keys = {"active_skills", "skills_index", "previous_session_summary", "user_profile", "relevant_memories", "fast_path_matched"}
+        for k, v in working_memory.items():
+            if k not in system_keys:
+                cleaned[k] = v
+                
+    return cleaned
+
+def _run_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict, depends_on: list = None):
     """Runs a pre-compiled ReAct agent in complete isolation, returning only the final answer."""
+    from src.CoreFunctions.logger import log_worker_start, log_worker_thought, log_worker_tool_call, log_worker_tool_response, log_worker_end
     agent = AGENT_MAP[worker_name]
     
-    # Compress working memory to give context without polluting
-    memory_str = json.dumps(working_memory, indent=2)
+    # Compress working memory to give context without polluting, filtering out redundant system keys
+    cleaned_memory = _clean_working_memory_for_worker(working_memory, depends_on)
+    memory_str = json.dumps(cleaned_memory, indent=2)
     
     prompt = f"""
 Task: {task_desc}
@@ -245,6 +265,11 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
     if skills_str:
         prompt += f"\n\n### Specialized Skills for {worker_name}:\nUse the following step-by-step procedures when resolving tasks in your domain:\n{skills_str}"
     
+    # Log worker run start
+    is_local = worker_name in ["MemoryWorker", "ObsidianNoteWorker", "ObsidianCanvasWorker", "ObsidianRefactorWorker"]
+    model_name = os.environ.get("OLLAMA_MODEL", "gemma4:e4b") if is_local else os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
+    log_worker_start(worker_name, task_desc, model_name, prompt)
+
     # Try to pause the active visualizer spinner during the entire agent execution
     import builtins
     vis = getattr(builtins, "active_cli_visualizer", None)
@@ -283,16 +308,19 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
                             thought = re.sub(r'</?think>', '', thought).strip()
                             thought_cleaned = "\n     ".join(thought.split("\n"))
                             print(f"  🤔 [\033[1;36m{worker_name} Thinking\033[0m]: {thought_cleaned}")
+                            log_worker_thought(worker_name, thought)
                         for tc in msg.tool_calls:
                             print(f"  🔍 [{worker_name}] Calling Tool: \033[1;33m{tc['name']}\033[0m")
                             args_str = json.dumps(tc.get('args', {}))
                             if len(args_str) > 80:
                                 args_str = args_str[:77] + "..."
                             print(f"     Args: {args_str}")
+                            log_worker_tool_call(worker_name, tc['name'], tc.get('args', {}))
                     
                     # 2. Capture and print when the Tool completes execution
                     elif msg.type == "tool":
                         print(f"  📥 [{worker_name}] Tool \033[1;32m{msg.name}\033[0m successfully returned response.")
+                        log_worker_tool_response(worker_name, msg.name, getattr(msg, "content", ""))
                     
                     # 3. Keep track of the last AI message
                     if msg.type == "ai":
@@ -328,17 +356,20 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
             else:
                 final_message = str(content)
             
+        log_worker_end(worker_name, final_message)
         return final_message
     finally:
         if vis and vis.active:
             vis.is_paused = False
  
-async def _run_async_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict):
+async def _run_async_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict, depends_on: list = None):
     """Runs a pre-compiled async ReAct agent in complete isolation, returning only the final answer."""
+    from src.CoreFunctions.logger import log_worker_start, log_worker_thought, log_worker_tool_call, log_worker_tool_response, log_worker_end
     agent = AGENT_MAP[worker_name]
     
-    # Compress working memory to give context without polluting
-    memory_str = json.dumps(working_memory, indent=2)
+    # Compress working memory to give context without polluting, filtering out redundant system keys
+    cleaned_memory = _clean_working_memory_for_worker(working_memory, depends_on)
+    memory_str = json.dumps(cleaned_memory, indent=2)
     
     prompt = f"""
 Task: {task_desc}
@@ -357,6 +388,11 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
     if skills_str:
         prompt += f"\n\n### Specialized Skills for {worker_name}:\nUse the following step-by-step procedures when resolving tasks in your domain:\n{skills_str}"
     
+    # Log worker run start
+    is_local = worker_name in ["MemoryWorker", "ObsidianNoteWorker", "ObsidianCanvasWorker", "ObsidianRefactorWorker"]
+    model_name = os.environ.get("OLLAMA_MODEL", "gemma4:e4b") if is_local else os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
+    log_worker_start(worker_name, task_desc, model_name, prompt)
+
     # Try to pause the active visualizer spinner during the entire agent execution
     import builtins
     vis = getattr(builtins, "active_cli_visualizer", None)
@@ -395,16 +431,19 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
                             thought = re.sub(r'</?think>', '', thought).strip()
                             thought_cleaned = "\n     ".join(thought.split("\n"))
                             print(f"  🤔 [\033[1;36m{worker_name} Thinking\033[0m]: {thought_cleaned}")
+                            log_worker_thought(worker_name, thought)
                         for tc in msg.tool_calls:
                             print(f"  🔍 [{worker_name}] Calling Tool: \033[1;33m{tc['name']}\033[0m")
                             args_str = json.dumps(tc.get('args', {}))
                             if len(args_str) > 80:
                                 args_str = args_str[:77] + "..."
                             print(f"     Args: {args_str}")
+                            log_worker_tool_call(worker_name, tc['name'], tc.get('args', {}))
                     
                     # 2. Capture and print when the Tool completes execution
                     elif msg.type == "tool":
                         print(f"  📥 [{worker_name}] Tool \033[1;32m{msg.name}\033[0m successfully returned response.")
+                        log_worker_tool_response(worker_name, msg.name, getattr(msg, "content", ""))
                     
                     # 3. Keep track of the last AI message
                     if msg.type == "ai":
@@ -440,6 +479,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
             else:
                 final_message = str(content)
             
+        log_worker_end(worker_name, final_message)
         return final_message
     finally:
         if vis and vis.active:
@@ -505,24 +545,38 @@ def _update_state_completed(state: AgentState, task_id: str, final_data: str):
 # --- Specific Workers Helper ---
 
 def _execute_worker_node(state: AgentState, worker_name: str):
+    from src.CoreFunctions.logger import log_node_start, log_node_end, log_error
+    log_node_start(worker_name, state)
+    
     task = _get_active_task(state, worker_name)
     if not task:
+        log_node_end(worker_name, {})
         return {}
     try:
-        final_data = _run_ephemeral_agent(worker_name, task["description"], state.get("working_memory", {}))
-        return _update_state_completed(state, task["id"], final_data)
+        final_data = _run_ephemeral_agent(
+            worker_name, 
+            task["description"], 
+            state.get("working_memory", {}),
+            depends_on=task.get("depends_on", [])
+        )
+        output_state = _update_state_completed(state, task["id"], final_data)
+        log_node_end(worker_name, output_state)
+        return output_state
     except Exception as ex:
         print(f"  ❌ [{worker_name}] Task {task['id']} failed: {ex}")
+        log_error(worker_name, str(ex))
         subtasks = state.get("active_subtasks", [])
         for st in subtasks:
             if st["id"] == task["id"]:
                 st["status"] = "failed"
         error_logs = state.get("error_logs") or ""
         error_logs += f"\nWorker {worker_name} failed on task {task['id']}: {ex}"
-        return {
+        output_state = {
             "active_subtasks": subtasks,
             "error_logs": error_logs
         }
+        log_node_end(worker_name, output_state)
+        return output_state
 
 # --- Specific Workers ---
 
@@ -555,8 +609,13 @@ class ObsidianSubPlan(BaseModel):
     subtasks: List[ObsidianSubTask] = Field(description="Sequential list of specialized tasks to execute")
 
 def obsidian_worker_node(state: AgentState):
+    from src.CoreFunctions.logger import log_node_start, log_node_end, log_error, log_message
+    log_node_start("ObsidianWorker", state)
+    
     task = _get_active_task(state, "ObsidianWorker")
-    if not task: return {}
+    if not task:
+        log_node_end("ObsidianWorker", {})
+        return {}
     
     print(f"\n🧠 [Obsidian Manager] Decomposing high-level plan into specialized Obsidian sub-tasks...")
     
@@ -580,6 +639,7 @@ RULES:
 """
     
     try:
+        log_message("ObsidianWorker: Invoking model for structured subtask plan decomposition.")
         structured_llm = llm.with_structured_output(ObsidianSubPlan)
         plan: ObsidianSubPlan = structured_llm.invoke(manager_prompt)
         print(f"  🤔 [Obsidian Manager Thought]: {plan.reasoning}")
@@ -588,6 +648,7 @@ RULES:
             print(f"     -> [{st.assigned_worker}] {st.description}")
     except Exception as e:
         print(f"⚠️ Obsidian Manager planning failed: {e}. Falling back to default plan...")
+        log_error("ObsidianWorker", f"Manager planning failed: {e}")
         plan = ObsidianSubPlan(
             reasoning="Fallback due to structured model error",
             subtasks=[
@@ -602,12 +663,30 @@ RULES:
     # 2. Sequentially run each specialized subtask, updating the team's shared working memory
     shared_memory = dict(state.get("working_memory", {}))
     
-    for st in plan.subtasks:
-        print(f"\n🚀 [Obsidian Manager] Activating Worker: {st.assigned_worker} ({st.id})...")
-        output = _run_ephemeral_agent(st.assigned_worker, st.description, shared_memory)
-        shared_memory[st.id] = output
-        
-    return _update_state_completed(state, task["id"], f"Successfully executed nested Obsidian sub-plan with {len(plan.subtasks)} subtasks. Categorized files committed to vault successfully.")
+    try:
+        for st in plan.subtasks:
+            print(f"\n🚀 [Obsidian Manager] Activating Worker: {st.assigned_worker} ({st.id})...")
+            output = _run_ephemeral_agent(st.assigned_worker, st.description, shared_memory)
+            shared_memory[st.id] = output
+            
+        output_state = _update_state_completed(state, task["id"], f"Successfully executed nested Obsidian sub-plan with {len(plan.subtasks)} subtasks. Categorized files committed to vault successfully.")
+        log_node_end("ObsidianWorker", output_state)
+        return output_state
+    except Exception as ex:
+        print(f"  ❌ [ObsidianWorker] nested sub-plan execution failed: {ex}")
+        log_error("ObsidianWorker", str(ex))
+        subtasks = state.get("active_subtasks", [])
+        for st in subtasks:
+            if st["id"] == task["id"]:
+                st["status"] = "failed"
+        error_logs = state.get("error_logs") or ""
+        error_logs += f"\nWorker ObsidianWorker failed on subtask execution: {ex}"
+        output_state = {
+            "active_subtasks": subtasks,
+            "error_logs": error_logs
+        }
+        log_node_end("ObsidianWorker", output_state)
+        return output_state
 
 class BrowserSubTask(BaseModel):
     id: str = Field(description="Subtask ID (e.g., 'br_1')")
@@ -623,8 +702,13 @@ class BrowserSubPlan(BaseModel):
     subtasks: List[BrowserSubTask] = Field(description="Sequential list of browser subtasks")
 
 def browser_worker_node(state: AgentState):
+    from src.CoreFunctions.logger import log_node_start, log_node_end, log_error, log_message
+    log_node_start("BrowserWorker", state)
+    
     task = _get_active_task(state, "BrowserWorker")
-    if not task: return {}
+    if not task:
+        log_node_end("BrowserWorker", {})
+        return {}
     
     try:
         print(f"\n🧠 [Browser Manager] Decomposing high-level plan into specialized browser sub-tasks...")
@@ -641,6 +725,7 @@ Working Memory Context:
 Create a detailed sequential sub-plan to execute this goal.
 """
         try:
+            log_message("BrowserWorker: Invoking model for structured subtask plan decomposition.")
             structured_llm = llm.with_structured_output(BrowserSubPlan)
             plan: BrowserSubPlan = structured_llm.invoke(manager_prompt)
             print(f"  🤔 [Browser Manager Thought]: {plan.reasoning}")
@@ -649,6 +734,7 @@ Create a detailed sequential sub-plan to execute this goal.
                 print(f"     -> [{st.assigned_worker}] {st.description}")
         except Exception as e:
             print(f"⚠️ Browser Manager planning failed: {e}. Falling back to default plan...")
+            log_error("BrowserWorker", f"Manager planning failed: {e}")
             plan = BrowserSubPlan(
                 reasoning="Fallback due to structured model error",
                 subtasks=[
@@ -685,19 +771,24 @@ Create a detailed sequential sub-plan to execute this goal.
             shared_memory = loop.run_until_complete(run_plan())
 
         final_result = list(shared_memory.values())[-1] if shared_memory else "No actions performed"
-        return _update_state_completed(state, task["id"], final_result)
+        output_state = _update_state_completed(state, task["id"], final_result)
+        log_node_end("BrowserWorker", output_state)
+        return output_state
     except Exception as ex:
         print(f"  ❌ [BrowserWorker] Task {task['id']} failed: {ex}")
+        log_error("BrowserWorker", str(ex))
         subtasks = state.get("active_subtasks", [])
         for st in subtasks:
             if st["id"] == task["id"]:
                 st["status"] = "failed"
         error_logs = state.get("error_logs") or ""
         error_logs += f"\nWorker BrowserWorker failed on task {task['id']}: {ex}"
-        return {
+        output_state = {
             "active_subtasks": subtasks,
             "error_logs": error_logs
         }
+        log_node_end("BrowserWorker", output_state)
+        return output_state
 
 def github_worker_node(state: AgentState):
     return _execute_worker_node(state, "GithubWorker")

@@ -13,6 +13,9 @@ Do not mention "subtasks" or the internal architecture. Just provide the final a
 from datetime import datetime
 
 def output_finalizer_node(state: AgentState):
+    from src.CoreFunctions.logger import log_node_start, log_node_end, log_message
+    log_node_start("OutputFinalizer", state)
+    
     timestamp = datetime.now().strftime("%H:%M:%S")
     print(f"\nRunning Output Finaliser : ({timestamp})")
     
@@ -30,14 +33,19 @@ def output_finalizer_node(state: AgentState):
             print(char, end="", flush=True)
             time.sleep(0.008)
         print("\n")
-        return {"final_response": final_resp}
+        
+        output_state = {"final_response": final_resp}
+        log_node_end("OutputFinalizer", output_state)
+        return output_state
         
     primary_goal = state.get("primary_goal", "")
     completed_tasks = state.get("completed_tasks", {}) or {}
     chat_history = state.get("chat_history", []) or []
     
     # Use high-speed cloud LLM for instant response synthesis and reliable execution
-    llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0.7)
+    model_name = "gemini-3.1-flash-lite"
+    log_message(f"OutputFinalizer: Invoking model {model_name} for response synthesis.")
+    llm = ChatGoogleGenerativeAI(model=model_name, temperature=0.7)
     
     # 1. Format conversational history
     history_str = ""
@@ -106,6 +114,8 @@ def output_finalizer_node(state: AgentState):
         print(full_response)
         print()
     
-    return {
+    output_state = {
         "final_response": full_response
     }
+    log_node_end("OutputFinalizer", output_state)
+    return output_state

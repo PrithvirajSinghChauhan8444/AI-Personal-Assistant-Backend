@@ -71,6 +71,9 @@ RULES & WORKFLOW FOR SPECIALIZED TASKS:
 """
 
 def task_router_node(state: AgentState):
+    from src.CoreFunctions.logger import log_node_start, log_node_end, log_message
+    log_node_start("TaskRouter", state)
+    
     print("\n[Node: Task Router] Analyzing request...")
     primary_goal = state.get("primary_goal", "")
     working_memory = state.get("working_memory", {}) or {}
@@ -102,7 +105,10 @@ def task_router_node(state: AgentState):
         input_content = history_str + "\n" + input_content
     
     # Use a robust model for structured JSON parsing
-    llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0)
+    model_name = "gemini-3.1-flash-lite"
+    log_message(f"TaskRouter: Invoking model {model_name} for structured task planning.")
+    
+    llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
     structured_llm = llm.with_structured_output(TaskPlan)
     
     plan: TaskPlan = structured_llm.invoke([
@@ -121,9 +127,12 @@ def task_router_node(state: AgentState):
         })
         print(f"  -> Created Subtask: {st.id} ({st.assigned_worker}) | Depends on: {st.depends_on or []}")
         
-    return {
+    output_state = {
         "active_subtasks": active_subtasks,
         "working_memory": working_memory,
         "completed_tasks": {}
     }
+    
+    log_node_end("TaskRouter", output_state)
+    return output_state
 

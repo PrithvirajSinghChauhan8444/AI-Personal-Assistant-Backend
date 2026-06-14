@@ -8,6 +8,8 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
+base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 from src.CoreFunctions.memory import store_memory, fetch_memory
 from src.CoreFunctions.vector_memory import store_vector, search_vector
 from src.CoreFunctions.StateGraph.state import AgentState
@@ -140,6 +142,9 @@ def check_fast_path(primary_goal: str) -> Optional[str]:
     return None
 
 def memory_injector_node(state: AgentState):
+    from src.CoreFunctions.logger import log_node_start, log_node_end, log_message
+    log_node_start("MemoryInjector", state)
+    
     print("\n[Node: Memory Injector] Retrieving relevant user context & skills...")
     primary_goal = state.get("primary_goal", "")
     
@@ -148,81 +153,37 @@ def memory_injector_node(state: AgentState):
     if fast_path_response:
         working_memory = state.get("working_memory", {}) or {}
         working_memory["fast_path_matched"] = True
-        return {
+        output_state = {
             "working_memory": working_memory,
             "final_response": fast_path_response
         }
+        log_node_end("MemoryInjector", output_state)
+        return output_state
     
-    # 1. Base Workspace Directories
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    skills_dir = os.path.join(base_dir, "Skills")
-    
-    # 2. Level 0 & Level 1 Skills Ingestion (Progressive Disclosure)
+    # 2. Level 0 & Level 1 Skills Ingestion (Progressive Disclosure via Semantic Vector Search)
     active_skills_content = []
-    available_skills_index = []
     
-    if os.path.exists(skills_dir) and os.path.isdir(skills_dir):
-        for root, dirs, files in os.walk(skills_dir):
-            if "SKILL.md" in files:
-                skill_file = os.path.join(root, "SKILL.md")
-                item = os.path.basename(root)
-                try:
-                    with open(skill_file, "r", encoding="utf-8") as f:
-                        content = f.read()
-                        
-                    # Extract YAML frontmatter
-                    meta_match = re.search(r'^---\s*\n(.*?)\n---\s*\n', content, re.DOTALL)
-                    name = item
-                    description = ""
-                    tags = []
-                    
-                    if meta_match:
-                        meta_text = meta_match.group(1)
-                        # Simple parsing of name, description, tags from YAML
-                        name_match = re.search(r'name:\s*(.*)', meta_text)
-                        if name_match: name = name_match.group(1).strip()
-                        
-                        desc_match = re.search(r'description:\s*(.*)', meta_text)
-                        if desc_match: description = desc_match.group(1).strip()
-                        
-                        tags_match = re.search(r'tags:\s*\[(.*?)\]', meta_text)
-                        if tags_match:
-                            tags = [t.strip().strip('"').strip("'") for t in tags_match.group(1).split(",")]
-                    
-                    available_skills_index.append({
-                        "name": name,
-                        "description": description,
-                        "tags": tags,
-                        "path": skill_file
-                    })
-                except Exception as e:
-                    print(f"  ⚠️ Error loading skill metadata for {item}: {e}")
+    from src.CoreFunctions.vector_memory import search_skills_vector, _load_skills_data
+    
+    # Retrieve semantically matching skills
+    matched_skills = search_skills_vector(primary_goal, k=2)
+    for skill in matched_skills:
+        try:
+            with open(skill["path"], "r", encoding="utf-8") as f:
+                full_content = f.read()
+            active_skills_content.append(full_content)
+            print(f"  \033[32m✔\033[0m Loaded Skill Semantically: {skill['name']} (Vector Similarity match)")
+        except Exception as e:
+            print(f"  ⚠️ Error reading semantically matched skill file {skill['name']}: {e}")
 
-    # Level 1 Loading: If prompt matches tags or name, load full procedural skill
-    q = primary_goal.lower()
-    for skill in available_skills_index:
-        matched = False
-        if skill["name"].lower() in q:
-            matched = True
-        else:
-            for tag in skill["tags"]:
-                if tag.lower() in q:
-                    matched = True
-                    break
-        
-        if matched:
-            try:
-                with open(skill["path"], "r", encoding="utf-8") as f:
-                    full_content = f.read()
-                active_skills_content.append(full_content)
-                print(f"  \033[32m✔\033[0m Loaded Skill: {skill['name']} (Level 1 Disclosure)")
-            except Exception as e:
-                print(f"  ⚠️ Error reading full skill file {skill['name']}: {e}")
+    # Retrieve all available skill names for global index metadata
+    all_skills_data = _load_skills_data()
+    all_skill_names = [s["name"] for s in all_skills_data]
 
     # 3. Store injected skills in working memory
     working_memory = state.get("working_memory", {}) or {}
     working_memory["active_skills"] = active_skills_content
-    working_memory["skills_index"] = [s["name"] for s in available_skills_index]
+    working_memory["skills_index"] = all_skill_names
 
     if not is_personal_query(primary_goal):
         print("  -> Personal profile context not required. Skipping user info retrieval.")
@@ -258,9 +219,11 @@ def memory_injector_node(state: AgentState):
     print(f"  -> Injected user profile keys: {list(user_profile.keys())}")
     print(f"  -> Injected {len(relevant_memories)} semantically relevant memories.")
     
-    return {
+    output_state = {
         "working_memory": working_memory
     }
+    log_node_end("MemoryInjector", output_state)
+    return output_state
 
 def reflection_node(state: AgentState):
     def print(*args, sep=" ", end="\n", file=None, flush=True):
@@ -281,17 +244,23 @@ def reflection_node(state: AgentState):
             if flush:
                 sys.stdout.flush()
 
+    from src.CoreFunctions.logger import log_node_start, log_node_end, log_error, log_message
+    log_node_start("Reflection", state)
+
     print("\n[Node: Reflection] Reflecting on conversation & extracting Hermes Skills...")
     primary_goal = state.get("primary_goal", "")
     completed_tasks = state.get("completed_tasks", {}) or {}
     final_response = state.get("final_response", "")
     
     if not final_response:
+        log_node_end("Reflection", {})
         return {}
         
     try:
         from langchain_ollama import ChatOllama
-        llm = ChatOllama(model="gemma4:e2b", temperature=0)
+        model_name = "gemma4:e2b"
+        log_message(f"Reflection: Invoking model {model_name} for self-reflection & skill extraction.")
+        llm = ChatOllama(model=model_name, temperature=0)
         structured_llm = llm.with_structured_output(MemoryReflection)
         
         completed_tasks_str = json.dumps(completed_tasks, indent=2)
@@ -372,5 +341,7 @@ Use this skill when you need to execute workflows related to {", ".join(skill.ta
                 
     except Exception as e:
         print(f"  ⚠️ Error during reflection/skill extraction: {e}")
+        log_error("Reflection", str(e))
         
+    log_node_end("Reflection", {})
     return {}

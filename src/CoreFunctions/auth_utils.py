@@ -2,11 +2,14 @@ import os
 import json
 import base64
 import hashlib
+import threading
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+
+_stdin_lock = threading.Lock()
 
 # The permissions your app needs
 SCOPES = [
@@ -198,6 +201,75 @@ def get_valid_credentials(account: str = "personal"):
 
 
 
+def get_stdin_prompt_banner(action_type: str, reason: str) -> str:
+    """Introspects the call stack to identify the active worker and current subtask,
+    returning a formatted terminal card layout.
+    action_type can be 'PASSWORD' or 'INTERVENTION'
+    """
+    import inspect
+    
+    agent_name = "System"
+    active_task = "User query execution"
+    current_step = reason
+    
+    stack = inspect.stack()
+    for frame_info in stack:
+        func_name = frame_info.function
+        f_locals = frame_info.frame.f_locals
+        
+        if func_name in ["_run_ephemeral_agent", "_run_async_ephemeral_agent"]:
+            w_name = f_locals.get("worker_name")
+            t_desc = f_locals.get("task_desc")
+            if w_name:
+                agent_name = w_name
+            if t_desc:
+                active_task = t_desc
+                
+        if func_name in ["update_skill_tool", "run_terminal_tool", "run_python_tool", "terminate_process_tool"]:
+            if func_name == "update_skill_tool":
+                skill_name = f_locals.get("skill_name")
+                current_step = f"Updating/Creating system skill: '{skill_name}'"
+            elif func_name == "run_terminal_tool":
+                cmd = f_locals.get("command")
+                current_step = f"Executing terminal command: '{cmd}'"
+            elif func_name == "run_python_tool":
+                current_step = "Executing python code execution"
+
+    # Truncate strings to prevent UI wrapping issues
+    def clean_str(s, length=55):
+        s = str(s).replace("\n", " ").strip()
+        if len(s) > length:
+            return s[:length-3] + "..."
+        return s
+        
+    c_agent = clean_str(agent_name, 55)
+    c_task = clean_str(active_task, 55)
+    c_step = clean_str(current_step, 55)
+    
+    if action_type == "PASSWORD":
+        title = "🔒 PASSWORD AUTHORIZATION REQUIRED"
+        color = "\033[1;31m" # Red
+    else:
+        title = "🚨 HUMAN INTERVENTION REQUESTED"
+        color = "\033[1;33m" # Yellow
+        
+    reset = "\033[0m"
+    cyan = "\033[1;36m"
+    white = "\033[1;37m"
+    
+    banner = f"""
+{color}┌──────────────────────────────────────────────────────────────┐{reset}
+{color}│ {title:<60} │{reset}
+{color}├──────────────────────────────────────────────────────────────┤{reset}
+{color}│{reset} {cyan}🤖 Agent Asking:{reset}  {white}{c_agent:<41}{reset} {color}│{reset}
+{color}│{reset} {cyan}📋 Active Task:{reset}   {white}{c_task:<41}{reset} {color}│{reset}
+{color}│{reset} {cyan}❓ Current Step:{reset}  {white}{c_step:<41}{reset} {color}│{reset}
+{color}│{reset} {cyan}💡 Reason:{reset}        {white}{clean_str(reason, 41):<41}{reset} {color}│{reset}
+{color}└──────────────────────────────────────────────────────────────┘{reset}
+"""
+    return banner
+
+
 def verify_password():
     """
     Prompts the user for a password to authorize sensitive actions.
@@ -250,29 +322,32 @@ def verify_password():
         print("❌ Critical Security Block: SYSTEM_PASSWORD is not set in .env. Protected operations are denied.")
         return False
 
-    import sys
-    import builtins
-    vis = getattr(builtins, "active_cli_visualizer", None)
-    was_active_and_not_paused = False
-    if vis and vis.active and not vis.is_paused:
-        was_active_and_not_paused = True
-        vis.is_paused = True
-        sys.stdout.write("\r\033[K")
-        sys.stdout.flush()
-    elif vis and vis.active and vis.is_paused:
-        sys.stdout.write("\r\033[K")
-        sys.stdout.flush()
+    with _stdin_lock:
+        import sys
+        import builtins
+        vis = getattr(builtins, "active_cli_visualizer", None)
+        was_active_and_not_paused = False
+        if vis and vis.active and not vis.is_paused:
+            was_active_and_not_paused = True
+            vis.is_paused = True
+            sys.stdout.write("\r\033[K")
+            sys.stdout.flush()
+        elif vis and vis.active and vis.is_paused:
+            sys.stdout.write("\r\033[K")
+            sys.stdout.flush()
 
-    try:
-        user_input = input("🔒 Enter Password to authorize action: ").strip()
-        if user_input == correct_password:
-            return True
-        else:
-            print("❌ Access Denied: Incorrect Password.")
+        try:
+            banner = get_stdin_prompt_banner("PASSWORD", "Authentication verification needed")
+            print(banner, flush=True)
+            user_input = input("🔒 Enter Password to authorize action: ").strip()
+            if user_input == correct_password:
+                return True
+            else:
+                print("❌ Access Denied: Incorrect Password.")
+                return False
+        except Exception as e:
+            print(f"Error during password verification: {e}")
             return False
-    except Exception as e:
-        print(f"Error during password verification: {e}")
-        return False
-    finally:
-        if was_active_and_not_paused and vis and vis.active:
-            vis.is_paused = False
+        finally:
+            if was_active_and_not_paused and vis and vis.active:
+                vis.is_paused = False
