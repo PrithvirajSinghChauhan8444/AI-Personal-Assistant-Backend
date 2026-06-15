@@ -76,18 +76,19 @@ def read_memory(key):
 
 
 
-def remember(key: str, value: str, category: str = "past") -> str:
+def remember(key: str, value: Any, category: str = "past") -> str:
     """Store important information for future use.
 
     Args:
         key (str): The unique identifier or topic name for the memory (e.g., 'user_name').
-        value (str): The actual details or context to remember (e.g., 'John').
+        value (Any): The actual details or context to remember (e.g., 'John' or a structured dictionary/list).
         category (str): The grouping category for the memory. Defaults to 'past'.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: remember")
     print(f"   Args: key={key}, value={value}, category={category}")
     store_memory(category, key, value)
-    store_vector(value)
+    value_str = value if isinstance(value, str) else json.dumps(value)
+    store_vector(value_str)
     return f"Saved memory: {key}"
 
 
