@@ -18,10 +18,13 @@ _file_lock = threading.Lock()
 
 def _load(path):
     with _file_lock:
-        if not os.path.exists(path):
+        if not os.path.exists(path) or os.path.getsize(path) == 0:
             return {}
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return {}
 
 def _save(path, data):
     with _file_lock:
