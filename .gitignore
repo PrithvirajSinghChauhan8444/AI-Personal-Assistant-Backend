@@ -4,9 +4,10 @@ config/
 __pycache__/
 *.pyc
 .vscode/
-
+.session_cache
 # Local databases and memory logs
 Memory/
 
 # Dynamically generated skills (already tracked core skills remain tracked)
 Skills/
+not_comit

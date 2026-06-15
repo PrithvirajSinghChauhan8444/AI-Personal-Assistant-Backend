@@ -176,6 +176,41 @@ class CLIStatusVisualizer:
 # Path for session context persistence
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 SESSION_CONTEXT_PATH = os.path.join(BASE_DIR, "Memory", "session_context.json")
+INTERRUPTED_TASK_PATH = os.path.join(BASE_DIR, "Memory", "interrupted_task.json")
+
+def save_interrupted_task_checkpoint(state_values, status="running"):
+    import json
+    try:
+        # Filter out transient keys from working memory to keep context clean
+        transient_keys = ["active_skills", "skills_index", "user_profile", "relevant_memories", "fast_path_matched"]
+        working_memory = state_values.get("working_memory", {}) or {}
+        filtered_wm = {k: v for k, v in working_memory.items() if k not in transient_keys}
+
+        data = {
+            "status": status,
+            "primary_goal": state_values.get("primary_goal", ""),
+            "active_subtasks": state_values.get("active_subtasks", []),
+            "working_memory": filtered_wm,
+            "completed_tasks": state_values.get("completed_tasks", {}),
+            "chat_history": state_values.get("chat_history", [])
+        }
+        
+        os.makedirs(os.path.dirname(INTERRUPTED_TASK_PATH), exist_ok=True)
+        tmp_path = INTERRUPTED_TASK_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+        
+        # Atomic rename to prevent file corruption on power loss
+        os.replace(tmp_path, INTERRUPTED_TASK_PATH)
+    except Exception as e:
+        print(f"\n  ⚠️ Failed to save interrupted task checkpoint: {e}", flush=True)
+
+def clear_interrupted_task_checkpoint():
+    try:
+        if os.path.exists(INTERRUPTED_TASK_PATH):
+            os.remove(INTERRUPTED_TASK_PATH)
+    except Exception as e:
+        print(f"\n  ⚠️ Failed to clear interrupted task checkpoint: {e}", flush=True)
 
 def save_session_context_async(chat_history, working_memory, completed_tasks):
     def run_save():
@@ -241,6 +276,149 @@ def save_session_context_async(chat_history, working_memory, completed_tasks):
     thread = threading.Thread(target=run_save, daemon=True)
     thread.start()
 
+def run_graph_execution(initial_state, config, thread_id, chat_history_list):
+    """
+    Executes the StateGraph stream with the given initial state and configuration.
+    Saves checkpoints after each event for interruption recovery.
+    """
+    visualizer = CLIStatusVisualizer()
+    visualizer.start("Analyzing request & decomposing into subtasks", "36") # Cyan
+
+    try:
+        from datetime import datetime
+        for event in app.stream(initial_state, config=config):
+            for node_name, state_update in event.items():
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                
+                if node_name == "MemoryInjector":
+                    visualizer.stop()
+                    print(f"\nRunning MemoryInjector : ({timestamp})")
+                    print("--- MemoryInjector Finished ---")
+                    print("\n📍 Node 'MemoryInjector' Output:")
+                    wm = state_update.get("working_memory", {}) or {}
+                    
+                    if wm.get("fast_path_matched", False):
+                        print("  ⚡ [Fast-Path Bypass] Matched fast-path intent! Resolving instantly...")
+                    else:
+                        user_profile = wm.get("user_profile", {})
+                        relevant_memories = wm.get("relevant_memories", [])
+                        if user_profile:
+                            print(f"  -> Loaded User Profile keys: {list(user_profile.keys())}")
+                        if relevant_memories:
+                            print(f"  -> Injected {len(relevant_memories)} semantically relevant memories.")
+                        visualizer.start("Analyzing request & decomposing into subtasks", "36")
+                
+                elif node_name == "TaskRouter":
+                    visualizer.stop()
+                    print(f"\nRunning TaskRouter : ({timestamp})")
+                    print("--- TaskRouter Finished ---")
+                    print("\n📍 Node 'TaskRouter' Output:")
+                    subtasks = state_update.get("active_subtasks", [])
+                    print("-- PLAN:")
+                    for idx, st in enumerate(subtasks, 1):
+                        print(f"   {idx}. {st['assigned_worker']}: {st['description']}")
+                    visualizer.start("Orchestrating subtasks", "34") # Blue
+                
+                elif node_name == "Orchestrator":
+                    visualizer.stop()
+                    next_node = state_update.get("next_node")
+                    print(f"\nRunning Orchestrator : ({timestamp})")
+                    print("--- Orchestrator Finished ---")
+                    print("\n📍 Node 'Orchestrator' Output:")
+                    if next_node == "OutputFinalizer":
+                        print("  -> All planned subtasks successfully completed. Routing to Output Finalizer.")
+                    else:
+                        subtasks = state_update.get("active_subtasks", [])
+                        task_desc = ""
+                        for st in subtasks:
+                            if st["status"] == "in_progress":
+                                task_desc = st['description']
+                                break
+                        
+                        next_node_str = ", ".join(next_node) if isinstance(next_node, list) else next_node
+                        print(f"  -> Next Node Target: {next_node_str} | Task: {task_desc}")
+                        visualizer.start(f"Running {next_node_str}", "33") # Yellow
+                
+                elif node_name in ["SystemWorker", "GmailWorker", "ProductivityWorker", "MemoryWorker", "ClassroomWorker", "BrowserWorker", "GithubWorker", "MiscWorker"]:
+                    visualizer.stop()
+                    print(f"\nRunning {node_name} : ({timestamp})")
+                    print(f"--- {node_name} Finished ---")
+                    print(f"\n📍 Node '{node_name}' Output:")
+                    subtasks = state_update.get("active_subtasks", [])
+                    completed_desc = ""
+                    for st in subtasks:
+                        if st["status"] == "completed":
+                            completed_desc = st["description"]
+                    if completed_desc:
+                        print(f"  \033[1;32m✔\033[0m Completed Task: {completed_desc}")
+                    else:
+                        print(f"  \033[1;32m✔\033[0m {node_name} completed execution successfully.")
+                    visualizer.start("Evaluating next steps", "34") # Blue
+                    
+                elif node_name == "OutputFinalizer":
+                    visualizer.stop()
+
+            # Save checkpoint after each graph event
+            state_snapshot = app.get_state(config)
+            save_interrupted_task_checkpoint(state_snapshot.values, status="running")
+        
+        # Retrieve latest state from checkpointer to save for multi-turn conversational persistence
+        state_data = app.get_state(config)
+        final_resp = state_data.values.get("final_response", "")
+        
+        # Trigger Asynchronous Background Self-Reflection (Phase 1 Optimization)
+        if final_resp and state_data.values.get("completed_tasks"):
+            state_snapshot = dict(state_data.values)
+            def run_background_reflection(snap):
+                try:
+                    from src.CoreFunctions.logger import set_thread_session_id
+                    set_thread_session_id(thread_id)
+                    reflection_node(snap)
+                except Exception as ex:
+                    try:
+                        log_path = os.path.join(BASE_DIR, "Memory", "reflection.log")
+                        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                        with open(log_path, "a", encoding="utf-8") as f:
+                            f.write(f"\nBackground Reflection Error: {ex}\n")
+                    except Exception:
+                        pass
+            
+            bg_thread = threading.Thread(target=run_background_reflection, args=(state_snapshot,), daemon=True)
+            bg_thread.start()
+        
+        # Append exchange to local history
+        chat_history_list.append({"role": "user", "content": initial_state["primary_goal"]})
+        if final_resp:
+            chat_history_list.append({"role": "assistant", "content": final_resp})
+            
+        # Keep history to last 10 messages (5 turns) for token safety
+        if len(chat_history_list) > 10:
+            chat_history_list[:] = chat_history_list[-10:]
+            
+        # Update working memory and completed tasks for local persistence across turns
+        working_memory_latest = state_data.values.get("working_memory", {})
+        completed_tasks_latest = state_data.values.get("completed_tasks", {})
+        
+        # Trigger Asynchronous Background Context Saver
+        save_session_context_async(chat_history_list, working_memory_latest, completed_tasks_latest)
+        
+        # Clear recovery file since the execution succeeded!
+        clear_interrupted_task_checkpoint()
+
+        # End logging session successfully
+        from src.CoreFunctions.logger import end_session_logger
+        end_session_logger(final_resp, success=True)
+        
+        return working_memory_latest, completed_tasks_latest
+        
+    except Exception as e:
+        visualizer.stop()
+        print(f"❌ Execution Error: {e}")
+        from src.CoreFunctions.logger import log_error, end_session_logger
+        log_error("main_graph", str(e))
+        end_session_logger("", success=False)
+        raise e
+
 def process_request_interactive():
     import json
     # Check for missing/placeholder API key
@@ -257,12 +435,14 @@ def process_request_interactive():
     # Load session context on startup
     chat_history = []
     working_memory_init = {}
+    completed_tasks_init = {}
     if os.path.exists(SESSION_CONTEXT_PATH):
         try:
             with open(SESSION_CONTEXT_PATH, "r", encoding="utf-8") as f:
                 context = json.load(f)
                 chat_history = context.get("chat_history", [])
                 working_memory_init = context.get("working_memory", {})
+                completed_tasks_init = context.get("completed_tasks", {})
                 previous_summary = context.get("session_summary", "")
                 
                 print(f"📖 Loaded {len(chat_history)} previous conversation exchanges.")
@@ -272,6 +452,76 @@ def process_request_interactive():
         except Exception as e:
             print(f"⚠️ Failed to load previous session context: {e}")
             
+    # Check for recovery of an interrupted task on startup
+    if os.path.exists(INTERRUPTED_TASK_PATH):
+        try:
+            with open(INTERRUPTED_TASK_PATH, "r", encoding="utf-8") as f:
+                recovered_task = json.load(f)
+            
+            goal = recovered_task.get("primary_goal", "")
+            subtasks = recovered_task.get("active_subtasks", [])
+            
+            if goal:
+                print(f"\n\033[1;33m⚠️  An interrupted task was detected from your last session!\033[0m")
+                print(f"   Goal: \"{goal}\"")
+                if subtasks:
+                    print("   Status of subtasks:")
+                    for st in subtasks:
+                        status_symbol = "✔" if st["status"] == "completed" else "⏳"
+                        print(f"     [{status_symbol}] {st['assigned_worker']}: {st['description']}")
+                else:
+                    print("   (The task was interrupted before subtasks were planned.)")
+                
+                print("\033[1;31m(Warning: Resuming may re-execute tasks that were interrupted mid-process)\033[0m")
+                
+                while True:
+                    choice = input("\nWould you like to (c)ontinue/resume this task, or (r)emove/discard it? [c/r]: ").strip().lower()
+                    if choice in ['c', 'continue']:
+                        print(f"\n🔄 Resuming task: \"{goal}\"")
+                        
+                        import uuid
+                        thread_id = f"session_{uuid.uuid4().hex[:8]}"
+                        config = {"configurable": {"thread_id": thread_id}}
+                        
+                        # Initialize recovered state
+                        initial_state = {
+                            "primary_goal": goal,
+                            "active_subtasks": subtasks,
+                            "working_memory": recovered_task.get("working_memory", {}),
+                            "completed_tasks": recovered_task.get("completed_tasks", {}),
+                            "final_response": "",
+                            "chat_history": recovered_task.get("chat_history", chat_history)
+                        }
+                        
+                        from src.CoreFunctions.logger import init_session_logger
+                        init_session_logger(thread_id, f"Resuming: {goal}")
+                        
+                        try:
+                            working_memory_init, completed_tasks_init = run_graph_execution(
+                                initial_state, config, thread_id, chat_history
+                            )
+                        except KeyboardInterrupt:
+                            print("\n👋 Execution interrupted again. State saved.")
+                            sys.exit(0)
+                        except Exception:
+                            # Error printed in run_graph_execution
+                            pass
+                        break
+                        
+                    elif choice in ['r', 'remove', 'discard']:
+                        print("🗑️ Interrupted task discarded.")
+                        clear_interrupted_task_checkpoint()
+                        break
+                    else:
+                        print("Invalid choice. Please enter 'c' to resume or 'r' to discard.")
+                        
+        except json.JSONDecodeError:
+            print("⚠️ Detected a corrupted recovery file. Starting fresh...")
+            clear_interrupted_task_checkpoint()
+        except Exception as e:
+            print(f"⚠️ Failed to process recovery of interrupted task: {e}")
+            clear_interrupted_task_checkpoint()
+
     while True:
         try:
             user_input = input("\nYou: ").strip()
@@ -315,147 +565,32 @@ def process_request_interactive():
         thread_id = f"session_{uuid.uuid4().hex[:8]}"
         config = {"configurable": {"thread_id": thread_id}}
 
-        # Initialize session logger for execution tracing
-        from src.CoreFunctions.logger import init_session_logger, end_session_logger, log_error
-        init_session_logger(thread_id, user_input)
-
         initial_state = {
             "primary_goal": user_input,
             "active_subtasks": [],
             "working_memory": working_memory_init,
-            "completed_tasks": {},
+            "completed_tasks": completed_tasks_init,
             "final_response": "",
             "chat_history": chat_history
         }
 
-        # Initialize and start visualizer
-        visualizer = CLIStatusVisualizer()
-        visualizer.start("Analyzing request & decomposing into subtasks", "36") # Cyan
-        
+        # Immediately save initial checkpoint as "initializing"
+        save_interrupted_task_checkpoint(initial_state, status="initializing")
+
+        # Initialize session logger for execution tracing
+        from src.CoreFunctions.logger import init_session_logger
+        init_session_logger(thread_id, user_input)
+
         try:
-            from datetime import datetime
-            for event in app.stream(initial_state, config=config):
-                for node_name, state_update in event.items():
-                    timestamp = datetime.now().strftime("%H:%M:%S")
-                    
-                    if node_name == "MemoryInjector":
-                        visualizer.stop()
-                        print(f"\nRunning MemoryInjector : ({timestamp})")
-                        print("--- MemoryInjector Finished ---")
-                        print("\n📍 Node 'MemoryInjector' Output:")
-                        wm = state_update.get("working_memory", {}) or {}
-                        
-                        if wm.get("fast_path_matched", False):
-                            print("  ⚡ [Fast-Path Bypass] Matched fast-path intent! Resolving instantly...")
-                        else:
-                            user_profile = wm.get("user_profile", {})
-                            relevant_memories = wm.get("relevant_memories", [])
-                            if user_profile:
-                                print(f"  -> Loaded User Profile keys: {list(user_profile.keys())}")
-                            if relevant_memories:
-                                print(f"  -> Injected {len(relevant_memories)} semantically relevant memories.")
-                            visualizer.start("Analyzing request & decomposing into subtasks", "36")
-                    
-                    elif node_name == "TaskRouter":
-                        visualizer.stop()
-                        print(f"\nRunning TaskRouter : ({timestamp})")
-                        print("--- TaskRouter Finished ---")
-                        print("\n📍 Node 'TaskRouter' Output:")
-                        subtasks = state_update.get("active_subtasks", [])
-                        print("-- PLAN:")
-                        for idx, st in enumerate(subtasks, 1):
-                            print(f"   {idx}. {st['assigned_worker']}: {st['description']}")
-                        visualizer.start("Orchestrating subtasks", "34") # Blue
-                    
-                    elif node_name == "Orchestrator":
-                        visualizer.stop()
-                        next_node = state_update.get("next_node")
-                        print(f"\nRunning Orchestrator : ({timestamp})")
-                        print("--- Orchestrator Finished ---")
-                        print("\n📍 Node 'Orchestrator' Output:")
-                        if next_node == "OutputFinalizer":
-                            print("  -> All planned subtasks successfully completed. Routing to Output Finalizer.")
-                        else:
-                            subtasks = state_update.get("active_subtasks", [])
-                            task_desc = ""
-                            for st in subtasks:
-                                if st["status"] == "in_progress":
-                                    task_desc = st['description']
-                                    break
-                            
-                            next_node_str = ", ".join(next_node) if isinstance(next_node, list) else next_node
-                            print(f"  -> Next Node Target: {next_node_str} | Task: {task_desc}")
-                            visualizer.start(f"Running {next_node_str}", "33") # Yellow
-                    
-                    elif node_name in ["SystemWorker", "GmailWorker", "ProductivityWorker", "MemoryWorker", "ClassroomWorker", "BrowserWorker", "GithubWorker"]:
-                        visualizer.stop()
-                        print(f"\nRunning {node_name} : ({timestamp})")
-                        print(f"--- {node_name} Finished ---")
-                        print(f"\n📍 Node '{node_name}' Output:")
-                        subtasks = state_update.get("active_subtasks", [])
-                        completed_desc = ""
-                        for st in subtasks:
-                            if st["status"] == "completed":
-                                completed_desc = st["description"]
-                        if completed_desc:
-                            print(f"  \033[1;32m✔\033[0m Completed Task: {completed_desc}")
-                        else:
-                            print(f"  \033[1;32m✔\033[0m {node_name} completed execution successfully.")
-                        visualizer.start("Evaluating next steps", "34") # Blue
-                        
-                    elif node_name == "OutputFinalizer":
-                        visualizer.stop()
-            
-            # Retrieve latest state from checkpointer to save for multi-turn conversational persistence
-            state_data = app.get_state(config)
-            final_resp = state_data.values.get("final_response", "")
-            
-            # Trigger Asynchronous Background Self-Reflection (Phase 1 Optimization)
-            if final_resp and state_data.values.get("completed_tasks"):
-                state_snapshot = dict(state_data.values)
-                def run_background_reflection(snap):
-                    try:
-                        from src.CoreFunctions.logger import set_thread_session_id
-                        set_thread_session_id(thread_id)
-                        reflection_node(snap)
-                    except Exception as ex:
-                        # Log error silently to reflection log instead of polluting stdout
-                        try:
-                            log_path = os.path.join(BASE_DIR, "Memory", "reflection.log")
-                            os.makedirs(os.path.dirname(log_path), exist_ok=True)
-                            with open(log_path, "a", encoding="utf-8") as f:
-                                f.write(f"\nBackground Reflection Error: {ex}\n")
-                        except Exception:
-                            pass
-                
-                bg_thread = threading.Thread(target=run_background_reflection, args=(state_snapshot,), daemon=True)
-                bg_thread.start()
-            
-            # Append exchange to local history
-            chat_history.append({"role": "user", "content": user_input})
-            if final_resp:
-                chat_history.append({"role": "assistant", "content": final_resp})
-                
-            # Keep history to last 10 messages (5 turns) for token safety
-            if len(chat_history) > 10:
-                chat_history = chat_history[-10:]
-                
-            # Update working memory and completed tasks for local persistence across turns
-            working_memory_init = state_data.values.get("working_memory", {})
-            completed_tasks_init = state_data.values.get("completed_tasks", {})
-            
-            # Trigger Asynchronous Background Context Saver
-            save_session_context_async(chat_history, working_memory_init, completed_tasks_init)
-            
-            # End logging session successfully
-            end_session_logger(final_resp, success=True)
-            
-        except Exception as e:
-            visualizer.stop()
-            print(f"❌ Execution Error: {e}")
-            from src.CoreFunctions.logger import log_error, end_session_logger
-            log_error("main_graph", str(e))
-            end_session_logger("", success=False)
+            working_memory_init, completed_tasks_init = run_graph_execution(
+                initial_state, config, thread_id, chat_history
+            )
+        except KeyboardInterrupt:
+            print("\n👋 Execution interrupted. State saved.")
+            sys.exit(0)
+        except Exception:
+            # Error printed in run_graph_execution
+            pass
 
 if __name__ == "__main__":
     process_request_interactive()

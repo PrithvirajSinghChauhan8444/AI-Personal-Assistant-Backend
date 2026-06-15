@@ -124,3 +124,39 @@ The personal assistant writes concurrent logging data during execution using [lo
 Files are stored dynamically:
 * Per-session logs: `Memory/logs/session_<id>.log` and `Memory/logs/session_<id>.json`.
 * Global latest trace: `Memory/logs/latest.log` and `Memory/logs/latest.json`.
+
+---
+
+## 6. Fault Tolerance & Edge Cases
+
+### Handling Agents Stuck in a Loop
+* **Recursion Limits**: LangGraph execution is bound by maximum recursion depths. If a worker continuously loops on a tool error, execution is halted rather than hanging indefinitely.
+* **Orchestrator Self-Healing**: The Orchestrator detects dependency deadlocks. If a prerequisite task fails and dependents are stuck in `"pending"`, it automatically aborts the blocked tasks, preventing the graph from looping fruitlessly.
+
+### Dealing with Edge Cases
+* **Tool Execution Failures**: Workers catch and log tool-level exceptions. The exception message is injected back into the worker's prompt scratchpad, allowing the LLM to understand the failure and self-correct instead of crashing.
+* **Unparseable Intent**: If the `TaskRouter` cannot interpret the user's request, it routes to a fallback response gracefully rather than generating malformed task DAGs.
+* **Concurrent Resource Contention**: To handle parallel workers contending for human input or system resources, global thread mutex locks (e.g., `_stdin_lock`) serialize access to prevent race conditions.
+
+### LLM Crashes Mid-Execution
+* **State Recovery**: Because execution is tracked persistently within `AgentState`, a crashed API call only interrupts the current node, not the entire state.
+* **Orphaned Task Reset**: If the system process crashes mid-execution, tasks marked as `"in_progress"` become orphaned. Upon the next startup or orchestration cycle, the Orchestrator identifies and resets these to `"pending"`, allowing the graph to seamlessly resume.
+
+---
+
+## 7. Common Interview Questions
+
+**1. How does this Cyclic State Machine architecture improve upon standard ReAct agents?**
+*Answer:* Standard ReAct agents rely on a single, continuously growing context window, leading to hallucination and memory drift. This architecture decouples planning, execution, and state management into isolated nodes. Workers execute in parallel, and context is kept clean by communicating strictly via a schema-enforced `AgentState`.
+
+**2. How do you prevent your system from getting stuck in an infinite loop?**
+*Answer:* We utilize two layers of defense: 1) Hard recursion limits on LangGraph node transitions, and 2) the Orchestrator actively monitors task status. If the Orchestrator detects dependency deadlocks (where prerequisites have failed), it aborts the execution rather than continually waiting or retrying.
+
+**3. What happens to the system state if the LLM crashes or the process is killed mid-execution?**
+*Answer:* The architecture is designed to self-heal. Any task that was running during the crash is left in an `"in_progress"` state. The next time the Orchestrator runs, it identifies these as orphaned tasks, resets them to `"pending"`, and re-routes them for execution.
+
+**4. How do you handle parallel execution when multiple agents need human input?**
+*Answer:* We implemented global mutex locks (e.g., `_stdin_lock`) to serialize human-in-the-loop interventions. This prevents console output overlap and ensures that only one worker can securely request user input (like a password) at a time.
+
+**5. How do you manage the context window as the system accumulates procedural knowledge?**
+*Answer:* Rather than injecting all knowledge into the prompt, we use a two-tiered memory system. Immediate conversation context is stored in `working_memory`, while procedural knowledge (skills) is stored in a FAISS vector database. The `MemoryInjector` queries this database to load only the semantically relevant skills for the current goal.
