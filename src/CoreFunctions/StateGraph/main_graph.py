@@ -23,6 +23,7 @@ from src.CoreFunctions.StateGraph.workers import (
 )
 from src.CoreFunctions.StateGraph.finalizer import output_finalizer_node
 from src.CoreFunctions.StateGraph.memory_nodes import memory_injector_node, reflection_node
+from src.CoreFunctions.unified_memory import UnifiedMemory
 
 def memory_injector_router(state: AgentState):
     working_memory = state.get("working_memory", {}) or {}
@@ -195,6 +196,19 @@ def save_interrupted_task_checkpoint(state_values, status="running"):
             "chat_history": state_values.get("chat_history", [])
         }
         
+        # Integrate UnifiedMemory caching dump for crash recovery
+        try:
+            um = UnifiedMemory()
+            if um.enabled:
+                um_dump = {}
+                for k in um.list_keys("*"):
+                    mem = um.retrieve_memory(k)
+                    if mem:
+                        um_dump[k] = mem
+                data["unified_memory_dump"] = um_dump
+        except Exception as um_err:
+            pass
+        
         os.makedirs(os.path.dirname(INTERRUPTED_TASK_PATH), exist_ok=True)
         tmp_path = INTERRUPTED_TASK_PATH + ".tmp"
         with open(tmp_path, "w", encoding="utf-8") as f:
@@ -227,6 +241,19 @@ def save_session_context_async(chat_history, working_memory, completed_tasks):
                 "completed_tasks": completed_tasks,
                 "session_summary": working_memory.get("previous_session_summary", "")
             }
+            
+            # Integrate UnifiedMemory persistent keys archiving
+            try:
+                um = UnifiedMemory()
+                if um.enabled:
+                    um_persistent = {}
+                    for k in um.list_keys("*"):
+                        mem = um.retrieve_memory(k)
+                        if mem and mem.get("persistent") == "yes":
+                            um_persistent[k] = mem
+                    context_data["unified_memory_persistent"] = um_persistent
+            except Exception as um_err:
+                print(f"⚠️ [UnifiedMemory] finalizer sync error: {um_err}")
             
             os.makedirs(os.path.dirname(SESSION_CONTEXT_PATH), exist_ok=True)
             with open(SESSION_CONTEXT_PATH, "w", encoding="utf-8") as f:
@@ -432,6 +459,9 @@ def process_request_interactive():
 
     print("🤖 \033[1;32mAgent Manager (Dynamic State-Graph)\033[0m - Type 'exit' to quit.")
     
+    # Initialize the Unified Memory cache singleton
+    UnifiedMemory()
+
     # Load session context on startup
     chat_history = []
     working_memory_init = {}
@@ -449,6 +479,23 @@ def process_request_interactive():
                 if previous_summary:
                     working_memory_init["previous_session_summary"] = previous_summary
                     print(f"📝 Previous Session Summary: {previous_summary}")
+                    
+                # Restore UnifiedMemory persistent cache keys on startup
+                um_persistent = context.get("unified_memory_persistent", {})
+                if um_persistent:
+                    try:
+                        um = UnifiedMemory()
+                        if um.enabled:
+                            for k, mem in um_persistent.items():
+                                um.store_memory(
+                                    k, 
+                                    mem, 
+                                    sharable=(mem.get("sharable") == "yes"), 
+                                    persistent=True
+                                )
+                            print(f"⚡ [UnifiedMemory] Restored {len(um_persistent)} persistent keys from session context.")
+                    except Exception as um_err:
+                        print(f"⚠️ [UnifiedMemory] startup restore failed: {um_err}")
         except Exception as e:
             print(f"⚠️ Failed to load previous session context: {e}")
             
@@ -483,6 +530,23 @@ def process_request_interactive():
                         thread_id = f"session_{uuid.uuid4().hex[:8]}"
                         config = {"configurable": {"thread_id": thread_id}}
                         
+                        # Restore UnifiedMemory cache keys on task recovery
+                        um_dump = recovered_task.get("unified_memory_dump", {})
+                        if um_dump:
+                            try:
+                                um = UnifiedMemory()
+                                if um.enabled:
+                                    for k, mem in um_dump.items():
+                                        um.store_memory(
+                                            k, 
+                                            mem, 
+                                            sharable=(mem.get("sharable") == "yes"), 
+                                            persistent=(mem.get("persistent") == "yes")
+                                        )
+                                    print(f"⚡ [UnifiedMemory] Restored {len(um_dump)} cache keys from recovery checkpoint.")
+                            except Exception as um_err:
+                                print(f"⚠️ [UnifiedMemory] recovery restore failed: {um_err}")
+                                
                         # Initialize recovered state
                         initial_state = {
                             "primary_goal": goal,

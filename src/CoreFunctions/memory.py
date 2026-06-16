@@ -2,6 +2,7 @@ import json
 import os
 import threading
 from datetime import datetime
+from CoreFunctions.unified_memory import UnifiedMemory
 
 # Absolute path relative to project root
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -78,6 +79,16 @@ def store_memory(category, key, value):
     }
     _save(FILES[category], data)
     print("📁 Writing memory to:", FILES[category])
+    
+    if category == "current":
+        try:
+            um = UnifiedMemory()
+            if um.enabled:
+                um.store_memory(key, sanitized_value, sharable=True, persistent=True)
+                print(f"⚡ [UnifiedMemory] Stored '{key}' in workspace cache.")
+        except Exception as um_err:
+            print(f"⚠️ [UnifiedMemory] Failed to store in cache: {um_err}")
+
     return f"Stored {key} in {category} memory."
 
 # -------------------------
@@ -99,7 +110,27 @@ def fetch_memory(category=None, key=None):
     # SMART RECALL MODE
     # -----------------------------
     if category is None and key:
-        for cat in ("user", "current", "past"):
+        # Check user
+        user_data = _load(FILES["user"])
+        if key in user_data:
+            value = user_data[key].get("value")
+            print(f"🔁 recalled [user] → {key} = {value}")
+            return value
+
+        # Check current / cache via UnifiedMemory first
+        try:
+            um = UnifiedMemory()
+            if um.enabled:
+                cache_val = um.retrieve_memory(key)
+                if cache_val is not None:
+                    value = cache_val.get("summary")
+                    print(f"🔁 recalled [current] (UnifiedMemory) → {key} = {value}")
+                    return value
+        except Exception as um_err:
+            print(f"⚠️ [UnifiedMemory] fetch error: {um_err}")
+
+        # Fallback to local files for current and past
+        for cat in ("current", "past"):
             data = _load(FILES[cat])
             if key in data:
                 value = data[key].get("value")
@@ -118,6 +149,18 @@ def fetch_memory(category=None, key=None):
                 category = "user"
             else:
                 category = "past"
+
+        if category == "current":
+            try:
+                um = UnifiedMemory()
+                if um.enabled:
+                    cache_val = um.retrieve_memory(key)
+                    if cache_val is not None:
+                        value = cache_val.get("summary")
+                        print(f"🔁 recalled [{category}] (UnifiedMemory) → {key} = {value}")
+                        return value
+            except Exception as um_err:
+                print(f"⚠️ [UnifiedMemory] fetch error: {um_err}")
                 
         data = _load(FILES[category])
         value = data.get(key, {}).get("value")
