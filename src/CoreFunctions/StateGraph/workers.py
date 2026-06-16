@@ -249,22 +249,33 @@ def _run_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict,
     cleaned_memory = _clean_working_memory_for_worker(working_memory, depends_on)
     memory_str = json.dumps(cleaned_memory, indent=2)
     
-    prompt = f"""
+    stable_guideline = (
+        "IMPORTANT NOTE ON LARGE DATA:\n"
+        "If any entry in the Working Memory contains a `\"__file_reference__\"`, the actual large data has "
+        "been saved to that local file path to avoid context bloat. You can directly read the content of "
+        "that file using your file-reading tools (like `read_file_tool` or running python/terminal commands), "
+        "copy/move the file, or use the file path as an attachment/input for other tools."
+    )
+    
+    skills_str = _load_worker_skills(worker_name)
+    skills_section = ""
+    if skills_str:
+        skills_section = (
+            f"\n\n### Specialized Skills for {worker_name}:\n"
+            f"Use the following step-by-step procedures when resolving tasks in your domain:\n"
+            f"{skills_str}"
+        )
+        
+    volatile_inputs = f"""
+### Operational Context (Volatile):
 Task: {task_desc}
 
 Working Memory (Data from previous tasks):
 {memory_str}
 
-IMPORTANT NOTE ON LARGE DATA:
-If any entry in the Working Memory contains a `"__file_reference__"`, the actual large data has been saved to that local file path to avoid context bloat. You can directly read the content of that file using your file-reading tools (like `read_file_tool` or running python/terminal commands), copy/move the file, or use the file path as an attachment/input for other tools.
-
 Execute the tools necessary to complete this task. Return a concise, data-rich summary of your findings or actions.
 """
-
-    # Dynamically inject worker-specific skills
-    skills_str = _load_worker_skills(worker_name)
-    if skills_str:
-        prompt += f"\n\n### Specialized Skills for {worker_name}:\nUse the following step-by-step procedures when resolving tasks in your domain:\n{skills_str}"
+    prompt = f"{stable_guideline}{skills_section}\n\n{volatile_inputs}"
     
     # Log worker run start
     is_local = worker_name in ["MemoryWorker", "ObsidianNoteWorker", "ObsidianCanvasWorker", "ObsidianRefactorWorker"]
@@ -381,22 +392,33 @@ async def _run_async_ephemeral_agent(worker_name: str, task_desc: str, working_m
     cleaned_memory = _clean_working_memory_for_worker(working_memory, depends_on)
     memory_str = json.dumps(cleaned_memory, indent=2)
     
-    prompt = f"""
+    stable_guideline = (
+        "IMPORTANT NOTE ON LARGE DATA:\n"
+        "If any entry in the Working Memory contains a `\"__file_reference__\"`, the actual large data has "
+        "been saved to that local file path to avoid context bloat. You can directly read the content of "
+        "that file using your file-reading tools (like `read_file_tool` or running python/terminal commands), "
+        "copy/move the file, or use the file path as an attachment/input for other tools."
+    )
+    
+    skills_str = _load_worker_skills(worker_name)
+    skills_section = ""
+    if skills_str:
+        skills_section = (
+            f"\n\n### Specialized Skills for {worker_name}:\n"
+            f"Use the following step-by-step procedures when resolving tasks in your domain:\n"
+            f"{skills_str}"
+        )
+        
+    volatile_inputs = f"""
+### Operational Context (Volatile):
 Task: {task_desc}
 
 Working Memory (Data from previous tasks):
 {memory_str}
 
-IMPORTANT NOTE ON LARGE DATA:
-If any entry in the Working Memory contains a `"__file_reference__"`, the actual large data has been saved to that local file path to avoid context bloat. You can directly read the content of that file using your file-reading tools (like `read_file_tool` or running python/terminal commands), copy/move the file, or use the file path as an attachment/input for other tools.
-
 Execute the tools necessary to complete this task. Return a concise, data-rich summary of your findings or actions.
 """
-
-    # Dynamically inject worker-specific skills
-    skills_str = _load_worker_skills(worker_name)
-    if skills_str:
-        prompt += f"\n\n### Specialized Skills for {worker_name}:\nUse the following step-by-step procedures when resolving tasks in your domain:\n{skills_str}"
+    prompt = f"{stable_guideline}{skills_section}\n\n{volatile_inputs}"
     
     # Log worker run start
     is_local = worker_name in ["MemoryWorker", "ObsidianNoteWorker", "ObsidianCanvasWorker", "ObsidianRefactorWorker"]
