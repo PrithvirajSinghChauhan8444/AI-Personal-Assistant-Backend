@@ -38,7 +38,8 @@ local_llm = ChatOllama(
 
 # Define prompts
 # Thinking directive to force both cloud and local models to populate msg.content before invoking tools
-THINKING_INSTRUCTION = " CRITICAL: You MUST always output your reasoning and intermediate thought process in natural language BEFORE calling any tools. Never invoke tools silently."
+TAGGING_INSTRUCTION = " CRITICAL FORMATTING RULE: You MUST always wrap critical information inside your text output in custom XML tags: wrap email addresses in <email>...</email>, URLs/links in <url>...</url>, passwords/credentials in <pass>...</pass>, and blocks of code in <code>...</code>. Do not wrap generic terms, only wrap actual values."
+THINKING_INSTRUCTION = " CRITICAL: You MUST always output your reasoning and intermediate thought process in natural language BEFORE calling any tools. Never invoke tools silently." + TAGGING_INSTRUCTION
 HUMAN_INTERVENTION_INSTRUCTION = """
 ### 🚨 HUMAN-IN-THE-LOOP (HITL) PROTOCOL:
 You have access to the `request_human_intervention` tool. You MUST call this tool immediately to pause execution and request manual help from the human user in the following scenarios:
@@ -56,8 +57,8 @@ SYSTEM_PROMPT_GMAIL = "You are GmailWorker. You manage email fetching, searching
 SYSTEM_PROMPT_PRODUCTIVITY = "You are ProductivityWorker. You manage calendars, tasks, scheduling, and weather/time checks." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
 SYSTEM_PROMPT_MEMORY = "You are MemoryWorker. You save and retrieve long-term user preferences, and you also create or update specialized system skills/procedures using `update_skill` when requested." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
 SYSTEM_PROMPT_CLASSROOM = "You are ClassroomWorker. You manage Google Classroom courses, assignments, announcements, and coursework details." + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
-SYSTEM_PROMPT_BROWSER_NAVIGATOR = "You are BrowserNavigator. Execute the browser actions (navigate, click, or input) requested in the task. CRITICAL RULE - INSPECT CURRENT PAGE FIRST: Before doing anything else (such as navigating or searching), you MUST always call `browser_read_current_page` first to inspect the current tab's active URL, page title, and elements. If the browser is already on the correct/target page, or if the page already shows the necessary controls or information, proceed directly with interaction or reading instead of navigating away. CRITICAL RULE - NO URL GUESSING: Never guess, fabricate, or make up URLs. If the exact URL is not provided in your task, you MUST use the `web_search` tool to look up the correct, official URL before navigating. CRITICAL RULE - ELEMENT PAGINATION: Interactive elements on pages are paginated. By default, only the first 30 elements are listed. If you need to click/fill an element that is not in the list (or if you want to inspect further down the page), you MUST call the tool again with a higher `offset` parameter (e.g., `offset=30`, `offset=60`, etc.) to view the next page of interactive elements. Once the action is successful, stop immediately and report the result. Do not repeat actions. If you encounter a CAPTCHA, bot detection, a 2FA prompt, or if the user asks to pause/perform an action manually, call `request_human_intervention` immediately. If you must wait for the user to perform an action, do not report completion until you have called `request_human_intervention` first to let them finish. If a website requires or works better with a sign-in, check if you are already logged in; if not, call `request_human_intervention` to let the user log in first. For reading textual content, you can use `browser_read_page_content` with mode='summary', mode='query', or mode='chunk'."
-SYSTEM_PROMPT_BROWSER_READER = "You are BrowserReader. Read the page content, extract the requested information, and output it. CRITICAL RULE - INSPECT CURRENT PAGE FIRST: Before doing anything else (such as navigating or searching), you MUST always call `browser_read_current_page` first to inspect the current tab's active URL, page title, and elements. If the browser is already on the correct/target page, or if the page already shows the necessary controls or information, proceed directly with reading instead of navigating away. CRITICAL RULE - NO URL GUESSING: Never guess, fabricate, or make up URLs. If the exact URL is not provided in your task, you MUST use the `web_search` tool to look up the correct, official URL before navigating. CRITICAL RULE - ELEMENT PAGINATION: Interactive elements on pages are paginated. By default, only the first 30 elements are listed. If you need to click/fill/read an element that is not in the list (or if you want to inspect further down the page), you MUST call the tool again with a higher `offset` parameter (e.g., `offset=30`, `offset=60`, etc.) to view the next page of interactive elements. Once you have the information, stop immediately. If you encounter a CAPTCHA, bot detection, a 2FA prompt, or if the user asks to pause/perform an action manually, call `request_human_intervention` immediately. If you must wait for the user to perform an action, do not report completion until you have called `request_human_intervention` first to let them finish. If a website requires or works better with a sign-in, check if you are already logged in; if not, call `request_human_intervention` to let the user log in first. For reading webpage textual content, you MUST use `browser_read_page_content`. To avoid context limit issues, you can summarize long pages using `mode='summary'`, search/answer questions directly using `mode='query'`, or read raw text section by section using `mode='chunk'` (passing incrementing `chunk_index` values starting at 0). Never request the full page if it is extremely long; always use `summary` or `query` mode first."
+SYSTEM_PROMPT_BROWSER_NAVIGATOR = "You are BrowserNavigator. Execute the browser actions (navigate, click, or input) requested in the task. CRITICAL RULE - INSPECT CURRENT PAGE FIRST: Before doing anything else (such as navigating or searching), you MUST always call `browser_read_current_page` first to inspect the current tab's active URL, page title, and elements. If the browser is already on the correct/target page, or if the page already shows the necessary controls or information, proceed directly with interaction or reading instead of navigating away. CRITICAL RULE - NO URL GUESSING: Never guess, fabricate, or make up URLs. If the exact URL is not provided in your task, you MUST use the `web_search` tool to look up the correct, official URL before navigating. CRITICAL RULE - ELEMENT PAGINATION: Interactive elements on pages are paginated. By default, only the first 30 elements are listed. If you need to click/fill an element that is not in the list (or if you want to inspect further down the page), you MUST call the tool again with a higher `offset` parameter (e.g., `offset=30`, `offset=60`, etc.) to view the next page of interactive elements. Once the action is successful, stop immediately and report the result. Do not repeat actions. If you encounter a CAPTCHA, bot detection, a 2FA prompt, or if the user asks to pause/perform an action manually, call `request_human_intervention` immediately. If you must wait for the user to perform an action, do not report completion until you have called `request_human_intervention` first to let them finish. If a website requires or works better with a sign-in, check if you are already logged in; if not, call `request_human_intervention` to let the user log in first. For reading textual content, you can use `browser_read_page_content` with mode='summary', mode='query', or mode='chunk'." + TAGGING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
+SYSTEM_PROMPT_BROWSER_READER = "You are BrowserReader. Read the page content, extract the requested information, and output it. CRITICAL RULE - INSPECT CURRENT PAGE FIRST: Before doing anything else (such as navigating or searching), you MUST always call `browser_read_current_page` first to inspect the current tab's active URL, page title, and elements. If the browser is already on the correct/target page, or if the page already shows the necessary controls or information, proceed directly with reading instead of navigating away. CRITICAL RULE - NO URL GUESSING: Never guess, fabricate, or make up URLs. If the exact URL is not provided in your task, you MUST use the `web_search` tool to look up the correct, official URL before navigating. CRITICAL RULE - ELEMENT PAGINATION: Interactive elements on pages are paginated. By default, only the first 30 elements are listed. If you need to click/fill/read an element that is not in the list (or if you want to inspect further down the page), you MUST call the tool again with a higher `offset` parameter (e.g., `offset=30`, `offset=60`, etc.) to view the next page of interactive elements. Once you have the information, stop immediately. If you encounter a CAPTCHA, bot detection, a 2FA prompt, or if the user asks to pause/perform an action manually, call `request_human_intervention` immediately. If you must wait for the user to perform an action, do not report completion until you have called `request_human_intervention` first to let them finish. If a website requires or works better with a sign-in, check if you are already logged in; if not, call `request_human_intervention` to let the user log in first. For reading webpage textual content, you MUST use `browser_read_page_content`. To avoid context limit issues, you can summarize long pages using `mode='summary'`, search/answer questions directly using `mode='query'`, or read raw text section by section using `mode='chunk'` (passing incrementing `chunk_index` values starting at 0). Never request the full page if it is extremely long; always use `summary` or `query` mode first." + TAGGING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
 SYSTEM_PROMPT_OBSIDIAN_NOTE = """You are ObsidianNoteWorker. You are a highly specialized local markdown note author.
 Your job is to create or append content to `.md` notes in the Obsidian vault.
 You dynamically decide on clean categorization folders based on context (e.g., placing notes in 'Friends/College/', 'Friends/Hometown/', 'Personal/', 'Academic/') or write files according to instructions.
@@ -278,6 +279,9 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         sys.stdout.write("\r\033[K")
         sys.stdout.flush()
 
+    from src.CoreFunctions.unified_memory import UnifiedMemory
+    txn_id, token = UnifiedMemory().start_transaction()
+    success = False
     try:
         last_ai_message = None
         # Stream internal agent execution events in real-time to show thoughts/tool-calls
@@ -327,6 +331,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
                         last_ai_message = msg
         
         # Capture final message content from the last AI message that doesn't have tool calls
+        final_message = ""
         if last_ai_message and not (hasattr(last_ai_message, "tool_calls") and last_ai_message.tool_calls):
             content = last_ai_message.content
             if isinstance(content, list):
@@ -357,8 +362,13 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
                 final_message = str(content)
             
         log_worker_end(worker_name, final_message)
+        success = True
         return final_message
     finally:
+        if success:
+            UnifiedMemory().commit_transaction(txn_id, token)
+        else:
+            UnifiedMemory().discard_transaction(txn_id, token)
         if vis and vis.active:
             vis.is_paused = False
  
@@ -401,6 +411,9 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         sys.stdout.write("\r\033[K")
         sys.stdout.flush()
 
+    from src.CoreFunctions.unified_memory import UnifiedMemory
+    txn_id, token = UnifiedMemory().start_transaction()
+    success = False
     try:
         last_ai_message = None
         # Stream internal agent execution events in real-time to show thoughts/tool-calls
@@ -450,6 +463,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
                         last_ai_message = msg
         
         # Capture final message content from the last AI message that doesn't have tool calls
+        final_message = ""
         if last_ai_message and not (hasattr(last_ai_message, "tool_calls") and last_ai_message.tool_calls):
             content = last_ai_message.content
             if isinstance(content, list):
@@ -480,8 +494,13 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
                 final_message = str(content)
             
         log_worker_end(worker_name, final_message)
+        success = True
         return final_message
     finally:
+        if success:
+            UnifiedMemory().commit_transaction(txn_id, token)
+        else:
+            UnifiedMemory().discard_transaction(txn_id, token)
         if vis and vis.active:
             vis.is_paused = False
 
@@ -494,7 +513,41 @@ def _update_state_completed(state: AgentState, task_id: str, final_data: str):
     
     working_memory = state.get("working_memory", {})
     
-    # Offload large content to a file reference to avoid context bloat in the prompt
+    # 1. Parse entities first to check if caching is needed
+    try:
+        from src.CoreFunctions.unified_memory import UnifiedMemory
+        um = UnifiedMemory()
+        
+        # Default clean_summary
+        clean_summary = final_data
+        has_entities = False
+        
+        if isinstance(final_data, str):
+            extracted = UnifiedMemory.extract_entities(final_data)
+            clean_summary = extracted["summary"]
+            # Check if there are any extracted entities (like urls, emails, passwords, code, shared_data, etc.)
+            has_entities = bool(extracted.get("extracted_entities"))
+            
+        elif isinstance(final_data, dict):
+            # If it's already a dictionary, check if it has extracted_entities populated
+            has_entities = bool(final_data.get("extracted_entities"))
+            clean_summary = final_data.get("summary", final_data)
+
+        # Store in UnifiedMemory ONLY if it is enabled AND contains shareable entities
+        if um.enabled:
+            if has_entities:
+                um.store_memory(task_id, final_data, sharable=True, persistent=True)
+                print(f"  ⚡ [UnifiedMemory] Shareable entities found. Storing '{task_id}' in workspace cache.")
+            else:
+                print(f"  ℹ️ [UnifiedMemory] Skipping store of transient output for '{task_id}' (no shareable tags found).")
+        
+        # Update final_data to be clean_summary for the graph's working memory
+        final_data = clean_summary
+        
+    except Exception as um_err:
+        print(f"  ⚠️ [UnifiedMemory] Failed to evaluate/write output to cache: {um_err}")
+
+    # 2. Offload large content to a file reference for the state graph to avoid context bloat
     is_large = False
     serialized_data = None
     file_ext = ".txt"
