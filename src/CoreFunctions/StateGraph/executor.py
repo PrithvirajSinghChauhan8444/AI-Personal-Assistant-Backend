@@ -47,6 +47,44 @@ Always explain the exact reason for pausing when calling the tool.
 """
 
 AGENT_MAP = {}
+_model_cache = {}
+
+def get_model_for_worker(worker_name: str):
+    global _model_cache
+    if worker_name in _model_cache:
+        return _model_cache[worker_name]
+        
+    if not hasattr(WorkerRegistry, "_config") or not WorkerRegistry._config:
+        WorkerRegistry.load_and_sync_config()
+        
+    worker_config = WorkerRegistry._config.get(worker_name, {})
+    model_name = worker_config.get("model")
+    
+    if not model_name:
+        try:
+            worker = WorkerRegistry.get_worker(worker_name)
+            use_local = worker.use_local_llm
+        except KeyError:
+            use_local = worker_name in ["MemoryWorker", "ObsidianNoteWorker", "ObsidianCanvasWorker", "ObsidianRefactorWorker"]
+        model_name = os.environ.get("OLLAMA_MODEL", "gemma4:e4b") if use_local else os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
+        
+    if "gemini" in model_name.lower():
+        llm_kwargs = {}
+        llm_kwargs["extra_body"] = {"thinking_config": {"thinking_budget": 2048}}
+        model = ChatGoogleGenerativeAI(
+            model=model_name,
+            temperature=0,
+            model_kwargs=llm_kwargs
+        )
+    else:
+        model = ChatOllama(
+            model=model_name,
+            temperature=0,
+            options={"thinking": True}
+        )
+        
+    _model_cache[worker_name] = model
+    return model
 
 def compile_worker_agents():
     """Compiles react agents dynamically for all registered workers."""
@@ -54,7 +92,7 @@ def compile_worker_agents():
     for name, worker in WorkerRegistry.get_all_workers().items():
         if not worker.tools and not worker.instructions:
             continue
-        model = local_llm if worker.use_local_llm else llm
+        model = get_model_for_worker(name)
         prompt = worker.instructions + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
         AGENT_MAP[name] = create_react_agent(model, worker.tools, prompt=prompt)
     
@@ -171,12 +209,19 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
     
     # Log worker run start
     try:
-        worker = WorkerRegistry.get_worker(worker_name)
-        use_local = worker.use_local_llm
-    except KeyError:
-        use_local = worker_name in ["MemoryWorker", "ObsidianNoteWorker", "ObsidianCanvasWorker", "ObsidianRefactorWorker"]
+        if not hasattr(WorkerRegistry, "_config") or not WorkerRegistry._config:
+            WorkerRegistry.load_and_sync_config()
+        model_name = WorkerRegistry._config.get(worker_name, {}).get("model")
+    except Exception:
+        model_name = None
         
-    model_name = os.environ.get("OLLAMA_MODEL", "gemma4:e4b") if use_local else os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
+    if not model_name:
+        try:
+            worker = WorkerRegistry.get_worker(worker_name)
+            use_local = worker.use_local_llm
+        except KeyError:
+            use_local = worker_name in ["MemoryWorker", "ObsidianNoteWorker", "ObsidianCanvasWorker", "ObsidianRefactorWorker"]
+        model_name = os.environ.get("OLLAMA_MODEL", "gemma4:e4b") if use_local else os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
     log_worker_start(worker_name, task_desc, model_name, prompt)
 
     import builtins
@@ -314,12 +359,19 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
     
     # Log worker run start
     try:
-        worker = WorkerRegistry.get_worker(worker_name)
-        use_local = worker.use_local_llm
-    except KeyError:
-        use_local = worker_name in ["MemoryWorker", "ObsidianNoteWorker", "ObsidianCanvasWorker", "ObsidianRefactorWorker"]
+        if not hasattr(WorkerRegistry, "_config") or not WorkerRegistry._config:
+            WorkerRegistry.load_and_sync_config()
+        model_name = WorkerRegistry._config.get(worker_name, {}).get("model")
+    except Exception:
+        model_name = None
         
-    model_name = os.environ.get("OLLAMA_MODEL", "gemma4:e4b") if use_local else os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
+    if not model_name:
+        try:
+            worker = WorkerRegistry.get_worker(worker_name)
+            use_local = worker.use_local_llm
+        except KeyError:
+            use_local = worker_name in ["MemoryWorker", "ObsidianNoteWorker", "ObsidianCanvasWorker", "ObsidianRefactorWorker"]
+        model_name = os.environ.get("OLLAMA_MODEL", "gemma4:e4b") if use_local else os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
     log_worker_start(worker_name, task_desc, model_name, prompt)
 
     import builtins
@@ -552,11 +604,10 @@ def _execute_worker_node(state: AgentState, worker_name: str):
         for st in subtasks:
             if st["id"] == task["id"]:
                 st["status"] = "failed"
-        error_logs = state.get("error_logs") or ""
-        error_logs += f"\nWorker {worker_name} failed on task {task['id']}: {ex}"
+        new_error = f"Worker {worker_name} failed on task {task['id']}: {ex}"
         output_state = {
             "active_subtasks": subtasks,
-            "error_logs": error_logs
+            "error_logs": [new_error]
         }
         log_node_end(worker_name, output_state)
         return output_state

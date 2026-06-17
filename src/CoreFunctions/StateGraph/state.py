@@ -29,12 +29,29 @@ def merge_dict(left: Dict[str, Any], right: Dict[str, Any]) -> Dict[str, Any]:
         right = {}
     return {**left, **right}
 
+def merge_error_logs(left: List[str], right: List[str]) -> List[str]:
+    """Reducer to merge error lists. Since parallel runs can fail concurrently, this keeps all error logs."""
+    if left is None:
+        left = []
+    if right is None:
+        right = []
+    if isinstance(left, str):
+        left = [left]
+    if isinstance(right, str):
+        right = [right]
+        
+    merged = list(left)
+    for err in right:
+        if err not in merged:
+            merged.append(err)
+    return merged
+
 class AgentState(TypedDict):
     primary_goal: str
     active_subtasks: Annotated[List[SubTask], merge_subtasks]
     working_memory: Annotated[Dict[str, Any], merge_dict]
     completed_tasks: Annotated[Dict[str, Any], merge_dict]
-    error_logs: Optional[str]
+    error_logs: Annotated[List[str], merge_error_logs]
     final_response: str
     next_node: Any  # Can be str or List[str] for parallel routing
     chat_history: Optional[List[Dict[str, str]]]
