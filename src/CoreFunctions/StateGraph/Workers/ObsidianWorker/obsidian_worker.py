@@ -129,11 +129,10 @@ RULES:
         for st in subtasks:
             if st["id"] == task["id"]:
                 st["status"] = "failed"
-        error_logs = state.get("error_logs") or ""
-        error_logs += f"\nWorker ObsidianWorker failed on subtask execution: {ex}"
+        new_error = f"Worker ObsidianWorker failed on subtask execution: {ex}"
         output_state = {
             "active_subtasks": subtasks,
-            "error_logs": error_logs
+            "error_logs": [new_error]
         }
         log_node_end("ObsidianWorker", output_state)
         return output_state

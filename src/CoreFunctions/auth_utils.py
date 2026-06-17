@@ -8,8 +8,34 @@ from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+import sys
+if not hasattr(sys, "_stdout_lock"):
+    sys._stdout_lock = threading.RLock()
+_stdin_lock = sys._stdout_lock
 
-_stdin_lock = threading.Lock()
+class LockedWriter:
+    def __init__(self, original, lock):
+        self._original = original
+        self._lock = lock
+
+    def write(self, data):
+        with self._lock:
+            return self._original.write(data)
+
+    def flush(self):
+        with self._lock:
+            return self._original.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._original, name)
+
+if not getattr(sys.stdout, "_is_locked_writer", False):
+    sys.stdout = LockedWriter(sys.stdout, sys._stdout_lock)
+    sys.stdout._is_locked_writer = True
+    
+if not getattr(sys.stderr, "_is_locked_writer", False):
+    sys.stderr = LockedWriter(sys.stderr, sys._stdout_lock)
+    sys.stderr._is_locked_writer = True
 
 # The permissions your app needs
 SCOPES = [

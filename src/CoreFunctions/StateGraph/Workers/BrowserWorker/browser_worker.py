@@ -133,11 +133,10 @@ Create a detailed sequential sub-plan to execute this goal.
         for st in subtasks:
             if st["id"] == task["id"]:
                 st["status"] = "failed"
-        error_logs = state.get("error_logs") or ""
-        error_logs += f"\nWorker BrowserWorker failed on task {task['id']}: {ex}"
+        new_error = f"Worker BrowserWorker failed on task {task['id']}: {ex}"
         output_state = {
             "active_subtasks": subtasks,
-            "error_logs": error_logs
+            "error_logs": [new_error]
         }
         log_node_end("BrowserWorker", output_state)
         return output_state

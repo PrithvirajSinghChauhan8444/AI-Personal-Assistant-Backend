@@ -1590,7 +1590,7 @@ class HumanInterventionReplanError(BaseException):
         self.user_instruction = user_instruction
 
 def locked_intervention_prompt(reason: str, prompt_text: str) -> str:
-    from src.CoreFunctions.auth_utils import _stdin_lock, get_stdin_prompt_banner
+    from CoreFunctions.auth_utils import _stdin_lock, get_stdin_prompt_banner
     with _stdin_lock:
         banner = get_stdin_prompt_banner("INTERVENTION", reason)
         print(banner, flush=True)
@@ -1921,7 +1921,7 @@ metadata:
             
         # Trigger rebuild of skills vector store
         try:
-            from src.CoreFunctions.vector_memory import rebuild_skills_vector_store
+            from CoreFunctions.vector_memory import rebuild_skills_vector_store
             rebuild_skills_vector_store()
         except Exception as rebuild_ex:
             print(f"  ⚠️ Warning: Failed to rebuild skills vector store: {rebuild_ex}")
@@ -1943,7 +1943,7 @@ def search_skills_tool(query: str, count: int = 2) -> str:
     print(f"   Args: query='{query}', count={count}")
     
     try:
-        from src.CoreFunctions.vector_memory import search_skills_vector
+        from CoreFunctions.vector_memory import search_skills_vector
         matched = search_skills_vector(query, k=count)
         if not matched:
             return "No matching skills found."

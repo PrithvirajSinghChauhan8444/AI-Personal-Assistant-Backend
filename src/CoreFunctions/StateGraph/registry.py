@@ -54,6 +54,7 @@ class BaseWorker(ABC):
 
 class WorkerRegistry:
     _registry: Dict[str, BaseWorker] = {}
+    _config: Dict[str, dict] = {}
 
     @classmethod
     def register(cls, worker_cls: Type[BaseWorker]) -> Type[BaseWorker]:
@@ -71,21 +72,66 @@ class WorkerRegistry:
         return worker_cls
 
     @classmethod
+    def load_and_sync_config(cls):
+        import json
+        # Find root dir
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+        config_dir = os.path.join(root_dir, "config")
+        os.makedirs(config_dir, exist_ok=True)
+        config_path = os.path.join(config_dir, "workers_config.json")
+        
+        config = {}
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+            except Exception as e:
+                print(f"⚠️ Error reading workers_config.json: {e}")
+                
+        updated = False
+        # Sync with currently registered workers
+        for name, worker in list(cls._registry.items()):
+            if name not in config:
+                default_model = "gemma4:e4b" if worker.use_local_llm else "gemini-3.1-flash-lite"
+                config[name] = {
+                    "model": default_model,
+                    "active": True
+                }
+                updated = True
+                
+        if updated or not os.path.exists(config_path):
+            try:
+                with open(config_path, "w", encoding="utf-8") as f:
+                    json.dump(config, f, indent=4)
+            except Exception as e:
+                print(f"⚠️ Error writing workers_config.json: {e}")
+                
+        cls._config = config
+
+    @classmethod
     def get_all_workers(cls) -> Dict[str, BaseWorker]:
-        """Returns the dictionary of registered worker instances."""
-        return cls._registry
+        """Returns the dictionary of registered active worker instances."""
+        if not cls._config:
+            cls.load_and_sync_config()
+        active_workers = {}
+        for name, worker in cls._registry.items():
+            if cls._config.get(name, {}).get("active", True):
+                active_workers[name] = worker
+        return active_workers
 
     @classmethod
     def get_worker_names(cls) -> List[str]:
-        """Returns a sorted list of registered worker names."""
-        return sorted(list(cls._registry.keys()))
+        """Returns a sorted list of registered active worker names."""
+        return sorted(list(cls.get_all_workers().keys()))
 
     @classmethod
     def get_worker(cls, name: str) -> BaseWorker:
-        """Retrieves a registered worker instance by name."""
-        if name not in cls._registry:
-            raise KeyError(f"Worker '{name}' is not registered.")
-        return cls._registry[name]
+        """Retrieves a registered active worker instance by name."""
+        workers = cls.get_all_workers()
+        if name not in workers:
+            raise KeyError(f"Worker '{name}' is not registered or is currently inactive.")
+        return workers[name]
 
 def scan_and_register_workers(workers_dir: str = None):
     """Dynamically walks and imports all python files inside the workers directory to trigger registration decorators."""
@@ -111,3 +157,6 @@ def scan_and_register_workers(workers_dir: str = None):
                     importlib.import_module(module_name)
                 except Exception as e:
                     print(f"⚠️ Error dynamically importing worker module '{module_name}': {e}")
+                    
+    # Initialize / synchronize configuration with registered workers
+    WorkerRegistry.load_and_sync_config()
