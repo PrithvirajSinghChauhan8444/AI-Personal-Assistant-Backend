@@ -2,8 +2,8 @@ import os
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from CoreFunctions.auth_utils import get_valid_credentials
-from Apps.Classroom.classroom_ops import get_classroom_service
-from Apps.System.download_ops import download_file
+from CoreFunctions.Integrations.Classroom.classroom_ops import get_classroom_service
+from CoreFunctions.Integrations.System.download_ops import download_file
 
 def get_drive_service(account: str = "personal"):
     """Authenticates and returns the Google Drive API service for a specific account."""

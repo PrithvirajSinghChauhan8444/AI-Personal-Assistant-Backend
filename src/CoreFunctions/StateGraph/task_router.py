@@ -1,23 +1,29 @@
 import os
 import sys
 import json
-from typing import List, Literal
+from typing import List
+from enum import Enum
 from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage
+from src.CoreFunctions.StateGraph.state import AgentState
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
-# Fallback to Gemini for robust structured output to avoid small model issues
-from langchain_google_genai import ChatGoogleGenerativeAI
-from src.CoreFunctions.StateGraph.state import AgentState
+# Load registry and force decorator execution by scanning workers directory
+from src.CoreFunctions.StateGraph.registry import WorkerRegistry, scan_and_register_workers
+scan_and_register_workers()
+
+# Generate dynamic enum list of active graph nodes
+active_worker_names = [
+    name for name, worker in WorkerRegistry.get_all_workers().items() 
+    if worker.is_graph_node
+]
+WorkerEnum = Enum("WorkerEnum", {name: name for name in active_worker_names})
 
 class SubTaskModel(BaseModel):
     id: str = Field(description="A unique identifier for the subtask, e.g., 'task_1'")
     description: str = Field(description="Clear instructions for the worker")
-    assigned_worker: Literal[
-        "SystemWorker", "GmailWorker", "ProductivityWorker", 
-        "MemoryWorker", "ClassroomWorker", "BrowserWorker", "GithubWorker", "MiscWorker"
-    ] = Field(
+    assigned_worker: WorkerEnum = Field(
         description="The worker assigned to this task"
     )
     depends_on: List[str] = Field(
@@ -28,17 +34,17 @@ class SubTaskModel(BaseModel):
 class TaskPlan(BaseModel):
     subtasks: List[SubTaskModel] = Field(description="List of subtasks and their operational dependency graph")
 
-ROUTER_PROMPT = """
-You are the Task Router. Your job is to decompose the user's mega-prompt into isolated sub-tasks with a clear dependency structure.
+def get_router_prompt() -> str:
+    worker_descriptions = []
+    for name, worker in WorkerRegistry.get_all_workers().items():
+        if worker.is_graph_node:
+            worker_descriptions.append(f"- {worker.name}: {worker.description}")
+            
+    workers_list_str = "\n".join(worker_descriptions)
+    
+    return f"""You are the Task Router. Your job is to decompose the user's mega-prompt into isolated sub-tasks with a clear dependency structure.
 Available workers:
-- GmailWorker: Reads, searches, and sends emails.
-- ClassroomWorker: Manages Google Classroom courses, coursework, assignments, and announcements.
-- ProductivityWorker: Calendar events, Google Tasks, Weather.
-- MemoryWorker: Long-term memory storage and retrieval.
-- SystemWorker: OS terminal commands, file management, scripts, system health.
-- BrowserWorker: Navigates websites, searches information, logs in, clicks elements, and automates online tasks using accessibility trees without screenshots.
-- GithubWorker: Interfaces with GitHub API to retrieve account profile details, list repositories, track recent public and private events/activity, inspect repository file contents and directories, and search code across repositories.
-- MiscWorker: General-purpose worker that handles miscellaneous API integrations (such as using ytmusicapi to manage playlists or retrieve library tracks), complex calculations, custom scripts, or general utility work that does not fit into other specialized workers.
+{workers_list_str}
 
 RULES & WORKFLOW FOR SPECIALIZED TASKS:
 1. Break down the request into the smallest logical steps.
@@ -110,6 +116,7 @@ def task_router_node(state: AgentState):
         input_content = history_str + "\n" + input_content
     
     # Use a robust model for structured JSON parsing
+    from langchain_google_genai import ChatGoogleGenerativeAI
     model_name = "gemini-3.1-flash-lite"
     log_message(f"TaskRouter: Invoking model {model_name} for structured task planning.")
     
@@ -117,20 +124,22 @@ def task_router_node(state: AgentState):
     structured_llm = llm.with_structured_output(TaskPlan)
     
     plan: TaskPlan = structured_llm.invoke([
-        SystemMessage(content=ROUTER_PROMPT),
+        SystemMessage(content=get_router_prompt()),
         HumanMessage(content=input_content)
     ])
     
     active_subtasks = []
     for st in plan.subtasks:
+        # st.assigned_worker is a WorkerEnum instance; extract its string value
+        worker_name_str = st.assigned_worker.value
         active_subtasks.append({
             "id": st.id,
             "description": st.description,
-            "assigned_worker": st.assigned_worker,
+            "assigned_worker": worker_name_str,
             "status": "pending",
             "depends_on": st.depends_on or []
         })
-        print(f"  -> Created Subtask: {st.id} ({st.assigned_worker}) | Depends on: {st.depends_on or []}")
+        print(f"  -> Created Subtask: {st.id} ({worker_name_str}) | Depends on: {st.depends_on or []}")
         
     output_state = {
         "active_subtasks": active_subtasks,

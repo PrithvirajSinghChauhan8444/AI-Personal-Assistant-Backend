@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 # Ensure proper path ops
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))) # Add src to path for 'Apps' and 'CoreFunctions' imports
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))) # Add src to path for 'CoreFunctions.Integrations' and 'CoreFunctions' imports
 
 # Load environment variables
 load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..', '.env')), override=True)
@@ -15,15 +15,13 @@ from langgraph.checkpoint.memory import MemorySaver
 from src.CoreFunctions.StateGraph.state import AgentState
 from src.CoreFunctions.StateGraph.task_router import task_router_node
 from src.CoreFunctions.StateGraph.orchestrator import orchestrator_node, orchestrator_router
-from src.CoreFunctions.StateGraph.workers import (
-    system_worker_node, gmail_worker_node, 
-    productivity_worker_node, memory_worker_node,
-    classroom_worker_node, obsidian_worker_node, browser_worker_node,
-    github_worker_node, misc_worker_node
-)
 from src.CoreFunctions.StateGraph.finalizer import output_finalizer_node
 from src.CoreFunctions.StateGraph.memory_nodes import memory_injector_node, reflection_node
 from src.CoreFunctions.unified_memory import UnifiedMemory
+
+# Load registry and force decorator execution by scanning workers directory
+from src.CoreFunctions.StateGraph.registry import WorkerRegistry, scan_and_register_workers
+scan_and_register_workers()
 
 def memory_injector_router(state: AgentState):
     working_memory = state.get("working_memory", {}) or {}
@@ -38,15 +36,12 @@ def create_graph():
     workflow.add_node("MemoryInjector", memory_injector_node)
     workflow.add_node("TaskRouter", task_router_node)
     workflow.add_node("Orchestrator", orchestrator_node)
-    workflow.add_node("SystemWorker", system_worker_node)
-    workflow.add_node("GmailWorker", gmail_worker_node)
-    workflow.add_node("ProductivityWorker", productivity_worker_node)
-    workflow.add_node("MemoryWorker", memory_worker_node)
-    workflow.add_node("ClassroomWorker", classroom_worker_node)
-    # workflow.add_node("ObsidianWorker", obsidian_worker_node)
-    workflow.add_node("BrowserWorker", browser_worker_node)
-    workflow.add_node("GithubWorker", github_worker_node)
-    workflow.add_node("MiscWorker", misc_worker_node)
+    
+    # Dynamically add registered workers that are graph nodes
+    for name, worker in WorkerRegistry.get_all_workers().items():
+        if worker.is_graph_node:
+            workflow.add_node(name, worker.execute)
+            
     workflow.add_node("OutputFinalizer", output_finalizer_node)
     workflow.add_node("Reflection", reflection_node)
     
@@ -66,36 +61,25 @@ def create_graph():
     # Task Router goes to Orchestrator
     workflow.add_edge("TaskRouter", "Orchestrator")
     
+    # Dynamically compile the Orchestrator routing map
+    routing_map = {name: name for name, worker in WorkerRegistry.get_all_workers().items() if worker.is_graph_node}
+    routing_map.update({
+        "OutputFinalizer": "OutputFinalizer",
+        "Orchestrator": "Orchestrator",
+        "TaskRouter": "TaskRouter"
+    })
+    
     # Orchestrator conditionally routes based on the 'next_node' in state
     workflow.add_conditional_edges(
         "Orchestrator",
         orchestrator_router,
-        {
-            "SystemWorker": "SystemWorker",
-            "GmailWorker": "GmailWorker",
-            "ProductivityWorker": "ProductivityWorker",
-            "MemoryWorker": "MemoryWorker",
-            "ClassroomWorker": "ClassroomWorker",
-            # "ObsidianWorker": "ObsidianWorker",
-            "BrowserWorker": "BrowserWorker",
-            "GithubWorker": "GithubWorker",
-            "MiscWorker": "MiscWorker",
-            "OutputFinalizer": "OutputFinalizer",
-            "Orchestrator": "Orchestrator",
-            "TaskRouter": "TaskRouter"
-        }
+        routing_map
     )
     
-    # All workers route back to Orchestrator
-    workflow.add_edge("SystemWorker", "Orchestrator")
-    workflow.add_edge("GmailWorker", "Orchestrator")
-    workflow.add_edge("ProductivityWorker", "Orchestrator")
-    workflow.add_edge("MemoryWorker", "Orchestrator")
-    workflow.add_edge("ClassroomWorker", "Orchestrator")
-    # workflow.add_edge("ObsidianWorker", "Orchestrator")
-    workflow.add_edge("BrowserWorker", "Orchestrator")
-    workflow.add_edge("GithubWorker", "Orchestrator")
-    workflow.add_edge("MiscWorker", "Orchestrator")
+    # All workers route back to Orchestrator dynamically
+    for name, worker in WorkerRegistry.get_all_workers().items():
+        if worker.is_graph_node:
+            workflow.add_edge(name, "Orchestrator")
     
     # OutputFinalizer completes the user-facing graph synchronously
     workflow.add_edge("OutputFinalizer", END)
@@ -366,7 +350,7 @@ def run_graph_execution(initial_state, config, thread_id, chat_history_list):
                         print(f"  -> Next Node Target: {next_node_str} | Task: {task_desc}")
                         visualizer.start(f"Running {next_node_str}", "33") # Yellow
                 
-                elif node_name in ["SystemWorker", "GmailWorker", "ProductivityWorker", "MemoryWorker", "ClassroomWorker", "BrowserWorker", "GithubWorker", "MiscWorker"]:
+                elif node_name in WorkerRegistry.get_worker_names():
                     visualizer.stop()
                     print_node_header(node_name, timestamp)
                     subtasks = state_update.get("active_subtasks", [])

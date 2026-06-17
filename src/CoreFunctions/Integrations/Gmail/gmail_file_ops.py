@@ -5,7 +5,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
-from Apps.Gmail.gmail_ops import get_gmail_service
+from CoreFunctions.Integrations.Gmail.gmail_ops import get_gmail_service
 
 def download_gmail_attachment(email_id: str, attachment_id: str, filename: str, save_dir: str = "./Downloads", account: str = "personal") -> str:
     """Downloads a specific attachment from a Gmail email message.

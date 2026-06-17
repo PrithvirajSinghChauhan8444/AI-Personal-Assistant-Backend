@@ -6,9 +6,9 @@ import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from Apps.System.clipboard_ops import copy_to_clipboard, paste_from_clipboard
-from Apps.System.download_ops import download_file
-from Apps.Automation.scheduler_ops import schedule_delayed_task, list_scheduled_tasks, load_tasks, save_tasks
+from CoreFunctions.Integrations.System.clipboard_ops import copy_to_clipboard, paste_from_clipboard
+from CoreFunctions.Integrations.System.download_ops import download_file
+from CoreFunctions.Integrations.Automation.scheduler_ops import schedule_delayed_task, list_scheduled_tasks, load_tasks, save_tasks
 
 def test_clipboard():
     print("📋 Testing Clipboard copy/paste...")
