@@ -4,6 +4,38 @@ This document provides a structural layout and functional mapping of every Pytho
 
 ---
 
+## 🗺️ How to Understand the Working of the Assistant
+
+To quickly understand how the AI Personal Assistant behaves, processes requests, and interacts with the system, follow this recommended walkthrough:
+
+### 1. Start with the Entry Point
+* **File**: [main_graph.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/main_graph.py)
+* **What to look for**:
+  * [process_request_interactive()](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/main_graph.py#L449): The main terminal loop that starts the assistant. Note how it loads previous session context, prompts the user to resume interrupted tasks (if any), and sets up the active execution session.
+  * [create_graph()](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/main_graph.py#L34): Compiles the cyclic state machine using LangGraph. This defines the overall node connectivity and the execution flow of the assistant.
+
+### 2. Trace the Request Lifecycle (State Graph Nodes)
+Requests progress through isolated, specialized nodes that coordinate via the shared `AgentState` dictionary defined in [state.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/state.py):
+1. **Context Ingestion**: [memory_nodes.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/memory_nodes.py) loads the user profile, searches vector databases, and fetches procedural skill manuals via `MemoryInjector`.
+2. **Decomposition**: [task_router.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/task_router.py) uses a high-cognition model to break the user goal into structured subtasks (a Directed Acyclic Graph plan).
+3. **Execution Scheduling**: [orchestrator.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/orchestrator.py) monitors task dependencies, forks parallel ready subtasks, resets orphaned tasks, and dynamically routes them to worker agents.
+4. **Action Workers**: [workers.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/workers.py) compiles and executes focused ReAct agents (such as `SystemWorker` or `GmailWorker`) using strictly scoped tools.
+5. **Output Synthesis**: [finalizer.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/finalizer.py) merges the subtasks' outcomes into a single unified response.
+6. **Self-Learning**: [Reflection](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/memory_nodes.py) node runs in the background to extract user facts and save them for the next turn.
+
+### 3. Read the Execution Logs (Observability)
+The easiest way to see the assistant "in action" without debugger breakpoints is to run a query and inspect the generated session logs:
+* **Human-Readable Traces**: Read `Memory/logs/latest.log`. It lists precise start/end boundaries of state graph nodes, worker thoughts, tool calls, parameters, and return values in a nested, clean console format.
+* **Structured Traces**: Read `Memory/logs/latest.json` to inspect raw state updates, reducer operations, and node timings.
+* **Code Reference**: See [logger.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/logger.py).
+
+### 4. Understand Available Tools & Skills
+* **Concrete Python Tools**: Check [tools.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/tools.py) to see the execution logic of system control, calendar, gmail, classroom, browser, and file utilities.
+* **LangChain Wrappers**: Check [available_tools.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/available_tools.py) to see how these Python functions are registered and exposed to LangChain ReAct workers.
+* **Procedural Skill Manuals**: Read the markdown manuals in `Skills/` (e.g. `Skills/SystemControl/` or `Skills/Gmail/`) to understand the step-by-step instructions the LLM reads to perform multi-stage workflows.
+
+---
+
 ## 📂 Project Directory Structure
 
 ```text
