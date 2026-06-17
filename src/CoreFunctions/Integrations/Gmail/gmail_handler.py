@@ -1,4 +1,4 @@
-from Apps.Gmail.read_unread import fetch_unread_emails_detailed
+from CoreFunctions.Integrations.Gmail.read_unread import fetch_unread_emails_detailed
 
 def handle_gmail_command(user_input, page_token=None): # <-- 1. Accept page_token
     """

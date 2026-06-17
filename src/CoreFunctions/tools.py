@@ -12,20 +12,20 @@ import inspect
 # --- IMPORT YOUR EXISTING MODULES ---
 # We wrap these so the Agent can call them easily
 try:
-    from Apps.Gmail.gmail_handler import handle_gmail_command
-    from Apps.Gmail.gmail_sender import send_email
-    from Apps.Google.tasks import add_new_task
-    from Apps.Calendar.read_event import list_upcoming_events
-    from Apps.Calendar.create_event import create_new_event
-    from Apps.System.system_monitor import get_system_stats
+    from CoreFunctions.Integrations.Gmail.gmail_handler import handle_gmail_command
+    from CoreFunctions.Integrations.Gmail.gmail_sender import send_email
+    from CoreFunctions.Integrations.Google.tasks import add_new_task
+    from CoreFunctions.Integrations.Calendar.read_event import list_upcoming_events
+    from CoreFunctions.Integrations.Calendar.create_event import create_new_event
+    from CoreFunctions.Integrations.System.system_monitor import get_system_stats
     # New Imports
-    from Apps.FileOperations.file_manager import write_file as _write_file, read_file, list_files, create_directory as _create_dir, save_python_code as _save_code
-    from Apps.SystemControl.execution import run_terminal_command as _run_term, run_python_script as _run_py, launch_app as _launch
-    from Apps.System.clipboard_ops import copy_to_clipboard as _copy_clip, paste_from_clipboard as _paste_clip
-    from Apps.System.download_ops import download_file as _download_url
-    from Apps.Gmail.gmail_file_ops import download_gmail_attachment as _download_gmail_att, send_gmail_with_attachment as _send_gmail_att
-    from Apps.Classroom.classroom_file_ops import download_classroom_materials as _download_class_mat, submit_classroom_assignment as _submit_class_assign
-    from Apps.Automation.scheduler_ops import schedule_delayed_task as _sched_delay, schedule_task_at_time as _sched_at, list_scheduled_tasks as _sched_list, cancel_scheduled_task as _sched_cancel
+    from CoreFunctions.Integrations.FileOperations.file_manager import write_file as _write_file, read_file, list_files, create_directory as _create_dir, save_python_code as _save_code
+    from CoreFunctions.Integrations.SystemControl.execution import run_terminal_command as _run_term, run_python_script as _run_py, launch_app as _launch
+    from CoreFunctions.Integrations.System.clipboard_ops import copy_to_clipboard as _copy_clip, paste_from_clipboard as _paste_clip
+    from CoreFunctions.Integrations.System.download_ops import download_file as _download_url
+    from CoreFunctions.Integrations.Gmail.gmail_file_ops import download_gmail_attachment as _download_gmail_att, send_gmail_with_attachment as _send_gmail_att
+    from CoreFunctions.Integrations.Classroom.classroom_file_ops import download_classroom_materials as _download_class_mat, submit_classroom_assignment as _submit_class_assign
+    from CoreFunctions.Integrations.Automation.scheduler_ops import schedule_delayed_task as _sched_delay, schedule_task_at_time as _sched_at, list_scheduled_tasks as _sched_list, cancel_scheduled_task as _sched_cancel
 except ImportError as e:
     print(f"⚠️ Warning: Some modules could not be imported. {e}")
 from CoreFunctions.memory import store_memory, fetch_memory
@@ -120,7 +120,7 @@ def fetch_unread_mails(limit: int = 5, account: str = "personal") -> str:
     print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_unread_mails")
     print(f"   Args: limit={limit}, account={account}")
     try:
-        from Apps.Gmail.gmail_ops import search_gmail_emails
+        from CoreFunctions.Integrations.Gmail.gmail_ops import search_gmail_emails
         res = search_gmail_emails("is:unread", limit, account=account)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -138,7 +138,7 @@ def send_gmail(to: str, subject: str, body: str, account: str = "personal") -> s
     print(f"\n[DEBUG] 🛠️ Calling Tool: send_gmail")
     print(f"   Args: to={to}, subject={subject}, body={body}, account={account}")
     try:
-        from Apps.Gmail.gmail_ops import send_gmail_email
+        from CoreFunctions.Integrations.Gmail.gmail_ops import send_gmail_email
         result = send_gmail_email(to, subject, body, account=account)
         return f"Email Status: {result}"
     except Exception as e:
@@ -155,7 +155,7 @@ def search_gmail(query: str, max_results: int = 10, account: str = "personal") -
     print(f"\n[DEBUG] 🛠️ Calling Tool: search_gmail")
     print(f"   Args: query={query}, max_results={max_results}, account={account}")
     try:
-        from Apps.Gmail.gmail_ops import search_gmail_emails
+        from CoreFunctions.Integrations.Gmail.gmail_ops import search_gmail_emails
         res = search_gmail_emails(query, max_results, account=account)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -171,7 +171,7 @@ def read_gmail_msg(email_id: str, account: str = "personal") -> str:
     print(f"\n[DEBUG] 🛠️ Calling Tool: read_gmail_msg")
     print(f"   Args: email_id={email_id}, account={account}")
     try:
-        from Apps.Gmail.gmail_ops import read_gmail_email
+        from CoreFunctions.Integrations.Gmail.gmail_ops import read_gmail_email
         res = read_gmail_email(email_id, account=account)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -187,7 +187,7 @@ def trash_gmail_msg(email_id: str, account: str = "personal") -> str:
     print(f"\n[DEBUG] 🛠️ Calling Tool: trash_gmail_msg")
     print(f"   Args: email_id={email_id}, account={account}")
     try:
-        from Apps.Gmail.gmail_ops import trash_gmail_email
+        from CoreFunctions.Integrations.Gmail.gmail_ops import trash_gmail_email
         return trash_gmail_email(email_id, account=account)
     except Exception as e:
         return f"Error trashing email: {e}"
@@ -202,7 +202,7 @@ def mark_gmail_read(email_id: str, account: str = "personal") -> str:
     print(f"\n[DEBUG] 🛠️ Calling Tool: mark_gmail_read")
     print(f"   Args: email_id={email_id}, account={account}")
     try:
-        from Apps.Gmail.gmail_ops import mark_gmail_as_read
+        from CoreFunctions.Integrations.Gmail.gmail_ops import mark_gmail_as_read
         return mark_gmail_as_read(email_id, account=account)
     except Exception as e:
         return f"Error marking email as read: {e}"
@@ -218,7 +218,7 @@ def reply_to_gmail(email_id: str, body: str, account: str = "personal") -> str:
     print(f"\n[DEBUG] 🛠️ Calling Tool: reply_to_gmail")
     print(f"   Args: email_id={email_id}, body={body[:50]}..., account={account}")
     try:
-        from Apps.Gmail.gmail_ops import reply_to_gmail_email
+        from CoreFunctions.Integrations.Gmail.gmail_ops import reply_to_gmail_email
         return reply_to_gmail_email(email_id, body, account=account)
     except Exception as e:
         return f"Error replying to email: {e}"
@@ -304,7 +304,7 @@ def fetch_classroom_courses(account: str = "personal") -> str:
     print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_classroom_courses")
     print(f"   Args: account={account}")
     try:
-        from Apps.Classroom.classroom_ops import list_courses
+        from CoreFunctions.Integrations.Classroom.classroom_ops import list_courses
         res = list_courses(account=account)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -320,7 +320,7 @@ def fetch_classroom_assignments(course_id: str, account: str = "personal") -> st
     print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_classroom_assignments")
     print(f"   Args: course_id={course_id}, account={account}")
     try:
-        from Apps.Classroom.classroom_ops import list_coursework
+        from CoreFunctions.Integrations.Classroom.classroom_ops import list_coursework
         res = list_coursework(course_id, account=account)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -336,7 +336,7 @@ def fetch_classroom_announcements(course_id: str, account: str = "personal") -> 
     print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_classroom_announcements")
     print(f"   Args: course_id={course_id}, account={account}")
     try:
-        from Apps.Classroom.classroom_ops import list_announcements
+        from CoreFunctions.Integrations.Classroom.classroom_ops import list_announcements
         res = list_announcements(course_id, account=account)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -353,7 +353,7 @@ def fetch_classroom_assignment_details(course_id: str, coursework_id: str, accou
     print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_classroom_assignment_details")
     print(f"   Args: course_id={course_id}, coursework_id={coursework_id}, account={account}")
     try:
-        from Apps.Classroom.classroom_ops import get_coursework_details
+        from CoreFunctions.Integrations.Classroom.classroom_ops import get_coursework_details
         res = get_coursework_details(course_id, coursework_id, account=account)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -436,7 +436,7 @@ def get_audio_volume() -> str:
     """Gets the current system audio volume percentage and mute status."""
     print(f"\n[DEBUG] 🛠️ Calling Tool: get_audio_volume")
     try:
-        from Apps.System.system_actions import get_volume
+        from CoreFunctions.Integrations.System.system_actions import get_volume
         return get_volume()
     except Exception as e:
         return f"Error: {e}"
@@ -449,7 +449,7 @@ def set_audio_volume(level: int) -> str:
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: set_audio_volume")
     try:
-        from Apps.System.system_actions import set_volume
+        from CoreFunctions.Integrations.System.system_actions import set_volume
         return set_volume(level)
     except Exception as e:
         return f"Error: {e}"
@@ -458,7 +458,7 @@ def mute_audio_toggle() -> str:
     """Toggles system audio mute/unmute status."""
     print(f"\n[DEBUG] 🛠️ Calling Tool: mute_audio_toggle")
     try:
-        from Apps.System.system_actions import toggle_mute
+        from CoreFunctions.Integrations.System.system_actions import toggle_mute
         return toggle_mute()
     except Exception as e:
         return f"Error: {e}"
@@ -467,7 +467,7 @@ def get_screen_brightness() -> str:
     """Gets the current screen brightness percentage."""
     print(f"\n[DEBUG] 🛠️ Calling Tool: get_screen_brightness")
     try:
-        from Apps.System.system_actions import get_brightness
+        from CoreFunctions.Integrations.System.system_actions import get_brightness
         return get_brightness()
     except Exception as e:
         return f"Error: {e}"
@@ -480,7 +480,7 @@ def set_screen_brightness(level: int) -> str:
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: set_screen_brightness")
     try:
-        from Apps.System.system_actions import set_brightness
+        from CoreFunctions.Integrations.System.system_actions import set_brightness
         return set_brightness(level)
     except Exception as e:
         return f"Error: {e}"
@@ -493,7 +493,7 @@ def control_media_player(action: str) -> str:
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: control_media_player")
     try:
-        from Apps.System.system_actions import media_control
+        from CoreFunctions.Integrations.System.system_actions import media_control
         return media_control(action)
     except Exception as e:
         return f"Error: {e}"
@@ -502,7 +502,7 @@ def list_running_processes_tool(limit: int = 15) -> str:
     """Lists the top running desktop processes sorted by memory usage."""
     print(f"\n[DEBUG] 🛠️ Calling Tool: list_running_processes_tool")
     try:
-        from Apps.System.system_actions import list_processes
+        from CoreFunctions.Integrations.System.system_actions import list_processes
         return list_processes(limit)
     except Exception as e:
         return f"Error: {e}"
@@ -516,7 +516,7 @@ def terminate_process_tool(name_or_pid: str) -> str:
     print(f"\n[DEBUG] 🛠️ Calling Tool: terminate_process_tool")
     if verify_password():
         try:
-            from Apps.System.system_actions import kill_process
+            from CoreFunctions.Integrations.System.system_actions import kill_process
             return kill_process(name_or_pid)
         except Exception as e:
             return f"Error: {e}"
@@ -526,7 +526,7 @@ def lock_desktop_screen() -> str:
     """Locks the current Linux user session."""
     print(f"\n[DEBUG] 🛠️ Calling Tool: lock_desktop_screen")
     try:
-        from Apps.System.system_actions import lock_screen
+        from CoreFunctions.Integrations.System.system_actions import lock_screen
         return lock_screen()
     except Exception as e:
         return f"Error: {e}"
@@ -536,7 +536,7 @@ def suspend_desktop_system() -> str:
     print(f"\n[DEBUG] 🛠️ Calling Tool: suspend_desktop_system")
     if verify_password():
         try:
-            from Apps.System.system_actions import suspend_system
+            from CoreFunctions.Integrations.System.system_actions import suspend_system
             return suspend_system()
         except Exception as e:
             return f"Error: {e}"
@@ -1470,7 +1470,7 @@ def get_github_profile_tool(username: str = None) -> str:
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: get_github_profile_tool")
     try:
-        from Apps.Github.github_ops import get_github_profile
+        from CoreFunctions.Integrations.Github.github_ops import get_github_profile
         res = get_github_profile(username)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -1486,7 +1486,7 @@ def list_github_repos_tool(username: str = None, sort: str = "updated", count: i
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: list_github_repos_tool")
     try:
-        from Apps.Github.github_ops import list_github_repos
+        from CoreFunctions.Integrations.Github.github_ops import list_github_repos
         res = list_github_repos(username, sort=sort, count=count)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -1502,7 +1502,7 @@ def get_github_recent_activity_tool(username: str = None, count: int = 5, includ
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: get_github_recent_activity_tool")
     try:
-        from Apps.Github.github_ops import get_github_recent_activity
+        from CoreFunctions.Integrations.Github.github_ops import get_github_recent_activity
         res = get_github_recent_activity(username, count=count, include_private=include_private)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -1519,7 +1519,7 @@ def list_github_commits_tool(repo_name: str, username: str = None, branch: str =
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: list_github_commits_tool")
     try:
-        from Apps.Github.github_ops import list_github_commits
+        from CoreFunctions.Integrations.Github.github_ops import list_github_commits
         res = list_github_commits(repo_name, username=username, branch=branch, count=count)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -1534,7 +1534,7 @@ def list_github_branches_tool(repo_name: str, username: str = None) -> str:
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: list_github_branches_tool")
     try:
-        from Apps.Github.github_ops import list_github_branches
+        from CoreFunctions.Integrations.Github.github_ops import list_github_branches
         res = list_github_branches(repo_name, username=username)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -1552,7 +1552,7 @@ def get_github_file_content_tool(repo_name: str, path: str, username: str = None
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: get_github_file_content_tool")
     try:
-        from Apps.Github.github_ops import get_github_file_content
+        from CoreFunctions.Integrations.Github.github_ops import get_github_file_content
         res = get_github_file_content(repo_name, path, username=username, branch=branch)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -1571,7 +1571,7 @@ def search_github_code_tool(query: str, username: str = None, repo_name: str = N
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: search_github_code_tool")
     try:
-        from Apps.Github.github_ops import search_github_code
+        from CoreFunctions.Integrations.Github.github_ops import search_github_code
         res = search_github_code(query, username=username, repo_name=repo_name, page=page, count=count)
         return json.dumps(res, indent=2)
     except Exception as e:
