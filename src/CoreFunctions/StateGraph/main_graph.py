@@ -304,6 +304,11 @@ def save_session_context_async(chat_history, working_memory, completed_tasks):
     thread = threading.Thread(target=run_save, daemon=True)
     thread.start()
 
+def print_node_header(node_name: str, timestamp: str):
+    print(f"\nRunning {node_name} : ({timestamp})")
+    print(f"--- {node_name} Finished ---")
+    print(f"\n📍 Node '{node_name}' Output:")
+
 def run_graph_execution(initial_state, config, thread_id, chat_history_list):
     """
     Executes the StateGraph stream with the given initial state and configuration.
@@ -320,9 +325,7 @@ def run_graph_execution(initial_state, config, thread_id, chat_history_list):
                 
                 if node_name == "MemoryInjector":
                     visualizer.stop()
-                    print(f"\nRunning MemoryInjector : ({timestamp})")
-                    print("--- MemoryInjector Finished ---")
-                    print("\n📍 Node 'MemoryInjector' Output:")
+                    print_node_header(node_name, timestamp)
                     wm = state_update.get("working_memory", {}) or {}
                     
                     if wm.get("fast_path_matched", False):
@@ -338,9 +341,7 @@ def run_graph_execution(initial_state, config, thread_id, chat_history_list):
                 
                 elif node_name == "TaskRouter":
                     visualizer.stop()
-                    print(f"\nRunning TaskRouter : ({timestamp})")
-                    print("--- TaskRouter Finished ---")
-                    print("\n📍 Node 'TaskRouter' Output:")
+                    print_node_header(node_name, timestamp)
                     subtasks = state_update.get("active_subtasks", [])
                     print("-- PLAN:")
                     for idx, st in enumerate(subtasks, 1):
@@ -350,9 +351,7 @@ def run_graph_execution(initial_state, config, thread_id, chat_history_list):
                 elif node_name == "Orchestrator":
                     visualizer.stop()
                     next_node = state_update.get("next_node")
-                    print(f"\nRunning Orchestrator : ({timestamp})")
-                    print("--- Orchestrator Finished ---")
-                    print("\n📍 Node 'Orchestrator' Output:")
+                    print_node_header(node_name, timestamp)
                     if next_node == "OutputFinalizer":
                         print("  -> All planned subtasks successfully completed. Routing to Output Finalizer.")
                     else:
@@ -369,9 +368,7 @@ def run_graph_execution(initial_state, config, thread_id, chat_history_list):
                 
                 elif node_name in ["SystemWorker", "GmailWorker", "ProductivityWorker", "MemoryWorker", "ClassroomWorker", "BrowserWorker", "GithubWorker", "MiscWorker"]:
                     visualizer.stop()
-                    print(f"\nRunning {node_name} : ({timestamp})")
-                    print(f"--- {node_name} Finished ---")
-                    print(f"\n📍 Node '{node_name}' Output:")
+                    print_node_header(node_name, timestamp)
                     subtasks = state_update.get("active_subtasks", [])
                     completed_desc = ""
                     for st in subtasks:
@@ -523,8 +520,8 @@ def process_request_interactive():
                 print("\033[1;31m(Warning: Resuming may re-execute tasks that were interrupted mid-process)\033[0m")
                 
                 while True:
-                    choice = input("\nWould you like to (c)ontinue/resume this task, or (r)emove/discard it? [c/r]: ").strip().lower()
-                    if choice in ['c', 'continue']:
+                    choice = input("\nWould you like to (c)ontinue/resume this task, or (e)end/discard it? [c/e]: ").strip().lower()
+                    if choice in ['c', 'continue','r']:
                         print(f"\n🔄 Resuming task: \"{goal}\"")
                         
                         import uuid
@@ -573,12 +570,12 @@ def process_request_interactive():
                             pass
                         break
                         
-                    elif choice in ['r', 'remove', 'discard']:
+                    elif choice in ['e', 'end', 'discard']:
                         print("🗑️ Interrupted task discarded.")
                         clear_interrupted_task_checkpoint()
                         break
                     else:
-                        print("Invalid choice. Please enter 'c' to resume or 'r' to discard.")
+                        print("Invalid choice. Please enter 'c' to resume or 'e' to end/discard.")
                         
         except json.JSONDecodeError:
             print("⚠️ Detected a corrupted recovery file. Starting fresh...")
