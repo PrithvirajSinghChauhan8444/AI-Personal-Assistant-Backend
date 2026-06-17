@@ -1,7 +1,8 @@
 from langchain_core.tools import StructuredTool
 from src.CoreFunctions.tools import (
     request_human_intervention_sync, request_human_intervention,
-    remember, recall, update_skill_tool, search_skills_tool
+    remember, recall, update_skill_tool, search_skills_tool,
+    list_active_workers_tool
 )
 
 human_intervention_tool = StructuredTool.from_function(
@@ -21,6 +22,7 @@ memory_tools = [
     StructuredTool.from_function(recall),
     StructuredTool.from_function(remember),
     StructuredTool.from_function(update_skill_tool, name="update_skill"),
+    StructuredTool.from_function(list_active_workers_tool),
     search_skills_tool_wrapped,
     human_intervention_tool
 ]

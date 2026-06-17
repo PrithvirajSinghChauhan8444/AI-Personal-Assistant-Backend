@@ -470,9 +470,12 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
 def _update_state_completed(state: AgentState, task_id: str, final_data: str):
     """Marks task as completed and saves output to completed_tasks and working_memory"""
     subtasks = state.get("active_subtasks", [])
+    updated_subtask = None
     for st in subtasks:
         if st["id"] == task_id:
             st["status"] = "completed"
+            updated_subtask = st
+            break
     
     working_memory = state.get("working_memory", {})
     
@@ -543,7 +546,7 @@ def _update_state_completed(state: AgentState, task_id: str, final_data: str):
     completed_tasks[task_id] = final_data
     
     return {
-        "active_subtasks": subtasks,
+        "active_subtasks": [updated_subtask] if updated_subtask else [],
         "working_memory": working_memory,
         "completed_tasks": completed_tasks
     }

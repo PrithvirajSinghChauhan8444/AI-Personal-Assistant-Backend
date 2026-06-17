@@ -13,18 +13,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.
 from src.CoreFunctions.StateGraph.registry import WorkerRegistry, scan_and_register_workers
 scan_and_register_workers()
 
-# Generate dynamic enum list of active graph nodes
-active_worker_names = [
-    name for name, worker in WorkerRegistry.get_all_workers().items() 
-    if worker.is_graph_node
-]
-WorkerEnum = Enum("WorkerEnum", {name: name for name in active_worker_names})
-
 class SubTaskModel(BaseModel):
     id: str = Field(description="A unique identifier for the subtask, e.g., 'task_1'")
     description: str = Field(description="Clear instructions for the worker")
-    assigned_worker: WorkerEnum = Field(
-        description="The worker assigned to this task"
+    assigned_worker: str = Field(
+        description="The worker assigned to this task. Must be one of the active worker names listed in the system prompt."
     )
     depends_on: List[str] = Field(
         default_factory=list,
@@ -129,9 +122,11 @@ def task_router_node(state: AgentState):
     ])
     
     active_subtasks = []
+    active_names = WorkerRegistry.get_worker_names()
     for st in plan.subtasks:
-        # st.assigned_worker is a WorkerEnum instance; extract its string value
-        worker_name_str = st.assigned_worker.value
+        worker_name_str = st.assigned_worker.strip()
+        if worker_name_str not in active_names:
+            print(f"  ⚠️ Warning: Task Router assigned task to '{worker_name_str}' which is currently inactive or unregistered.")
         active_subtasks.append({
             "id": st.id,
             "description": st.description,

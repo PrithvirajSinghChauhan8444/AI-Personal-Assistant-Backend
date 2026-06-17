@@ -376,6 +376,29 @@ def get_system_health() -> str:
     except Exception as e:
         return f"Error reading system stats: {e}"
 
+def list_active_workers_tool() -> str:
+    """Returns a list of all currently registered and configured workers, including their status (active/inactive) and model.
+    Use this to see which agents/workers are currently loaded in the assistant.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: list_active_workers_tool")
+    try:
+        from src.CoreFunctions.StateGraph.registry import WorkerRegistry
+        if not hasattr(WorkerRegistry, "_config") or not WorkerRegistry._config:
+            WorkerRegistry.load_and_sync_config()
+            
+        all_workers = WorkerRegistry._registry
+        config = WorkerRegistry._config
+        
+        lines = []
+        for name, worker in all_workers.items():
+            status = "Active" if config.get(name, {}).get("active", True) else "Inactive"
+            model = config.get(name, {}).get("model", "default")
+            lines.append(f"- {name}: {worker.description} | Status: {status} | Model: {model}")
+            
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error listing workers: {e}"
+
 def get_weather(location: str = "Agra") -> str:
     """Fetches current weather using wttr.in (No API key needed).
 

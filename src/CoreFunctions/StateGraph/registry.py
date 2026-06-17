@@ -112,8 +112,7 @@ class WorkerRegistry:
     @classmethod
     def get_all_workers(cls) -> Dict[str, BaseWorker]:
         """Returns the dictionary of registered active worker instances."""
-        if not cls._config:
-            cls.load_and_sync_config()
+        cls.load_and_sync_config()
         active_workers = {}
         for name, worker in cls._registry.items():
             if cls._config.get(name, {}).get("active", True):

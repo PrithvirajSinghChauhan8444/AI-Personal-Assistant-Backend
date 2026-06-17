@@ -62,7 +62,7 @@ def _save(index, data):
 import threading
 
 # Thread lock to prevent race conditions during concurrent FAISS/JSON vector accesses
-_vector_lock = threading.Lock()
+_vector_lock = threading.RLock()
 
 def store_vector(text):
     with _vector_lock:
@@ -220,6 +220,21 @@ def search_skills_vector(query: str, k: int = 2) -> List[Dict[str, Any]]:
     with _vector_lock:
         index = _load_skills_index()
         data = _load_skills_data()
+        
+        # Self-healing check: check if any matched/listed skill references a file path that no longer exists
+        stale_found = False
+        for skill in data:
+            skill_path = skill.get("path")
+            if not skill_path or not os.path.exists(skill_path):
+                stale_found = True
+                break
+                
+        if stale_found:
+            print("⚠️ Stale skills detected (some skill files are deleted/missing). Rebuilding vector store...")
+            rebuild_skills_vector_store()
+            index = _load_skills_index()
+            data = _load_skills_data()
+
         if index.ntotal == 0 or not data:
             return []
 
@@ -230,6 +245,9 @@ def search_skills_vector(query: str, k: int = 2) -> List[Dict[str, Any]]:
         results = []
         for i in idx[0]:
             if i < len(data):
-                results.append(data[i])
+                # Extra safety: verify that the matched skill path exists before returning
+                skill_path = data[i].get("path")
+                if skill_path and os.path.exists(skill_path):
+                    results.append(data[i])
         return results
 

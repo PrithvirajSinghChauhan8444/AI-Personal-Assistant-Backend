@@ -356,7 +356,7 @@ def run_graph_execution(initial_state, config, thread_id, chat_history_list):
                     subtasks = state_update.get("active_subtasks", [])
                     completed_desc = ""
                     for st in subtasks:
-                        if st["status"] == "completed":
+                        if st["status"] == "completed" and st["assigned_worker"] == node_name:
                             completed_desc = st["description"]
                     if completed_desc:
                         print(f"  \033[1;32m✔\033[0m Completed Task: {completed_desc}")
