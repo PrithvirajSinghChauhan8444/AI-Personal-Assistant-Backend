@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 .vscode/
 .session_cache
+.spotify_cache
 # Local databases and memory logs
 Memory/
 
