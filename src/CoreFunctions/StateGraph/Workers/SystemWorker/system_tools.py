@@ -11,7 +11,8 @@ from src.CoreFunctions.tools import (
     create_file_tool, read_file_tool, list_files_tool, 
     create_dir_tool, save_code_tool,
     index_directory_tool, search_files_semantically_tool, rag_file_qa_tool,
-    get_system_health, get_weather, get_time, web_search
+    get_system_health, get_weather, get_time, web_search,
+    list_active_workers_tool
 )
 
 human_intervention_tool = StructuredTool.from_function(
@@ -54,5 +55,6 @@ system_tools = [
     StructuredTool.from_function(get_weather),
     StructuredTool.from_function(get_time),
     StructuredTool.from_function(web_search),
+    StructuredTool.from_function(list_active_workers_tool),
     human_intervention_tool
 ]
