@@ -81,7 +81,8 @@ def create_graph():
             "GithubWorker": "GithubWorker",
             "MiscWorker": "MiscWorker",
             "OutputFinalizer": "OutputFinalizer",
-            "Orchestrator": "Orchestrator"
+            "Orchestrator": "Orchestrator",
+            "TaskRouter": "TaskRouter"
         }
     )
     

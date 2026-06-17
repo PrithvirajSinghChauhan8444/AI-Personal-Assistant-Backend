@@ -98,6 +98,11 @@ def task_router_node(state: AgentState):
         for mem in relevant_memories:
             context_str += f"- {mem}\n"
             
+    # Include details of any task failures/roadblocks requesting re-planning
+    replan_context = working_memory.get("replan_context")
+    if replan_context:
+        context_str += f"\n[REPLAN REQUEST CONTEXT - PREVIOUS ATTEMPT WORKFLOW FAILED]\n{replan_context}\n"
+            
     input_content = f"User Request: {primary_goal}\n"
     if context_str:
         input_content = f"Injected Context:\n{context_str}\n\n" + input_content

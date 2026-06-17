@@ -1578,6 +1578,17 @@ def search_github_code_tool(query: str, username: str = None, repo_name: str = N
         return f"Error searching GitHub code: {e}"
 
 
+class HumanInterventionAbortError(BaseException):
+    """Raised when the user explicitly stops or aborts execution during human intervention."""
+    pass
+
+class HumanInterventionReplanError(BaseException):
+    """Raised when the user requests a re-planning from the Orchestrator/TaskRouter."""
+    def __init__(self, reason: str, user_instruction: str):
+        super().__init__(f"Replan requested. Reason: {reason}, User Instruction: {user_instruction}")
+        self.reason = reason
+        self.user_instruction = user_instruction
+
 def locked_intervention_prompt(reason: str, prompt_text: str) -> str:
     from src.CoreFunctions.auth_utils import _stdin_lock, get_stdin_prompt_banner
     with _stdin_lock:
@@ -1617,11 +1628,34 @@ async def request_human_intervention(reason: str) -> str:
         user_input = await asyncio.to_thread(
             locked_intervention_prompt,
             reason,
-            "\nPress [Enter] when done, or type a message/code to send back to the agent: "
+            "\nType guidance, 'abort'/'stop' to cancel, or 'ask orchestrator <instruction>' to re-plan: "
         )
         user_input = user_input.strip()
         if not user_input:
             user_input = "done"
+            
+        input_lower = user_input.lower()
+        if input_lower in ["abort", "stop", "exit", "quit"]:
+            raise HumanInterventionAbortError("User aborted execution.")
+            
+        elif input_lower.startswith("ask orchestrator") or input_lower.startswith("ask router") or input_lower.startswith("replan") or input_lower.startswith("re-plan"):
+            instruction = ""
+            for prefix in ["ask orchestrator", "ask router", "re-plan", "replan"]:
+                if input_lower.startswith(prefix):
+                    instruction = user_input[len(prefix):].strip()
+                    break
+            
+            if not instruction:
+                instruction = await asyncio.to_thread(
+                    input,
+                    "Enter instructions/details for the orchestrator to re-plan: "
+                )
+                instruction = instruction.strip()
+                if not instruction:
+                    instruction = "No specific instructions provided."
+                    
+            raise HumanInterventionReplanError(reason, instruction)
+
         print(f"✅ Resuming automation. User responded: '{user_input}'\n", flush=True)
         return f"Human responded: {user_input}"
     finally:
@@ -1647,11 +1681,30 @@ def request_human_intervention_sync(reason: str) -> str:
     try:
         user_input = locked_intervention_prompt(
             reason,
-            "\nPress [Enter] when done, or type a message/code to send back to the agent: "
+            "\nType guidance, 'abort'/'stop' to cancel, or 'ask orchestrator <instruction>' to re-plan: "
         )
         user_input = user_input.strip()
         if not user_input:
             user_input = "done"
+            
+        input_lower = user_input.lower()
+        if input_lower in ["abort", "stop", "exit", "quit"]:
+            raise HumanInterventionAbortError("User aborted execution.")
+            
+        elif input_lower.startswith("ask orchestrator") or input_lower.startswith("ask router") or input_lower.startswith("replan") or input_lower.startswith("re-plan"):
+            instruction = ""
+            for prefix in ["ask orchestrator", "ask router", "re-plan", "replan"]:
+                if input_lower.startswith(prefix):
+                    instruction = user_input[len(prefix):].strip()
+                    break
+            
+            if not instruction:
+                instruction = input("Enter instructions/details for the orchestrator to re-plan: ").strip()
+                if not instruction:
+                    instruction = "No specific instructions provided."
+                    
+            raise HumanInterventionReplanError(reason, instruction)
+
         print(f"✅ Resuming automation. User responded: '{user_input}'\n", flush=True)
         return f"Human responded: {user_input}"
     finally:

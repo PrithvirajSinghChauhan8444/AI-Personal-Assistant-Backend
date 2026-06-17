@@ -9,6 +9,7 @@ from langgraph.prebuilt import create_react_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from src.CoreFunctions.StateGraph.state import AgentState
+from src.CoreFunctions.tools import HumanInterventionAbortError, HumanInterventionReplanError
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 from src.CoreFunctions.StateGraph.available_tools import (
@@ -637,6 +638,37 @@ def _execute_worker_node(state: AgentState, worker_name: str):
         output_state = _update_state_completed(state, task["id"], final_data)
         log_node_end(worker_name, output_state)
         return output_state
+    except HumanInterventionAbortError as ex:
+        print(f"  🛑 [{worker_name}] Task aborted by user request.")
+        subtasks = state.get("active_subtasks", [])
+        for st in subtasks:
+            if st["status"] in ["pending", "in_progress"]:
+                st["status"] = "failed"
+        working_memory = dict(state.get("working_memory", {}))
+        working_memory["fast_path_matched"] = True
+        output_state = {
+            "active_subtasks": subtasks,
+            "working_memory": working_memory,
+            "final_response": "Execution aborted on-demand by the user.",
+            "next_node": "OutputFinalizer"
+        }
+        log_node_end(worker_name, output_state)
+        return output_state
+    except HumanInterventionReplanError as ex:
+        print(f"  🔄 [{worker_name}] Re-routing back to Task Router for re-planning.")
+        subtasks = state.get("active_subtasks", [])
+        for st in subtasks:
+            if st["id"] == task["id"]:
+                st["status"] = "failed"
+        working_memory = dict(state.get("working_memory", {}))
+        working_memory["replan_context"] = f"Task '{task['id']}' ({task['description']}) requested a re-plan. Roadblock reason: {ex.reason}. User feedback for re-planning: {ex.user_instruction}"
+        output_state = {
+            "active_subtasks": subtasks,
+            "working_memory": working_memory,
+            "next_node": "TaskRouter"
+        }
+        log_node_end(worker_name, output_state)
+        return output_state
     except Exception as ex:
         print(f"  ❌ [{worker_name}] Task {task['id']} failed: {ex}")
         log_error(worker_name, str(ex))
@@ -747,6 +779,37 @@ RULES:
         output_state = _update_state_completed(state, task["id"], f"Successfully executed nested Obsidian sub-plan with {len(plan.subtasks)} subtasks. Categorized files committed to vault successfully.")
         log_node_end("ObsidianWorker", output_state)
         return output_state
+    except HumanInterventionAbortError as ex:
+        print(f"  🛑 [ObsidianWorker] Task aborted by user request.")
+        subtasks = state.get("active_subtasks", [])
+        for st in subtasks:
+            if st["status"] in ["pending", "in_progress"]:
+                st["status"] = "failed"
+        working_memory = dict(state.get("working_memory", {}))
+        working_memory["fast_path_matched"] = True
+        output_state = {
+            "active_subtasks": subtasks,
+            "working_memory": working_memory,
+            "final_response": "Execution aborted on-demand by the user.",
+            "next_node": "OutputFinalizer"
+        }
+        log_node_end("ObsidianWorker", output_state)
+        return output_state
+    except HumanInterventionReplanError as ex:
+        print(f"  🔄 [ObsidianWorker] Re-routing back to Task Router for re-planning.")
+        subtasks = state.get("active_subtasks", [])
+        for st in subtasks:
+            if st["id"] == task["id"]:
+                st["status"] = "failed"
+        working_memory = dict(state.get("working_memory", {}))
+        working_memory["replan_context"] = f"Task '{task['id']}' ({task['description']}) requested a re-plan. Roadblock reason: {ex.reason}. User feedback for re-planning: {ex.user_instruction}"
+        output_state = {
+            "active_subtasks": subtasks,
+            "working_memory": working_memory,
+            "next_node": "TaskRouter"
+        }
+        log_node_end("ObsidianWorker", output_state)
+        return output_state
     except Exception as ex:
         print(f"  ❌ [ObsidianWorker] nested sub-plan execution failed: {ex}")
         log_error("ObsidianWorker", str(ex))
@@ -847,6 +910,37 @@ Create a detailed sequential sub-plan to execute this goal.
 
         final_result = list(shared_memory.values())[-1] if shared_memory else "No actions performed"
         output_state = _update_state_completed(state, task["id"], final_result)
+        log_node_end("BrowserWorker", output_state)
+        return output_state
+    except HumanInterventionAbortError as ex:
+        print(f"  🛑 [BrowserWorker] Task aborted by user request.")
+        subtasks = state.get("active_subtasks", [])
+        for st in subtasks:
+            if st["status"] in ["pending", "in_progress"]:
+                st["status"] = "failed"
+        working_memory = dict(state.get("working_memory", {}))
+        working_memory["fast_path_matched"] = True
+        output_state = {
+            "active_subtasks": subtasks,
+            "working_memory": working_memory,
+            "final_response": "Execution aborted on-demand by the user.",
+            "next_node": "OutputFinalizer"
+        }
+        log_node_end("BrowserWorker", output_state)
+        return output_state
+    except HumanInterventionReplanError as ex:
+        print(f"  🔄 [BrowserWorker] Re-routing back to Task Router for re-planning.")
+        subtasks = state.get("active_subtasks", [])
+        for st in subtasks:
+            if st["id"] == task["id"]:
+                st["status"] = "failed"
+        working_memory = dict(state.get("working_memory", {}))
+        working_memory["replan_context"] = f"Task '{task['id']}' ({task['description']}) requested a re-plan. Roadblock reason: {ex.reason}. User feedback for re-planning: {ex.user_instruction}"
+        output_state = {
+            "active_subtasks": subtasks,
+            "working_memory": working_memory,
+            "next_node": "TaskRouter"
+        }
         log_node_end("BrowserWorker", output_state)
         return output_state
     except Exception as ex:
