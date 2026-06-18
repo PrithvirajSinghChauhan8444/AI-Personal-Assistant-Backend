@@ -14,6 +14,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from src.CoreFunctions.StateGraph.state import AgentState
 from src.CoreFunctions.StateGraph.task_router import task_router_node
+from src.CoreFunctions.StateGraph.system_state import system_state_node
 from src.CoreFunctions.StateGraph.orchestrator import orchestrator_node, orchestrator_router
 from src.CoreFunctions.StateGraph.finalizer import output_finalizer_node
 from src.CoreFunctions.StateGraph.memory_nodes import memory_injector_node, reflection_node
@@ -34,6 +35,7 @@ def create_graph():
     
     # Add Nodes
     workflow.add_node("MemoryInjector", memory_injector_node)
+    workflow.add_node("SystemState", system_state_node)
     workflow.add_node("TaskRouter", task_router_node)
     workflow.add_node("Orchestrator", orchestrator_node)
     
@@ -48,15 +50,18 @@ def create_graph():
     # Set Entry Point
     workflow.set_entry_point("MemoryInjector")
     
-    # Memory Injector routes to OutputFinalizer (Fast-Path Bypass) or TaskRouter (Standard Path)
+    # Memory Injector routes to OutputFinalizer (Fast-Path Bypass) or SystemState (Standard Path)
     workflow.add_conditional_edges(
         "MemoryInjector",
         memory_injector_router,
         {
             "OutputFinalizer": "OutputFinalizer",
-            "TaskRouter": "TaskRouter"
+            "TaskRouter": "SystemState"
         }
     )
+    
+    # SystemState goes to TaskRouter
+    workflow.add_edge("SystemState", "TaskRouter")
     
     # Task Router goes to Orchestrator
     workflow.add_edge("TaskRouter", "Orchestrator")
@@ -323,6 +328,11 @@ def run_graph_execution(initial_state, config, thread_id, chat_history_list):
                             print(f"  -> Injected {len(relevant_memories)} semantically relevant memories.")
                         visualizer.start("Analyzing request & decomposing into subtasks", "36")
                 
+                elif node_name == "SystemState":
+                    visualizer.stop()
+                    print_node_header(node_name, timestamp)
+                    visualizer.start("Analyzing request & decomposing into subtasks", "36")
+                
                 elif node_name == "TaskRouter":
                     visualizer.stop()
                     print_node_header(node_name, timestamp)
@@ -569,6 +579,13 @@ def process_request_interactive():
             clear_interrupted_task_checkpoint()
 
     while True:
+        # Reload/sync configuration and registry dynamically
+        scan_and_register_workers(force_reload=True)
+        global app
+        app = create_graph()
+        active_workers = WorkerRegistry.get_worker_names()
+        print(f"🤖 [Active Workers]: {', '.join(active_workers)}")
+
         try:
             user_input = input("\nYou: ").strip()
         except (KeyboardInterrupt, EOFError):
@@ -615,7 +632,7 @@ def process_request_interactive():
             "primary_goal": user_input,
             "active_subtasks": [],
             "working_memory": working_memory_init,
-            "completed_tasks": completed_tasks_init,
+            "completed_tasks": {},
             "final_response": "",
             "chat_history": chat_history
         }

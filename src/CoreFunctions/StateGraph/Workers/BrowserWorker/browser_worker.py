@@ -149,6 +149,12 @@ class BrowserWorker(BaseWorker):
     tools = browser_tools
     categories = ["browser", "information-retrieval", "BrowserWorker"]
     
+    @property
+    def routing_rules(self) -> List[str]:
+        return [
+            "**Browser/Web Automation Workflow**:\n   - Web automation sessions (e.g. navigating to a website, searching, clicking, logging in, or playing media) MUST be kept as a single, combined subtask assigned to BrowserWorker.\n   - Do NOT break a single web session into multiple sequential BrowserWorker subtasks (e.g. step 1 navigate, step 2 search, step 3 click), because the browser page state and context are lost between different worker runs. Keep them combined in one subtask description (e.g., 'Navigate to music.youtube.com, search for j-pop, and play the first result')."
+        ]
+
     def execute(self, state: AgentState) -> dict:
         return browser_worker_node(state)
 

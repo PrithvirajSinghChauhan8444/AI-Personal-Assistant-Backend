@@ -40,7 +40,7 @@ def test_run():
                     next_node = state_update.get("next_node")
                     print(f"📍 Orchestrator Next: {next_node}")
                     visualizer.start(f"Running {next_node}", "33")
-                elif node_name in ["TaskRouter", "OutputFinalizer"] or "Worker" in node_name:
+                elif node_name in ["TaskRouter", "OutputFinalizer", "SystemState"] or "Worker" in node_name:
                     visualizer.stop()
                     print(f"✅ Node Finished: {node_name}")
                     visualizer.start("Evaluating next steps", "34")

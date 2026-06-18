@@ -39,6 +39,8 @@ class TestPlugAndPlay(unittest.TestCase):
         with open(self.config_path, "w", encoding="utf-8") as f:
             json.dump(test_config, f, indent=4)
 
+        scan_and_register_workers(force_reload=True)
+
         # get_all_workers should dynamic load it
         active_names = WorkerRegistry.get_worker_names()
         self.assertNotIn("SystemWorker", active_names)
@@ -49,6 +51,8 @@ class TestPlugAndPlay(unittest.TestCase):
         test_config["GmailWorker"]["active"] = False
         with open(self.config_path, "w", encoding="utf-8") as f:
             json.dump(test_config, f, indent=4)
+
+        scan_and_register_workers(force_reload=True)
 
         # get_all_workers should load the updated config dynamically
         active_names_updated = WorkerRegistry.get_worker_names()
