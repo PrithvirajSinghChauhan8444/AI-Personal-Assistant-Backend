@@ -11,17 +11,18 @@ To quickly understand how the AI Personal Assistant behaves, processes requests,
 ### 1. Start with the Entry Point
 * **File**: [main_graph.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/main_graph.py)
 * **What to look for**:
-  * [process_request_interactive()](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/main_graph.py#L449): The main terminal loop that starts the assistant. Note how it loads previous session context, prompts the user to resume interrupted tasks (if any), and sets up the active execution session.
-  * [create_graph()](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/main_graph.py#L34): Compiles the cyclic state machine using LangGraph. This defines the overall node connectivity and the execution flow of the assistant.
+  * [process_request_interactive()](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/main_graph.py#L441): The main terminal loop that starts the assistant. Note how it loads previous session context, prompts the user to resume interrupted tasks (if any), and sets up the active execution session.
+  * [create_graph()](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/main_graph.py#L33): Compiles the cyclic state machine using LangGraph. This defines the overall node connectivity and the execution flow of the assistant.
 
 ### 2. Trace the Request Lifecycle (State Graph Nodes)
 Requests progress through isolated, specialized nodes that coordinate via the shared `AgentState` dictionary defined in [state.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/state.py):
-1. **Context Ingestion**: [memory_nodes.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/memory_nodes.py) loads the user profile, searches vector databases, and fetches procedural skill manuals via `MemoryInjector`.
-2. **Decomposition**: [task_router.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/task_router.py) uses a high-cognition model to break the user goal into structured subtasks (a Directed Acyclic Graph plan).
-3. **Execution Scheduling**: [orchestrator.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/orchestrator.py) monitors task dependencies, forks parallel ready subtasks, resets orphaned tasks, and dynamically routes them to worker agents.
-4. **Action Workers**: [workers.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/workers.py) compiles and executes focused ReAct agents (such as `SystemWorker` or `GmailWorker`) using strictly scoped tools.
-5. **Output Synthesis**: [finalizer.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/finalizer.py) merges the subtasks' outcomes into a single unified response.
-6. **Self-Learning**: [Reflection](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/memory_nodes.py) node runs in the background to extract user facts and save them for the next turn.
+1. **Context Ingestion**: [memory_nodes.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/memory_nodes.py) loads the user profile, searches vector databases, and checks for simple greets (fast path) via `MemoryInjector`.
+2. **Metadata Collection**: [system_state.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/system_state.py) aggregates active workers list, chat history metrics, and LLM thinking parameters to save to `system_state`.
+3. **Decomposition**: [task_router.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/task_router.py) uses a high-cognition model to break the user goal into structured subtasks (a Directed Acyclic Graph plan).
+4. **Execution Scheduling**: [orchestrator.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/orchestrator.py) monitors task dependencies, forks parallel ready subtasks, resets orphaned tasks, and dynamically routes them to worker agents.
+5. **Action Workers**: Discovered dynamically via [registry.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/registry.py) and compiled via [executor.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/executor.py). Each worker executes ReAct agents with strictly sandboxed tools.
+6. **Output Synthesis**: [finalizer.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/finalizer.py) merges the subtasks' outcomes into a single unified response.
+7. **Self-Learning**: [Reflection](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/memory_nodes.py) node runs in the background to extract user facts and save them for the next turn.
 
 ### 3. Read the Execution Logs (Observability)
 The easiest way to see the assistant "in action" without debugger breakpoints is to run a query and inspect the generated session logs:
@@ -31,7 +32,6 @@ The easiest way to see the assistant "in action" without debugger breakpoints is
 
 ### 4. Understand Available Tools & Skills
 * **Concrete Python Tools**: Check [tools.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/tools.py) to see the execution logic of system control, calendar, gmail, classroom, browser, and file utilities.
-* **LangChain Wrappers**: Check [available_tools.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/available_tools.py) to see how these Python functions are registered and exposed to LangChain ReAct workers.
 * **Procedural Skill Manuals**: Read the markdown manuals in `Skills/` (e.g. `Skills/SystemControl/` or `Skills/Gmail/`) to understand the step-by-step instructions the LLM reads to perform multi-stage workflows.
 
 ---
@@ -40,7 +40,7 @@ The easiest way to see the assistant "in action" without debugger breakpoints is
 
 ```text
 ROOT/
-├── config/                  # Configuration files (API keys, important paths, etc.)
+├── config/                  # Configuration files (API keys, OAuth credentials, workers_config.json)
 ├── scripts/                 # Setup, verification, and experimental scrape utilities
 │   ├── browser_experiment/  # Prototypes for DOM processing and HTML-to-Markdown conversions
 │   ├── clear_skills.py
@@ -49,39 +49,50 @@ ROOT/
 │   ├── setup_ytmusic.py
 │   └── verify_ytmusic.py
 ├── src/                     # Core codebase
-│   ├── Apps/                # Modular integrations with desktop apps and external APIs
-│   │   ├── Automation/      # Scheduled background tasks
-│   │   ├── Briefing/        # Weather and news aggregators
-│   │   ├── Calendar/        # Google Calendar services
-│   │   ├── Classroom/       # Google Classroom and Drive material management
-│   │   ├── FileOperations/  # Sandboxed filesystem utility functions
-│   │   ├── Github/          # Local Git repository and GitHub API operations
-│   │   ├── Gmail/           # Full Google Mail capabilities (attachments, threads, filters)
-│   │   ├── Google/          # Google Tasks services
-│   │   ├── Spotify/         # Spotify auth client and media controls
-│   │   ├── System/          # Clipboard, aria2c downloader, and OS system monitors
-│   │   └── SystemControl/   # Cross-platform command line execution and app launcher
 │   └── CoreFunctions/       # Foundation architecture, security wrappers, and LangGraph engine
+│       ├── Integrations/    # Modular integrations with desktop apps and external APIs
+│       │   ├── Automation/  # Scheduled background tasks
+│       │   ├── Briefing/    # Weather and news aggregators
+│       │   ├── Calendar/    # Google Calendar services
+│       │   ├── Classroom/   # Google Classroom and Drive material management
+│       │   ├── FileOperations/ # Sandboxed filesystem utility functions
+│       │   ├── Github/      # Local Git repository and GitHub API operations
+│       │   ├── Gmail/       # Full Google Mail attachments and threads handling
+│       │   ├── Google/      # Google Tasks services
+│       │   ├── Spotify/     # Spotify auth client and media controls
+│       │   ├── System/      # Clipboard, downloader, and OS system monitors
+│       │   └── SystemControl/ # Command line execution and app launcher
+│       │
 │       ├── StateGraph/      # LangGraph state machine flow definitions
-│       │   ├── CompiledScripts/ # Ephemeral compiled python scripts for specific tasks
-│       │   ├── available_tools.py # LangChain StructuredTool category wrapping
-│       │   ├── finalizer.py   # Final output synthesizer node
-│       │   ├── main_graph.py  # Compile and run loop for LangGraph cyclic state machine
-│       │   ├── memory_nodes.py # MemoryInjector context loading and Reflection facts learning
+│       │   ├── Workers/     # Directories defining individual worker classes and prompts
+│       │   │   ├── BrowserWorker/ # Web search and automation worker
+│       │   │   ├── ClassroomWorker/ # Classroom tasks worker
+│       │   │   ├── GithubWorker/ # Git repository worker
+│       │   │   ├── GmailWorker/ # Email operations worker
+│       │   │   ├── MemoryWorker/ # Facts retrieval worker
+│       │   │   ├── MiscWorker/  # YTMusic and custom automation scripts
+│       │   │   ├── ObsidianWorker/ # Multi-agent Obsidian Manager team
+│       │   │   ├── ProductivityWorker/ # Tasks and scheduling worker
+│       │   │   └── SystemWorker/ # System diagnostic and execution worker
+│       │   │
+│       │   ├── registry.py  # Decorators for plugin worker discovery
+│       │   ├── executor.py  # ReAct compilation, transactions, and large outputs cache
+│       │   ├── system_state.py # Environment configuration and history metadata node
+│       │   ├── task_router.py # Pydantic LLM planning node (DAG planner)
 │       │   ├── orchestrator.py # Fork-join task scheduler and self-healing checker
-│       │   ├── state.py       # AgentState dictionary scheme and merging reducers
-│       │   ├── task_router.py # Structured Pydantic LLM planning node (DAG planner)
-│       │   └── workers.py     # Compilers and nodes for ReAct execution workers
-│       ├── auth_utils.py    # Google API OAuth2 logic and Fernet token encryption
-│       ├── file_vector_store.py # Local RAG search using SentenceTransformers and FAISS
-│       ├── logger.py        # Concurrent text & JSON session tracing timeline logger
-│       ├── memory.py        # Flat JSON key-value user profile memory manager
-│       ├── path_utils.py    # Directory boundary resolution and configurations loader
+│       │   ├── finalizer.py   # Final output synthesizer node
+│       │   └── main_graph.py  # Compile and run loop for LangGraph cyclic state machine
+│       │
+│       ├── auth_utils.py    # Google OAuth2 credentials encryption and stack introspection
+│       ├── file_vector_store.py # Local document chunking and FAISS indexing search
+│       ├── logger.py        # Concurrent text & JSON session logging
+│       ├── memory.py        # SQLite persistent key-value cognitive databases
+│       ├── path_utils.py    # Directory boundary resolution helpers
 │       ├── security_utils.py # Shell sanitization and path directory sandbox checks
 │       ├── tools.py         # Concrete tool execution logic definitions
-│       ├── unified_memory.py # Transactional cache databases (SQLite/Redis engines)
-│       └── vector_memory.py  # Semantic vector index for user facts and procedural manuals
-└── tests/                   # Automated validation suites for sandbox, parallel tasks, memory, etc.
+│       ├── unified_memory.py # Cache database engines (SQLite/Redis/Postgres wrapper)
+│       └── vector_memory.py  # Chromadb semantic vector memory
+└── tests/                   # Automated validation suites for testing registry, configurations, database cache, etc.
 ```
 
 ---
@@ -93,7 +104,7 @@ These files form the foundation of the assistant's infrastructure, providing mem
 ---
 
 ### 🗃️ [unified_memory.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/unified_memory.py)
-* **Role in the Assistant**: Implements a structured cache layer (SQLite or Redis backends) that enables thread-safe state synchronization and transactional updates across concurrent worker threads. It also extracts entity annotations from raw agent outputs.
+* **Role in the Assistant**: Implements a cache layer (SQLite/Redis/Postgres) that enables thread-safe state synchronization and transactional updates across concurrent worker threads. It also parses XML formatting tags from outputs.
 
 #### Classes
 ##### `BaseMemoryEngine`
@@ -146,7 +157,7 @@ The central manager singleton exposing the thread-safe API to the rest of the ap
 ---
 
 ### 🔑 [auth_utils.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/auth_utils.py)
-* **Role in the Assistant**: Coordinates Google service credentials (personal/college accounts). It encrypts cached JSON credentials using Fernet cryptography and serializes console inputs (`verify_password`) when parallel workers request authentication.
+* **Role in the Assistant**: Coordinates Google service credentials. It encrypts cached JSON credentials using Fernet cryptography and serializes console inputs (`verify_password`) when parallel workers request authentication.
 
 #### Functions
 * `get_config_dir()`: Resolves root configuration directories.
@@ -189,7 +200,7 @@ The central manager singleton exposing the thread-safe API to the rest of the ap
 ---
 
 ### 🪵 [logger.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/logger.py)
-* **Role in the Assistant**: Provides extensive execution tracking. It records sequential console logs (indenting loops and nesting calls) and captures structured JSON trace arrays to support visual debugging tools.
+* **Role in the Assistant**: Provides execution tracking. It records sequential console logs (indenting loops and nesting calls) and captures structured JSON trace arrays to support visual debugging tools.
 
 #### Functions
 * `set_thread_session_id(session_id)`: Maps session logs to specific request threads.
@@ -204,21 +215,21 @@ The central manager singleton exposing the thread-safe API to the rest of the ap
 ---
 
 ### 🗃️ [memory.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/memory.py)
-* **Role in the Assistant**: Manages flat, file-backed JSON configurations (e.g. `Memory/user_info.json`) representing permanent variables such as the user's name, weather locations, or email accounts.
+* **Role in the Assistant**: Manages flat configuration queries and interfaces with `UnifiedMemory` database lookup tables (`user`, `current`, `past`) to store preference details and prevent duplicates.
 
 #### Functions
-* `_load(path)` / `_save(path, data)`: Basic read/write helpers for flat memory files.
-* `store_memory(category, key, value)`: Updates profile records.
-* `fetch_memory(category, key)`: Look up key-value pairs (falls back through `user` -> `current` -> `past` tables).
+* `store_memory(category, key, value)`: Updates profile records in the unified SQL database cache.
+* `fetch_memory(category, key)`: Look up key-value pairs (falls back sequentially through `user` -> `current` -> `past` tables).
+* `delete_memory(category, key)`: Deletes cognitive key-value entries.
 
 ---
 
 ### 🛠️ [tools.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/tools.py)
-* **Role in the Assistant**: The central registry defining the functional interface of all tools. It links external scripts and integration endpoints (`src/Apps/`) to execution workers. These functions enforce password validation cards for sensitive tools and handle browser locks when human interventions are needed.
+* **Role in the Assistant**: The central registry defining the functional interface of all tools. It links external scripts and integration endpoints (`src/CoreFunctions/Integrations/`) to execution workers. These functions enforce password validation cards for sensitive tools and handle browser locks when human interventions are needed.
 
 #### Selected Functions
-* `remember(key, value, category)` / `recall(key)`: Memory store/load helpers.
-* `fetch_unread_mails(limit, account)` / `send_gmail(...)` / `reply_to_gmail(...)`: Direct Gmail API wrapper functions.
+* `remember(key, value, category)` / `recall(key)`: Memory database helpers.
+* `fetch_unread_mails(limit, account)` / `send_gmail(...)` / `reply_to_gmail(...)`: Gmail client functions.
 * `check_calendar_events(max_results, account)` / `add_calendar_event(...)`: Google Calendar tools.
 * `fetch_classroom_courses(account)` / `download_classroom_materials_tool(...)`: Google Classroom tools.
 * `get_system_health()`, `get_weather(location)`, `web_search(query)`: General information helpers.
@@ -246,6 +257,38 @@ These files define the LangGraph cyclic state machine. They schedule tasks, coor
 
 ---
 
+### 🔌 [registry.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/registry.py)
+* **Role in the Assistant**: Handles dynamic registration and config synchronization. It scans the `Workers/` directory, registering ReAct agents via class decorators.
+
+#### Classes & Decorators
+* `BaseWorker`: Interface representing the required fields for workers (name, instruction prompts, tool registries, routing rules).
+* `WorkerRegistry`: Registry manager keeping a mapped list of active workers.
+  * `register(worker_cls)`: Class decorator to declare and initialize new workers.
+  * `load_and_sync_config()`: Synchronizes active status and designated models with `config/workers_config.json`.
+  * `get_worker(name)`: Returns registered instance by name.
+* `scan_and_register_workers(workers_dir, force_reload)`: Dynamically walks subfolders on runtime to load classes.
+
+---
+
+### ⚡ [executor.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/executor.py)
+* **Role in the Assistant**: The compiled worker executor. It instantiates LLM models (Gemini vs local Ollama) based on worker configs, loads semantic vector skills cache instructions, executes transaction blocks via `UnifiedMemory`, and intercepts human-in-the-loop triggers.
+
+#### Functions
+* `get_model_for_worker(worker_name)`: Maps configured worker strings to specific model instances (e.g. ChatGoogleGenerativeAI with thinking budgets or ChatOllama).
+* `compile_worker_agents()`: Compiles ReAct executors from LangGraph.
+* `_run_ephemeral_agent(...)` / `_run_async_ephemeral_agent(...)`: Isolated runners executing agents within SQL database transactions.
+* `_update_state_completed(state, task_id, final_data)`: Marks subtasks as completed. Automatically offloads output data exceeding 2000 chars to local cache files, saving `__file_reference__` pointers to state to prevent LLM prompt bloat.
+
+---
+
+### 📊 [system_state.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/system_state.py)
+* **Role in the Assistant**: State graph node that gathers execution metrics.
+
+#### Functions
+* `system_state_node(state)`: Records active workers info, chat history sizes, and token boundaries, returning a dictionary to populate `system_state`.
+
+---
+
 ### 📈 [state.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/state.py)
 * **Role in the Assistant**: Declares the `AgentState` schema, representing the globally shared memory model of the execution graph. It contains reducer merging operators to aggregate state mutations without race conditions.
 
@@ -256,16 +299,13 @@ TypedDict representation of a task block (e.g. status, dependencies, assigned wo
 ##### `AgentState`
 The master state dictionary containing:
 * `primary_goal`: Original user query.
-* `active_subtasks`: Planning DAG list.
-* `working_memory`: Dynamic values updated by workers.
-* `completed_tasks`: Summaries of executed actions.
+* `active_subtasks`: Planning DAG list using `merge_subtasks`.
+* `working_memory`: Dynamic values updated using `merge_dict`.
+* `completed_tasks`: Summaries of executed actions using `merge_dict`.
+* `error_logs`: Accumulated logs list using `merge_error_logs`.
 * `final_response`: Synthesis text.
 * `chat_history`: Conversation thread.
-* `error_logs`: Log storage.
-
-#### Functions
-* `merge_subtasks(left, right)`: Merges lists of subtasks, preserving the status and outputs of completed tasks during parallel forks.
-* `merge_dict(left, right)`: Merges dictionary schemas.
+* `system_state`: Real-time metadata variables dictionary.
 
 ---
 
@@ -287,23 +327,6 @@ The master state dictionary containing:
 #### Functions
 * `orchestrator_node(state)`: Scans subtasks, detects completed prerequisites, marks ready items as `in_progress`, and transitions them to the router.
 * `orchestrator_router(state)`: Binds to LangGraph's conditional routing to select next nodes (e.g., executing worker nodes, returning to finalizers, or looping).
-
----
-
-### 💻 [workers.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/workers.py)
-* **Role in the Assistant**: Compiles and runs individual ReAct worker agents. Each worker gets a custom-tailored list of tools and categories.
-
-#### Classes
-* `ObsidianSubTask` / `ObsidianSubPlan` / `BrowserSubTask` / `BrowserSubPlan`: Pydantic models for internal tool actions.
-
-#### Functions
-* `_get_active_task(state, worker_name)`: Returns the subtask assigned to the current worker.
-* `_load_worker_skills(worker_name)`: Dynamically retrieves relevant skill procedures from the vector cache.
-* `_clean_working_memory_for_worker(working_memory, depends_on)`: Truncates non-essential keys to keep worker prompts clean.
-* `_run_ephemeral_agent(...)`: Compiles a ReAct executor with appropriate tools and returns final summaries.
-* `_update_state_completed(state, task_id, final_data)`: Marks subtasks complete.
-* `_execute_worker_node(state, worker_name)`: Parent runner wrapping specific worker loops.
-* `system_worker_node`, `gmail_worker_node`, `productivity_worker_node`, `memory_worker_node`, `classroom_worker_node`, `obsidian_worker_node`, `browser_worker_node`, `github_worker_node`, `misc_worker_node`: Worker entrypoint nodes registered in LangGraph.
 
 ---
 
@@ -332,12 +355,9 @@ The master state dictionary containing:
 #### Classes
 ##### `CLIStatusVisualizer`
 Manages terminal loaders and status updates during execution.
-* `start(text, color)`: Spawns the loading spinner thread.
-* `update(text, color)`: Modifies current indicator text.
-* `stop()`: Terminates animations.
 
 #### Functions
-* `memory_injector_router(state)`: Determines route transitions after injecting memories.
+* `memory_injector_router(state)`: Determines route transitions after injecting memories (can redirect to output finalizer on fast path matches).
 * `create_graph()`: Constructs the LangGraph instance.
 * `save_interrupted_task_checkpoint(state_values, status)`: Serializes session state data to files.
 * `clear_interrupted_task_checkpoint()`: Clears active checkpoints.
@@ -346,115 +366,68 @@ Manages terminal loaders and status updates during execution.
 
 ---
 
-### 🔌 [available_tools.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/available_tools.py)
-* **Role in the Assistant**: Groups functional tools from `tools.py` into lists (e.g. `gmail_tools`, `calendar_tools`, `obsidian_tools`) and wraps them as LangChain `StructuredTool` objects for workers.
-
----
-
-## 📲 3. Modular Integrations & APIs (`src/Apps/`)
+## 📲 3. Modular Integrations & APIs (`src/CoreFunctions/Integrations/`)
 
 These folders contain standalone libraries that interface with external APIs (Google, Spotify, GitHub) and system utilities (clipboard, terminal, browser, process lists).
 
 ---
 
-### 📆 Calendar (`src/Apps/Calendar/`)
-* **[calendar_service.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/Calendar/calendar_service.py)**: Spawns authenticated calendar client objects.
-  * `get_service(account)`: Authenticates and returns Google Calendar API client service.
-* **[create_event.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/Calendar/create_event.py)**: Adds items to calendars.
-  * `create_new_event(summary, start_time_iso, duration_hours, description, account)`: Submits new events.
-* **[read_event.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/Calendar/read_event.py)**: Queries calendar timelines.
-  * `list_upcoming_events(max_results, account)`: Returns a list of upcoming calendar items.
+### 📆 Calendar (`src/CoreFunctions/Integrations/Calendar/`)
+* **[calendar_service.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/Calendar/calendar_service.py)**: Spawns authenticated calendar client objects.
+* **[create_event.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/Calendar/create_event.py)**: Adds items to calendars.
+* **[read_event.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/Calendar/read_event.py)**: Queries calendar timelines.
 
 ---
 
-### 🎓 Classroom (`src/Apps/Classroom/`)
-* **[classroom_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/Classroom/classroom_ops.py)**: Retrieves courses, assignments, and announcements.
-  * `list_courses(account)`, `list_coursework(course_id, account)`, `list_announcements(course_id, account)`, `get_coursework_details(course_id, coursework_id, account)`.
-* **[classroom_file_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/Classroom/classroom_file_ops.py)**: Handles classroom file submission and downloads.
-  * `get_drive_service(account)`: Gets Google Drive client.
-  * `download_drive_file(file_id, dest_path, account)` / `upload_file_to_drive(...)`: Handles file transfers with Google Drive.
-  * `download_classroom_materials(course_id, coursework_id, save_dir, account)`: Downloads coursework attachments.
-  * `submit_classroom_assignment(course_id, coursework_id, file_paths, account)`: Uploads local assignments and marks coursework as submitted.
+### 🎓 Classroom (`src/CoreFunctions/Integrations/Classroom/`)
+* **[classroom_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/Classroom/classroom_ops.py)**: Retrieves courses, assignments, and announcements.
+* **[classroom_file_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/Classroom/classroom_file_ops.py)**: Handles classroom file submission and downloads.
 
 ---
 
-### ✉️ Gmail (`src/Apps/Gmail/`)
-* **[gmail_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/Gmail/gmail_ops.py)**: Core Gmail client wrapping reads, trashing, marking read, and replying.
-  * `search_gmail_emails(query, max_results, page_token, account)`, `read_gmail_email(email_id, account)`, `trash_gmail_email(...)`, `mark_gmail_as_read(...)`, `reply_to_gmail_email(email_id, body_text, account)`, `send_gmail_email(...)`.
-* **[gmail_file_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/Gmail/gmail_file_ops.py)**: Processes email attachments.
-  * `download_gmail_attachment(email_id, attachment_id, filename, save_dir, account)`: Downloads attachments from messages.
-  * `send_gmail_with_attachment(to, subject, body, attachment_paths, account)`: Sends emails with attachments.
-* **[read_unread.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/Gmail/read_unread.py)**: Legacy filter helpers.
-  * `fetch_unread_emails_detailed(page_token)`: Lists unread messages.
-* **[gmail_sender.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/Gmail/gmail_sender.py)** / **[gmail_handler.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/Gmail/gmail_handler.py)**: Legacy direct script integrations.
+### ✉️ Gmail (`src/CoreFunctions/Integrations/Gmail/`)
+* **[gmail_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/Gmail/gmail_ops.py)**: Core Gmail client wrapping reads, trashing, marking read, and replying.
+* **[gmail_file_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/Gmail/gmail_file_ops.py)**: Processes email attachments.
+* **[read_unread.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/Gmail/read_unread.py)**: Legacy filter helpers.
+* **[gmail_sender.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/Gmail/gmail_sender.py)** / **[gmail_handler.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/Gmail/gmail_handler.py)**: Legacy direct script integrations.
 
 ---
 
-### 📊 System (`src/Apps/System/`)
-* **[system_actions.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/System/system_actions.py)**: Controls system actions (mute status, brightness levels, screen lock, media controllers).
-  * `get_volume()` / `set_volume(level)` / `toggle_mute()`: Adjusts audio output.
-  * `get_brightness()` / `set_brightness(level)`: Controls display panel brightness.
-  * `list_processes(limit)` / `kill_process(name_or_pid)`: Monitors process tables.
-  * `lock_screen()` / `suspend_system()`: Puts PC to sleep or locks display manager.
-* **[clipboard_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/System/clipboard_ops.py)**: Interfaces with clipboards.
-  * `copy_to_clipboard(text)` / `paste_from_clipboard()`: Integrates with `xclip` or `xsel`.
-* **[download_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/System/download_ops.py)**: Handles file downloads.
-  * `download_file(url, save_dir, filename)`: Downloads resources using `aria2c`.
-* **[system_monitor.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/System/system_monitor.py)**: Reads system specs.
-  * `get_system_stats()`: Reads CPU load, RAM usage, and battery percentages.
+### 📊 System (`src/CoreFunctions/Integrations/System/`)
+* **[system_actions.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/System/system_actions.py)**: Controls system actions (mute status, brightness levels, screen lock, media controllers).
+* **[clipboard_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/System/clipboard_ops.py)**: Interfaces with clipboards.
+* **[download_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/System/download_ops.py)**: Handles file downloads.
+* **[system_monitor.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/System/system_monitor.py)**: Reads system specs.
 
 ---
 
-### ⚙️ System Control (`src/Apps/SystemControl/`)
-* **[execution.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/SystemControl/execution.py)**: Command validation runner.
-  * `resolve_path_alias(path_or_alias)`: Resolves shortcut aliases to absolute paths.
-  * `run_terminal_command(command)`: Runs shell command strings and streams stdout.
-  * `run_python_script(path)`: Runs local python scripts.
-  * `launch_app(app_name, arguments)`: Spawns desktop GUI applications.
+### ⚙️ System Control (`src/CoreFunctions/Integrations/SystemControl/`)
+* **[execution.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/SystemControl/execution.py)**: Command validation runner.
 
 ---
 
-### 🎵 Spotify (`src/Apps/Spotify/`)
-* **[spotify_client.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/Spotify/spotify_client.py)**: Spotify client library.
-  * `get_spotify_client()`: Authenticates Web API instances.
-  * `get_current_song()`: Retrieves currently playing song or last active track.
-  * `play_pause()`, `next_track()`, `previous_track()`: Playback control buttons.
+### 🎵 Spotify (`src/CoreFunctions/Integrations/Spotify/`)
+* **[spotify_client.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/Spotify/spotify_client.py)**: Spotify client library.
 
 ---
 
-### 📋 Briefing (`src/Apps/Briefing/`)
-* **[briefing.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/Briefing/briefing.py)**: Aggregates daily briefing content.
-  * `get_weather()`: Queries Open-Meteo current stats.
-  * `get_tech_news()`: Retrieves Google News RSS feeds.
-  * `get_briefing_data()`: Formats combined weather and news packages.
+### 📋 Briefing (`src/CoreFunctions/Integrations/Briefing/`)
+* **[briefing.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/Briefing/briefing.py)**: Aggregates daily briefing content.
 
 ---
 
-### 🚀 Automation (`src/Apps/Automation/`)
-* **[scheduler_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/Automation/scheduler_ops.py)**: Persistent task scheduler.
-  * `load_tasks()` / `save_tasks(tasks)`: Handles JSON backups (`scheduled_tasks.json`).
-  * `schedule_delayed_task(description, delay_seconds)`: Schedules future tasks.
-  * `schedule_task_at_time(description, time_str)`: Schedules tasks for specific dates/times.
-  * `polling_loop()`: Checks for due tasks every second.
-  * `run_due_task(task_id, description)`: Invokes the assistant in a background daemon thread to complete tasks.
+### 🚀 Automation (`src/CoreFunctions/Integrations/Automation/`)
+* **[scheduler_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/Automation/scheduler_ops.py)**: Persistent task scheduler.
 
 ---
 
-### 💻 GitHub (`src/Apps/Github/`)
-* **[github_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/Github/github_ops.py)**: GitHub operations.
-  * `get_local_git_info()`: Reads origin repository owner and name from files.
-  * `get_local_commits(branch, count)`: Extracts commit history.
-  * `get_github_profile(username)`: Retrieves profile details.
-  * `list_github_repos(username, sort, count)`: Lists repositories.
-  * `get_github_file_content(...)`: Downloads file contents or directory structures.
-  * `search_github_code(query, username, repo_name, page, count)`: Performs code queries.
+### 💻 GitHub (`src/CoreFunctions/Integrations/Github/`)
+* **[github_ops.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/Github/github_ops.py)**: GitHub operations.
 
 ---
 
-### 🗂️ Classroom & Google Tasks (`src/Apps/Classroom/`, `src/Apps/Google/`)
-* **[tasks.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/Apps/Google/tasks.py)**: Google Tasks.
-  * `get_tasks(account)`: Fetches tasks from lists.
-  * `add_new_task(title, account)`: Submits new tasks.
+### 🗂️ Classroom & Google Tasks (`src/CoreFunctions/Integrations/Classroom/`, `src/CoreFunctions/Integrations/Google/`)
+* **[tasks.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/Integrations/Google/tasks.py)**: Google Tasks.
 
 ---
 
@@ -465,7 +438,7 @@ Standalone scripts for index generation, setup steps, migration, and scraping ex
 * **[clear_skills.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/scripts/clear_skills.py)**: Clears skills database files.
 * **[migrate_skills.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/scripts/migrate_skills.py)**: Organizes raw markdown skills into their respective folders.
 * **[setup_ytmusic.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/scripts/setup_ytmusic.py)** / **[do_setup_ytmusic.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/scripts/do_setup_ytmusic.py)** / **[verify_ytmusic.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/scripts/verify_ytmusic.py)**: Sets up, updates, and verifies library integrations for YouTube Music.
-* **[experiment_dom_tagging.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/scripts/browser_experiment/experiment_dom_tagging.py)** / **[experiment_markdown.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/scripts/browser_experiment/experiment_markdown.py)**: Experimental scraper parsing raw HTML trees into clean markdown tags to optimize context length for browser execution loops.
+* **[experiment_dom_tagging.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/scripts/browser_experiment/experiment_dom_tagging.py)** / **[experiment_markdown.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/scripts/browser_experiment/experiment_markdown.py)**: Experimental scraper parsing raw HTML trees into clean markdown tags.
 
 ---
 
@@ -479,3 +452,8 @@ Standard tests verifying execution layers, sandbox security, memory engines, and
 * **[test_browser_worker.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/tests/test_browser_worker.py)**: Verifies headless browser page interactions.
 * **[test_classroom_visualizer.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/tests/test_classroom_visualizer.py)**: Tests Google Classroom assignment listing.
 * **[test_new_tools.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/tests/test_new_tools.py)**: Tests credentials encryption and Clipboard operations.
+* **[test_workers_config.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/tests/test_workers_config.py)**: Validates active/inactive filtering and custom LLM configurations loaded from config.
+* **[test_database_memory.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/tests/test_database_memory.py)**: Validates SQLite database storage and transactions via UnifiedMemory.
+* **[test_plug_and_play.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/tests/test_plug_and_play.py)**: Tests that scanned dynamic ReAct workers are successfully registered in the WorkerRegistry.
+* **[test_registry.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/tests/test_registry.py)**: Validates decorator registration logic and configurations.
+* **[test_live_reload.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/tests/test_live_reload.py)**: Asserts reload/scanning loops dynamically sync changes.
