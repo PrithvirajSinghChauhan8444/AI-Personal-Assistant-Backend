@@ -18,7 +18,8 @@ graph TD
     Start([User Input Prompt]) --> N_Inject["🧠 Memory Injector Node"]
   
     subgraph Stage 1: Context Enrichment
-        N_Inject -->|Fetches context from vector DB & JSON| N_Route["📋 Task Router Node"]
+        N_Inject -->|Bypasses or routes standard path| N_SysState["📊 SystemState Node"]
+        N_SysState -->|Enriches with assistant metadata| N_Route["📋 Task Router Node"]
     end
   
     subgraph Stage 2: Intent Decomposition
@@ -67,6 +68,7 @@ graph TD
     style State fill:#4b2c85,stroke:#7f3fbf,stroke-width:2px,color:#fff
     style N_Orch fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff
     style N_Inject fill:#0f172a,stroke:#475569,stroke-width:1px,color:#fff
+    style N_SysState fill:#0f172a,stroke:#475569,stroke-width:1px,color:#fff
     style N_Route fill:#0f172a,stroke:#475569,stroke-width:1px,color:#fff
     style W_System fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
     style W_Gmail fill:#111827,stroke:#374151,stroke-width:1px,color:#fff
@@ -86,6 +88,8 @@ graph TD
 
 We have recently upgraded the personal assistant with a series of core security, speed, and observability improvements:
 
+* **🔌 Dynamic Worker Registration & Model Configuration**: Auto-discovers ReAct agents dynamically from the `Workers/` folder using the new `WorkerRegistry` framework. Execution options and LLM choices (e.g. Gemini with thinking budgets vs. local Ollama models) are synced and loaded via the `config/workers_config.json` configuration file.
+* **💾 SQLite Database Unified Memory Cache**: Replaced flat JSON cache files with a unified database structure (`Memory/workspace_cache.db` or optional Redis/Postgres) managing thread-safe transactional persistence with transaction buffers.
 * **📊 Structured Observability Logging System**: All node transitions, worker execution flows, reasoning thoughts, tool calls with JSON parameters, and final responses are logged concurrently to:
   * Human-readable text logs: `Memory/logs/latest.log` and `Memory/logs/session_<id>.log`.
   * Machine-readable JSON execution traces: `Memory/logs/latest.json` and `Memory/logs/session_<id>.json`.
@@ -100,27 +104,32 @@ We have recently upgraded the personal assistant with a series of core security,
 
 ## 🔍 In-Depth Pipeline Mechanics
 
-### 🧠 1. First-Turn Context Enrichment (`MemoryInjector`)
+### 🧠 1. First-Turn Context Enrichment & Bypasses (`MemoryInjector`)
 
 The moment a prompt is received, the `MemoryInjector` node intercepts the query. Instead of relying on the user to manually restate their preferences, the node:
 
 1. Conducts a **semantic search** using embeddings (ChromaDB) to retrieve relevant historical notes or context from previous sessions.
 2. Queries the structured static preference profile stored locally in `Memory/user_info.json`.
 3. Injects this context directly into the prompt's background metadata before any agent planning begins.
+4. **Fast-Path greeting check**: Instantly bypasses cyclic planning if simple greetings or volume/time queries are detected, passing control directly to `OutputFinalizer`.
+
+### 📊 2. Runtime Metadata Collection (`SystemState`)
+
+If standard plan execution is required, control routes to `SystemState`. This node collects metadata about the execution environment (active workers configuration, token limits, history size stats) and writes it to the state under `system_state` so downstream models are context-aware.
 
 ---
 
-### 📋 2. Dynamic Task Decomposition (`TaskRouter`)
+### 📋 3. Dynamic Task Decomposition (`TaskRouter`)
 
 The enriched prompt is passed to the `TaskRouter`. Rather than trying to execute tools immediately, this node acts as a natural language compiler:
 
 * Using a robust schema model, it decomposes the user's complex request into a sequential plan of isolated subtasks.
 * Each subtask is assigned a unique ID, clear descriptions of execution parameters, and a dedicated target worker (e.g. `SystemWorker`).
-* This decouples overall project planning from execution, guaranteeing that workers only process highly targeted, single-responsibility requests.
+* It automatically builds planning rules dynamically by scanning and registering active worker properties.
 
 ---
 
-### 🔄 3. The Cyclic Orchestrator Loop (`Orchestrator`)
+### 🔄 4. The Cyclic Orchestrator Loop (`Orchestrator`)
 
 The `Orchestrator` is the engine of the state machine. It evaluates the global state in a continuous loop:
 
@@ -132,9 +141,9 @@ The `Orchestrator` is the engine of the state machine. It evaluates the global s
 
 ---
 
-### 💻 4. Isolated ReAct Workers & The Sandboxed Toolset
+### 💻 5. Isolated ReAct Workers & The Sandboxed Toolset
 
-To prevent token bloat and agent confusion, each worker is pre-compiled as an independent ReAct agent with a strictly limited set of tools:
+To prevent token bloat and agent confusion, each worker is pre-compiled as an independent ReAct agent with a strictly limited set of tools. They are dynamically discovered from the `Workers/` directory and compiled via [executor.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/executor.py).
 
 | Worker Agent                    | Core Mandate                                                                                                                                                        | Available Tool Subsystem                                                                                                                                                                                                                      |
 | :------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -152,17 +161,17 @@ To prevent token bloat and agent confusion, each worker is pre-compiled as an in
 
 ---
 
-### 💡 5. Post-Turn Self-Reflection (`Reflection`)
+### 💡 6. Post-Turn Self-Reflection (`Reflection`)
 
 Once all tasks are completed and the `OutputFinalizer` synthesizes a clean response, the state graph transitions control to the passive `Reflection` node:
 
-* The reflection engine reviews the multi-turn session to determine if the user provided new personal preferences (e.g. *"I prefer using terminal over GUI applications"* or *"My friend's email is updated to sam@example.com"*).
+* The reflection engine reviews the multi-turn session to determine if the user provided new personal preferences (e.g. *"I prefer using terminal over GUI"*).
 * It automatically extracts these facts, updates the local `Memory/user_info.json` profile, and computes semantic vector embeddings to store in the persistent long-term vector database.
 * The system actively learns and personalizes its behavior based on your habits without needing explicit instruction.
 
 ---
 
-### 📓 6. Nested Obsidian Multi-Agent Team (Manager-Worker)
+### 📓 7. Nested Obsidian Multi-Agent Team (Manager-Worker)
 
 To handle complex, highly integrated Obsidian vault operations without context drift, the `ObsidianWorker` node functions as an isolated **Nested Team Manager** (Sub-Graph Orchestrator):
 
@@ -174,15 +183,15 @@ graph TD
     ObsPlan -->|Task 3| W_Refactor["🔗 ObsidianRefactorWorker"]
 ```
 
-* **🧠 Obsidian Manager**: Using a high-cognition cloud model (Gemini 3.1 Flash Lite) and structured JSON outputs (Pydantic validation), it analyzes the task description, reads previous `working_memory` inputs, and plans a multi-step roadmap. It dynamically invents optimized subfolder layouts (e.g. `Friends/College/` or `Friends/Hometown/`) and commands exact wikilink backlink structures.
-* **📝 ObsidianNoteWorker**: Local specialist (Gemma 4:e2b) dedicated entirely to beautiful markdown composition, including frontmatter tags, hierarchical headings, checklists, and dynamic database view tables (`dataview` syntax).
+* **🧠 Obsidian Manager**: Using a high-cognition cloud model and structured JSON outputs, it analyzes the task description, reads previous `working_memory` inputs, and plans a multi-step roadmap. It dynamically invents optimized subfolder layouts and commands exact wikilink backlink structures.
+* **📝 ObsidianNoteWorker**: Local specialist dedicated entirely to beautiful markdown composition, including frontmatter tags, hierarchical headings, checklists, and dynamic database view tables (`dataview` syntax).
 * **🎨 ObsidianCanvasWorker**: Whiteboard specialist. Creates/updates `.canvas` visual flowchart diagrams with absolute coordinates, sizes, colors, and edges.
 * **🔗 ObsidianRefactorWorker**: Quality-assurance agent. Evaluates vault backlinks and parses/merges frontmatter YAML properties, ensuring no data is ever erased.
 * **📂 Auto-Directory Generator**: Every Obsidian tool dynamically supports tree-creation. If the note is saved as `Friends/College/Prithvi.md`, the folders are recursively generated.
 
 ---
 
-### ⚙️ 7. General-Purpose Background Worker (`MiscWorker`)
+### ⚙️ 8. General-Purpose Background Worker (`MiscWorker`)
 
 To execute API tasks that don't fit into specialized workers or would block the active browser-based interfaces:
 
@@ -191,9 +200,9 @@ To execute API tasks that don't fit into specialized workers or would block the 
 
 ---
 
-### 🚦 8. Global Human-in-the-Loop (HITL) Protocol
+### 🚦 9. Global Human-in-the-Loop (HITL) Protocol
 
-A unified validation system implemented across the entire agent StateGraph to handle authorization blockages:
+A unified validation system implemented across the entire agent StateGraph to handle authorization roadblocks:
 
 * **Roadblock Interception**: When any worker (including synchronous ones) encounters credentials check, authentication popups, or critical confirmation flags, it pauses the graph execution thread.
 * **Unified Request Mechanics**: Standardized under `request_human_intervention` (async) and `request_human_intervention_sync` (sync). The agent displays a description of the blocker in the terminal and waits securely in a sleep-loop until the user resolves the obstacle and confirms completion.
@@ -204,26 +213,38 @@ A unified validation system implemented across the entire agent StateGraph to ha
 
 ```text
 AI-Personal-Assistant-Backend/
-├── Memory/                 # JSON profile and vector database persistence
-├── config/                 # Google API credentials & OAuth configurations
+├── Memory/                 # JSON profile, vector DB persistence, and SQLite cache db
+├── config/                 # Google API credentials, OAuth, and workers_config.json
 ├── src/
-│   ├── Apps/               # Functional API Integrations ("The Hands")
-│   │   ├── Calendar/       # Google Calendar API Client
-│   │   ├── Gmail/          # Google Gmail API Client
-│   │   ├── Classroom/      # Google Classroom API Sync Client
-│   │   ├── Github/         # GitHub API Integration (Profile, repos, commits, code search, file contents)
-│   │   ├── FileOperations/ # Protected sandboxed file operations
-│   │   ├── System/         # OS Diagnostic Diagnostics (CPU, RAM, Battery)
-│   │   ├── SystemControl/  # Shell execution and terminal automation
-│   │   └── Spotify/        # Local Spotify playback hooks
-│   │
-│   ├── CoreFunctions/      # Intelligent Orchestration ("The Brain")
+│   ├── CoreFunctions/      # Foundation architecture, security wrappers, and LangGraph engine
+│   │   ├── Integrations/   # Functional API Integrations ("The Hands")
+│   │   │   ├── Calendar/       # Google Calendar API Client
+│   │   │   ├── Gmail/          # Google Gmail API Client
+│   │   │   ├── Classroom/      # Google Classroom API Sync Client
+│   │   │   ├── Github/         # GitHub API Integration
+│   │   │   ├── FileOperations/ # Protected sandboxed file operations
+│   │   │   ├── System/         # OS Diagnostic Diagnostics (CPU, RAM, Battery)
+│   │   │   ├── SystemControl/  # Shell execution and terminal automation
+│   │   │   ├── Spotify/        # Local Spotify playback hooks
+│   │   │   ├── Briefing/       # Weather and news aggregators
+│   │   │   └── Automation/     # Scheduled background tasks
+│   │   │
 │   │   ├── StateGraph/     # StateGraph structure, Orchestrator, & Worker nodes
-│   │   ├── LangGraph/      # (Legacy) Monolithic planner systems
+│   │   │   ├── Workers/        # Directory containing all plug-and-play worker modules
+│   │   │   ├── registry.py     # Class decorators and worker registry manager
+│   │   │   ├── executor.py     # Worker ReAct compiler and engine runner
+│   │   │   ├── system_state.py # Runtime configuration and metadata gathering node
+│   │   │   ├── task_router.py  # Structured Pydantic LLM planning node
+│   │   │   ├── orchestrator.py # Fork-join scheduler and self-healing node
+│   │   │   ├── finalizer.py    # Final response synthesizer node
+│   │   │   └── main_graph.py   # Root LangGraph execution entrypoint
+│   │   │
 │   │   ├── tools.py        # Central Registry of system-level Python tools
-│   │   ├── memory.py       # JSON-based structured persistent memory
-│   │   ├── vector_memory.py# Vector database (ChromaDB) semantic engine
+│   │   ├── memory.py       # Structured persistent SQLite/Redis cache memory wrapper
+│   │   ├── unified_memory.py # Transactional cache databases (SQLite/Redis engines)
+│   │   ├── vector_memory.py# Vector database (ChromaDB & FAISS) semantic engine
 │   │   └── auth_utils.py   # Security Gatekeeper & Password verification
+│   │
 │   └── main.py             # Root entry point
 ├── requirements.txt        # Python package dependencies
 └── .env                    # Authorization keys & API environment configs

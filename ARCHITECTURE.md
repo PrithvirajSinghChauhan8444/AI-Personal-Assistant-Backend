@@ -18,7 +18,9 @@ graph TD
     User([User Input]) --> MemoryInjector
     
     subgraph Core Graph Execution
-        MemoryInjector --> TaskRouter
+        MemoryInjector -->|Standard Path| SystemState
+        MemoryInjector -->|Fast-Path Bypass| OutputFinalizer
+        SystemState --> TaskRouter
         TaskRouter --> Orchestrator
         
         %% Orchestrator loops to workers
@@ -37,61 +39,75 @@ graph TD
 
 ---
 
-## 2. State representation: `AgentState`
+## 2. State Representation: `AgentState`
 
-The entire graph coordinates via `AgentState` (defined in [state.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/state.py)). It contains the following schema:
+The entire graph coordinates via `AgentState` (defined in [state.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/state.py)). The schema uses LangGraph `Annotated` reducers to safely aggregate mutations across parallel nodes:
 
 ```python
-from typing import TypedDict, List, Dict, Any
+from typing import TypedDict, List, Dict, Any, Optional, Annotated
+
+class SubTask(TypedDict):
+    id: str
+    description: str
+    assigned_worker: str # e.g. "SystemWorker"
+    status: str # "pending", "in_progress", "completed", "failed"
+    depends_on: List[str]
 
 class AgentState(TypedDict):
     primary_goal: str               # The raw prompt submitted by the user
-    active_subtasks: List[Dict]     # The generated DAG plan of subtasks
-    working_memory: Dict[str, Any]  # Transient storage for intermediate tool results
-    completed_tasks: Dict[str, Any] # Persistent store for completed task summaries
-    final_response: str             # The synthesized output shown to the user
-    chat_history: List[Dict]        # Backlog of recent conversation exchanges
-    error_logs: str                 # Thread isolated exception logs
+    active_subtasks: Annotated[List[SubTask], merge_subtasks] # DAG plan of subtasks
+    working_memory: Annotated[Dict[str, Any], merge_dict]     # Cache for intermediate results
+    completed_tasks: Annotated[Dict[str, Any], merge_dict]    # Persistent task summaries
+    error_logs: Annotated[List[str], merge_error_logs]        # Thread-safe execution exceptions
+    final_response: str             # Synthesized output shown to the user
     next_node: Any                  # Control variable determining node transitions
+    chat_history: Optional[List[Dict[str, str]]]              # Recent turn history
+    system_state: Optional[Dict[str, Any]]                    # Runtime configuration stats
 ```
 
-### Subtask Schema
-Each entry in `active_subtasks` is structured as a task dictionary:
-* `id`: Unique task identifier (e.g., `task_1`, `task_2`).
-* `description`: Actionable description for the worker.
-* `assigned_worker`: The target worker node (e.g., `GmailWorker`).
-* `status`: Current execution state (`"pending"`, `"in_progress"`, `"completed"`, `"failed"`).
-* `depends_on`: A list of preceding subtask IDs that must be completed first.
+### Merging Reducers
+* **`merge_subtasks(left, right)`**: Merges task lists by ID, ensuring status changes (like `"completed"`) and output payload locations are cleanly updated during parallel executions.
+* **`merge_dict(left, right)`**: Merges dictionaries to combine working memory outputs.
+* **`merge_error_logs(left, right)`**: Safely appends error log lists to retain all failures in multi-threaded environments.
 
 ---
 
 ## 3. Node Specifications & Lifecycle
 
 ### 🧠 Stage 1: Context Enrichment (`MemoryInjector`)
-When a query starts, the [MemoryInjector](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/memory_nodes.py) node conducts parallel context gathering:
+When a query starts, the [MemoryInjector](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/memory_nodes.py) node conducts context gathering:
 1. **User Profile**: Reads static key-value details from `Memory/user_info.json`.
 2. **Long-Term Vector Memory**: Queries ChromaDB semantically to fetch details from previous turns.
-3. **Procedural Skills Ingestion**: Searches the local **FAISS Vector Store** (`skills_index.faiss`) for skills semantically related to the goal, and loads the matched manuals into memory.
-This enriched context is written to `working_memory` so that downstream planners and workers are context-aware.
+3. **Procedural Skills Ingestion**: Searches the local **FAISS Vector Store** (`skills_index.faiss`) for skills semantically related to the goal, loading matched manuals into memory.
+4. **Fast-Path Bypass**: If the query is standard greeting or simple command, it flags `fast_path_matched = True` in `working_memory` to instantly bypass planning and execution, routing directly to `OutputFinalizer`.
 
-### 📋 Stage 2: Intent Decomposition (`TaskRouter`)
+### 📊 Stage 2: Runtime Metadata Collection (`SystemState`)
+For standard execution routes, the [SystemState](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/system_state.py) node gathers live metadata details:
+1. **Active Workers**: Lists all registered workers, their routing types, and configured models.
+2. **Chat History Stats**: Calculates active message counts and character size footprints.
+3. **LLM Parameter Budgets**: Identifies default Google/Ollama model strings and active thinking budgets (e.g. 2048 tokens).
+This gathered metadata is written to `system_state` so that downstream planners and workers are configuration-aware.
+
+### 📋 Stage 3: Intent Decomposition (`TaskRouter`)
 The [TaskRouter](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/task_router.py) parses the goal and context, generating a structured list of subtasks (a Directed Acyclic Graph, or DAG).
 * It parses the output using Pydantic schemas.
-* It allocates dependencies to prevent workers from running out of order. For example, a task to send a file via email will depend on the preceding task that downloads the file.
+* It dynamically incorporates specialized worker `routing_rules` from the registry into the prompt.
+* It allocates dependencies to prevent workers from running out of order.
 
-### 🔄 Stage 3: Orchestration Scheduler (`Orchestrator`)
+### 🔄 Stage 4: Orchestration Scheduler (`Orchestrator`)
 The [Orchestrator](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/orchestrator.py) evaluates the task queue and determines routing:
 * **Parallel Forking**: If multiple tasks have all dependencies completed, it returns a list of target workers (e.g., `["GmailWorker", "SystemWorker"]`). LangGraph forks execution and launches them in parallel.
 * **Deadlock Resolution**: If no new tasks are ready, but some are currently `"in_progress"`, it indicates orphaned tasks from a previously interrupted run. The orchestrator actively resets these orphaned tasks to `"pending"` to self-heal the graph and prevent infinite loops.
 * **Dependency Failure Detection**: If tasks are `"pending"` but no task is running, the orchestrator identifies a dependency deadlock (e.g. if a prerequisite task failed), aborts the blocked tasks, and exits to the finalizer to prevent hangs.
 
-### 💻 Stage 4: Execution Layer (ReAct Workers)
-Workers are isolated ReAct agents pre-compiled with a strictly scoped tool menu:
-* **Category Registry**: When a worker starts, it loads category-specific skills from the index registry using `_load_worker_skills(worker_name)` (in [workers.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/workers.py)).
-* **Execution Summary**: Upon completion, the worker outputs only a concise summary which is saved to `completed_tasks`, while detailed logs are offloaded to session cache files if they exceed context limits.
+### 💻 Stage 5: Execution Layer (ReAct Workers)
+Workers are isolated ReAct agents compiled dynamically from [executor.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/executor.py):
+* **Dynamic Registration**: Discovered on startup and registered via class decorators.
+* **Category Registry**: When a worker starts, it loads category-specific skills from the index registry using `_load_worker_skills(worker_name)`.
+* **Clean Context**: Workers only receive the output of explicitly requested prerequisite tasks (`depends_on`), preventing context bloat.
 
-### 💡 Stage 5: Passive Reflection (`Reflection`)
-After outputting the response, a background thread runs the [Reflection](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/memory_nodes.py#L226) node:
+### 💡 Stage 6: Passive Reflection (`Reflection`)
+After outputting the response, a background thread runs the [Reflection](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/memory_nodes.py) node:
 * It extracts user facts or procedural guidelines from the conversation.
 * Rebuilds the FAISS vector database automatically if skills are updated.
 
@@ -117,7 +133,6 @@ For async tasks (such as Browser worker handling logins or CAPTCHAs), the worker
 ## 5. Observability & Logging Architecture
 
 The personal assistant writes concurrent logging data during execution using [logger.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/logger.py):
-
 * **Human-Readable Text Logs**: Writes clean, structured trace timelines showing node bounds, worker startups, reasoning steps, tool calls, and final responses.
 * **Machine-Readable JSON Logs**: Writes complete state traces with inputs, step timings, and returns, allowing visual timeline debugging.
 
@@ -160,3 +175,42 @@ Files are stored dynamically:
 
 **5. How do you manage the context window as the system accumulates procedural knowledge?**
 *Answer:* Rather than injecting all knowledge into the prompt, we use a two-tiered memory system. Immediate conversation context is stored in `working_memory`, while procedural knowledge (skills) is stored in a FAISS vector database. The `MemoryInjector` queries this database to load only the semantically relevant skills for the current goal.
+
+---
+
+## 8. Dynamic Plug-and-Play Worker Architecture
+
+To keep worker management modular, the system uses a registration-based architecture defined in [registry.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/registry.py):
+
+* **`BaseWorker` Class**: Abstract base defining the interface for all workers, including properties for `name`, `description`, `instructions` (system prompt), `tools`, `categories` (for FAISS skills lookup), and `routing_rules`.
+* **`@WorkerRegistry.register`**: A decorator used to register worker subclasses dynamically.
+* **Auto-Discovery scanning**: On startup, `scan_and_register_workers()` walks the `Workers/` subdirectory and dynamically imports python files ending with `_worker.py`, registering them automatically.
+* **Configuration Sync (`workers_config.json`)**: Configured models and active statuses are synced with `config/workers_config.json`. If a worker is toggled to `"active": false`, it is automatically filtered out of the execution graph.
+* **Model Routing**: The system maps LLM models per worker. If configured to use local LLMs (e.g., `"model": "gemma4:e4b"`), the executor instantiates `ChatOllama` with thinking mode enabled, otherwise falling back to Google Cloud Gemini models via `ChatGoogleGenerativeAI`.
+
+---
+
+## 9. Unified Memory Database Persistence Layer
+
+To allow clean key-value persistence, transaction safety, and entity categorization, the assistant uses a database cache wrapper defined in [unified_memory.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/unified_memory.py):
+
+* **Database Providers**: Defaults to a local SQLite database (`Memory/workspace_cache.db`), but dynamically supports Postgres or Redis cache backends depending on environment configuration (`REDIS_URL` or `DATABASE_URL`).
+* **State Transaction Isolation**: Prevents race conditions during parallel worker runs. Using `start_transaction()`, `commit_transaction()`, and `discard_transaction()`, workers read and write to thread-isolated buffers, committing changes only on successful task completion.
+* **Tag Extraction Pipeline**: The `extract_entities(text)` helper parses custom XML tags from raw worker string returns (e.g., `<email>`, `<url>`, `<pass>`, or `<code>`) and indexes them as structured payload attributes.
+* **Smart Memory Recall**: The `fetch_memory` API queries database categories sequentially (`user:<key>` -> `current:<key>` -> `past:<key>`), acting as a unified cognitive database.
+
+---
+
+## 10. Large Data Offloading State Cache
+
+In multi-task runs, workers often generate bulky text drafts, files list, or dataset dumps. Storing these directly in the state object leads to context bloat and model crashes.
+
+* **Offloading Mechanics**: If a worker node output exceeds 2,000 characters, [executor.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/executor.py#L527-L540) intercepts the state update, writes the raw content locally to a session cache file under `.session_cache/<task_id>.txt` (or `.json`), and replaces the state value with a reference dict:
+  ```json
+  {
+      "__file_reference__": "/absolute/path/to/.session_cache/task_id.txt",
+      "size_bytes": 12450,
+      "preview": "... (truncated due to large size)"
+  }
+  ```
+* **Downstream Access**: Ensuing workers are instructed that if they encounter a `__file_reference__` in their task context, they should directly open the file locally using file-reading tools or pass the file path to their respective shell utilities instead of passing raw tokens.
