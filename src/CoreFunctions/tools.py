@@ -28,8 +28,8 @@ try:
     from CoreFunctions.Integrations.Automation.scheduler_ops import schedule_delayed_task as _sched_delay, schedule_task_at_time as _sched_at, list_scheduled_tasks as _sched_list, cancel_scheduled_task as _sched_cancel
 except ImportError as e:
     print(f"⚠️ Warning: Some modules could not be imported. {e}")
-from CoreFunctions.memory import store_memory, fetch_memory
-from CoreFunctions.vector_memory import store_vector, search_vector
+from CoreFunctions.memory import store_memory, fetch_memory, delete_memory
+from CoreFunctions.vector_memory import store_vector, search_vector, delete_vector_fact
 from CoreFunctions.auth_utils import verify_password
 from CoreFunctions.security_utils import is_path_safe, is_extension_safe
 
@@ -37,13 +37,6 @@ from CoreFunctions.security_utils import is_path_safe, is_extension_safe
 
 # --- FILE PATHS FOR MEMORY ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-USER_INFO_PATH = os.path.join(BASE_DIR, "Memory", "user_info.json")
-
-# Ensure memory directory exists
-os.makedirs(os.path.join(BASE_DIR, "Memory"), exist_ok=True)
-if not os.path.exists(USER_INFO_PATH):
-    with open(USER_INFO_PATH, "w") as f:
-        json.dump({"name": "User", "preferences": []}, f)
 
 # ===========================
 # 1. MEMORY TOOLS
@@ -54,11 +47,7 @@ def save_memory(key, value):
     print(f"\n[DEBUG] 🛠️ Calling Tool: save_memory")
     print(f"   Args: key={key}, value={value}")
     try:
-        with open(USER_INFO_PATH, "r") as f:
-            data = json.load(f)
-        data[key] = value
-        with open(USER_INFO_PATH, "w") as f:
-            json.dump(data, f, indent=4)
+        store_memory("user", key, value)
         return f"Memory Saved: {key} = {value}"
     except Exception as e:
         return f"Error saving memory: {e}"
@@ -68,9 +57,10 @@ def read_memory(key):
     print(f"\n[DEBUG] 🛠️ Calling Tool: read_memory")
     print(f"   Args: key={key}")
     try:
-        with open(USER_INFO_PATH, "r") as f:
-            data = json.load(f)
-        return data.get(key, "Information not found.")
+        val = fetch_memory("user", key)
+        if val is not None:
+            return val
+        return "Information not found."
     except Exception as e:
         return f"Error reading memory: {e}"
 
@@ -102,6 +92,41 @@ def recall(key: str) -> str:
     print(f"   Args: key={key}")
     value = fetch_memory(None, key)
     return value if value else f"No memory found for '{key}'."
+
+
+def forget_memory(key: str, category: str = "user") -> str:
+    """Deletes a structured key-value memory from the database.
+
+    Args:
+        key (str): The unique identifier of the memory to delete.
+        category (str): The category the memory belongs to (e.g., 'user', 'past'). Defaults to 'user'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: forget_memory")
+    print(f"   Args: key={key}, category={category}")
+    try:
+        msg = delete_memory(category, key)
+        return msg
+    except Exception as e:
+        return f"Error deleting memory: {e}"
+
+
+def delete_fact(fact_text: str) -> str:
+    """Removes a specific fact from the vector database.
+
+    Args:
+        fact_text (str): The exact text of the fact to remove.
+        
+    Note: Fact text must match exactly (case-insensitive).
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: delete_fact")
+    print(f"   Args: fact_text={fact_text}")
+    try:
+        success = delete_vector_fact(fact_text)
+        if success:
+            return f"Successfully removed fact: \"{fact_text}\""
+        return f"Fact not found in vector store: \"{fact_text}\""
+    except Exception as e:
+        return f"Error removing fact: {e}"
 
 
 

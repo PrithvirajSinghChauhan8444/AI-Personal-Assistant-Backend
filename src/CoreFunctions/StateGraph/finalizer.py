@@ -5,9 +5,13 @@ from src.CoreFunctions.StateGraph.state import AgentState
 
 FINALIZER_PROMPT = """
 You are the Output Finalizer. The system has completed a multi-step task for the user.
-Below are the user's original request and the raw structured data from the completed tasks.
+Below are the user's original request, the raw structured data from the completed tasks, and the list of currently active workers.
 Synthesize this into a natural, friendly, and cohesive response to the user.
-Do not mention "subtasks" or the internal architecture. Just provide the final answer or confirm the actions taken.
+
+CRITICAL RULES:
+1. You MUST ONLY claim that an assistant/worker is active, online, or available if it is in the "Currently Active/Registered Workers" list.
+2. If the user asks about capabilities, list ONLY the capabilities of the currently active workers. Under NO circumstances should you mention or list capabilities of inactive/unregistered workers, even if they were mentioned in the conversation history.
+3. Do not mention "subtasks" or the internal architecture. Just provide the final answer or confirm the actions taken.
 """
 
 from datetime import datetime
@@ -42,6 +46,17 @@ def output_finalizer_node(state: AgentState):
     completed_tasks = state.get("completed_tasks", {}) or {}
     chat_history = state.get("chat_history", []) or []
     
+    # Retrieve active workers from system_state or fallback to registry
+    system_state = state.get("system_state", {}) or {}
+    active_workers = list(system_state.get("active_workers", {}).keys())
+    if not active_workers:
+        try:
+            from src.CoreFunctions.StateGraph.registry import WorkerRegistry
+            active_workers = WorkerRegistry.get_worker_names()
+        except Exception:
+            pass
+    active_workers_str = ", ".join(active_workers) if active_workers else "None"
+    
     # Use high-speed cloud LLM for instant response synthesis and reliable execution
     model_name = "gemini-3.1-flash-lite"
     log_message(f"OutputFinalizer: Invoking model {model_name} for response synthesis.")
@@ -59,7 +74,7 @@ def output_finalizer_node(state: AgentState):
     content = ""
     if history_str:
         content += history_str + "\n"
-    content += f"User Request: {primary_goal}\n\nExecution Logs:\n{logs_str}"
+    content += f"User Request: {primary_goal}\n\nExecution Logs:\n{logs_str}\n\nCurrently Active/Registered Workers: {active_workers_str}"
     
     print(f"--- Output Finaliser Finished ---")
     print(f"\n📍 Node 'output_finaliser' Output:\n")

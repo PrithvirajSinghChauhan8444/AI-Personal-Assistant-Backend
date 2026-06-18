@@ -191,18 +191,16 @@ def memory_injector_node(state: AgentState):
             "working_memory": working_memory
         }
     
-    # 4. Fetch JSON user profile
+    # 4. Fetch User Profile from Unified Database Memory
     user_profile = {}
     try:
-        user_info_path = os.path.join(base_dir, "Memory", "user_info.json")
-        if os.path.exists(user_info_path):
-            with open(user_info_path, "r", encoding="utf-8") as f:
-                raw_profile = json.load(f)
-                for key, val_obj in raw_profile.items():
-                    if isinstance(val_obj, dict) and "value" in val_obj:
-                        user_profile[key] = val_obj["value"]
-                    else:
-                        user_profile[key] = val_obj
+        raw_profile = fetch_memory("user")
+        if raw_profile:
+            for key, val_obj in raw_profile.items():
+                if isinstance(val_obj, dict) and "value" in val_obj:
+                    user_profile[key] = val_obj["value"]
+                else:
+                    user_profile[key] = val_obj
     except Exception as e:
         print(f"  ⚠️ Error loading user profile: {e}")
         

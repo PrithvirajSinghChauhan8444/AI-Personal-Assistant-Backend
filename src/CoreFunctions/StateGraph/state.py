@@ -55,4 +55,5 @@ class AgentState(TypedDict):
     final_response: str
     next_node: Any  # Can be str or List[str] for parallel routing
     chat_history: Optional[List[Dict[str, str]]]
+    system_state: Optional[Dict[str, Any]]
 

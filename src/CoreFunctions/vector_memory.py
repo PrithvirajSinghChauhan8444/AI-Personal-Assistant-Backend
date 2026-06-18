@@ -251,3 +251,35 @@ def search_skills_vector(query: str, k: int = 2) -> List[Dict[str, Any]]:
                     results.append(data[i])
         return results
 
+
+def delete_vector_fact(text: str) -> bool:
+    """Removes a specific fact from the vector database and rebuilds the FAISS index."""
+    import faiss
+    import numpy as np
+    with _vector_lock:
+        data = _load_data()
+        normalized_target = text.strip().lower()
+        
+        # Find and remove matching facts (case-insensitive comparison)
+        new_data = [item for item in data if item.strip().lower() != normalized_target]
+        
+        if len(new_data) == len(data):
+            return False
+            
+        # Re-build index from scratch with the remaining facts
+        if len(new_data) > 0:
+            model = _get_model()
+            embeddings = model.encode(new_data)
+            index = faiss.IndexFlatL2(DIM)
+            index.add(np.array(embeddings, dtype=np.float32))
+            faiss.write_index(index, INDEX_PATH)
+        else:
+            index = faiss.IndexFlatL2(DIM)
+            faiss.write_index(index, INDEX_PATH)
+            
+        with open(DATA_PATH, "w", encoding="utf-8") as f:
+            json.dump(new_data, f, indent=2)
+            
+        print(f"🗑️ [Vector Store] Removed fact: \"{text}\"")
+        return True
+

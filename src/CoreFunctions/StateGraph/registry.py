@@ -46,6 +46,11 @@ class BaseWorker(ABC):
         """Whether this worker should be exposed as a top-level node in the main LangGraph and router."""
         return True
 
+    @property
+    def routing_rules(self) -> List[str]:
+        """Rules or workflows specific to this worker that should be added to the TaskRouter prompt."""
+        return []
+
     def execute(self, state: AgentState) -> dict:
         """Execution node function added to the LangGraph."""
         # Import dynamically to prevent circular imports
@@ -68,7 +73,14 @@ class WorkerRegistry:
         except TypeError as e:
             raise TypeError(f"Failed to instantiate {worker_cls.__name__}. Ensure all abstract properties are implemented: {e}")
         
-        cls._registry[worker_instance.name] = worker_instance
+        # Load config if not loaded yet
+        if not cls._config:
+            cls.load_and_sync_config()
+            
+        # Only register if active
+        if cls._config.get(worker_instance.name, {}).get("active", True):
+            cls._registry[worker_instance.name] = worker_instance
+            
         return worker_cls
 
     @classmethod
@@ -132,8 +144,17 @@ class WorkerRegistry:
             raise KeyError(f"Worker '{name}' is not registered or is currently inactive.")
         return workers[name]
 
-def scan_and_register_workers(workers_dir: str = None):
+def scan_and_register_workers(workers_dir: str = None, force_reload: bool = False):
     """Dynamically walks and imports all python files inside the workers directory to trigger registration decorators."""
+    if force_reload:
+        # Clear registry and config
+        WorkerRegistry._registry = {}
+        WorkerRegistry._config = {}
+        # Clear cached modules from sys.modules to force execution of registration decorators
+        for module_name in list(sys.modules.keys()):
+            if "StateGraph.Workers" in module_name:
+                del sys.modules[module_name]
+
     if workers_dir is None:
         workers_dir = os.path.join(os.path.dirname(__file__), "Workers")
         
@@ -144,6 +165,9 @@ def scan_and_register_workers(workers_dir: str = None):
     parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(workers_dir)))) # Project root
     if parent_dir not in sys.path:
         sys.path.append(parent_dir)
+        
+    # Load / synchronize configuration first so register can filter active status correctly
+    WorkerRegistry.load_and_sync_config()
         
     for root, _, files in os.walk(workers_dir):
         for file in files:
@@ -156,6 +180,3 @@ def scan_and_register_workers(workers_dir: str = None):
                     importlib.import_module(module_name)
                 except Exception as e:
                     print(f"⚠️ Error dynamically importing worker module '{module_name}': {e}")
-                    
-    # Initialize / synchronize configuration with registered workers
-    WorkerRegistry.load_and_sync_config()

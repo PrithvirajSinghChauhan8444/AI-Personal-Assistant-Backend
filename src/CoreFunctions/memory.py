@@ -1,6 +1,6 @@
 import json
 import os
-import threading
+import re
 from datetime import datetime
 from CoreFunctions.unified_memory import UnifiedMemory
 
@@ -14,80 +14,107 @@ FILES = {
     "past": os.path.join(MEMORY_DIR, "past_memory.json"),
 }
 
-# Thread lock to prevent race conditions during concurrent file accesses
-_file_lock = threading.Lock()
-
-def _load(path):
-    with _file_lock:
-        if not os.path.exists(path) or os.path.getsize(path) == 0:
-            return {}
-        with open(path, "r", encoding="utf-8") as f:
+# -------------------------
+# MIGRATION UTILITY
+# -------------------------
+def migrate_json_to_sqlite():
+    """Migrates legacy flat JSON files to the unified database cache on startup."""
+    um = UnifiedMemory()
+    if not um.enabled:
+        return
+        
+    for category, path in FILES.items():
+        if os.path.exists(path) and os.path.getsize(path) > 0:
             try:
-                return json.load(f)
-            except json.JSONDecodeError:
-                return {}
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                
+                migrated_count = 0
+                for key, val_obj in data.items():
+                    # Extract the value and timestamp
+                    if isinstance(val_obj, dict):
+                        val = val_obj.get("value")
+                        ts = val_obj.get("timestamp", datetime.now().isoformat())
+                    else:
+                        val = val_obj
+                        ts = datetime.now().isoformat()
+                    
+                    db_key = f"{category}:{key}"
+                    um.store_memory(db_key, {
+                        "value": val,
+                        "timestamp": ts
+                    }, persistent=True)
+                    migrated_count += 1
+                
+                if migrated_count > 0:
+                    print(f"📦 [Database Memory Migration] Migrated {migrated_count} keys from '{category}' file to database cache.")
+                
+                # Backup the file to avoid re-migrating
+                backup_path = path + ".bak"
+                if os.path.exists(backup_path):
+                    try:
+                        os.remove(backup_path)
+                    except Exception:
+                        pass
+                os.rename(path, backup_path)
+                print(f"📦 [Database Memory Migration] Backed up legacy file '{path}' to '{backup_path}'.")
+            except Exception as e:
+                print(f"⚠️ [Database Memory Migration] Error migrating '{path}': {e}")
 
-def _save(path, data):
-    with _file_lock:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+# Run automatic migration on load
+migrate_json_to_sqlite()
 
 # -------------------------
 # STORE MEMORY
 # -------------------------
-import re
-
 def store_memory(category, key, value):
     """
-    category: current | user | past
+    Stores structured user/past/current memory in the unified database engine.
     """
     # Validate the memory key format to prevent JSON property injection or path traversals
     if not isinstance(key, str) or not re.match(r"^[a-zA-Z0-9_\-]+$", key):
         raise ValueError("Invalid memory key: only alphanumeric characters, underscores, and dashes are allowed.")
 
-    # Normalize category mapping to prevent LLM parameter hallucinations from crashing the tool
+    # Normalize category mapping
     category_str = str(category).lower()
-    if category_str not in FILES:
+    if category_str not in ["current", "user", "past"]:
         if "user" in category_str or "profile" in category_str:
             category = "user"
         else:
             category = "past"
+    else:
+        category = category_str
 
-    # Cross-check ALL structured memory JSON files to avoid duplicates and redundant entries
-    normalized_key = key.strip().lower()
-    normalized_val = str(value).strip().lower()
-
-    for cat_name, file_path in FILES.items():
-        existing_data = _load(file_path)
-        for existing_key, existing_val_obj in existing_data.items():
-            if existing_key.strip().lower() == normalized_key:
-                val = existing_val_obj.get("value") if isinstance(existing_val_obj, dict) else existing_val_obj
-                if str(val).strip().lower() == normalized_val:
-                    print(f"ℹ️ [Structured Memory] Fact already exists in [{cat_name}] under '{existing_key}': \"{val}\". Skipping store.")
-                    return f"Stored {key} in {category} memory (already exists)."
-            
-    data = _load(FILES[category])
-    
     # Strip HTML tags/scripts from value as a sanitization guard
     sanitized_value = value
     if isinstance(value, str):
         sanitized_value = re.sub(r"<[^>]*>", "", value).strip()
-        
-    data[key] = {
+
+    um = UnifiedMemory()
+    db_key = f"{category}:{key}"
+
+    # Cross-check ALL categories to avoid duplicates
+    normalized_key = key.strip().lower()
+    normalized_val = str(sanitized_value).strip().lower()
+
+    for cat in ["current", "user", "past"]:
+        cat_keys = um.list_keys(f"{cat}:*")
+        for ck in cat_keys:
+            orig_k = ck.split(":", 1)[1]
+            if orig_k.strip().lower() == normalized_key:
+                payload = um.retrieve_memory(ck)
+                if payload:
+                    val = payload.get("value")
+                    if str(val).strip().lower() == normalized_val:
+                        print(f"ℹ️ [Structured Memory] Fact already exists in [{cat}] under '{orig_k}': \"{val}\". Skipping store.")
+                        return f"Stored {key} in {category} memory (already exists)."
+
+    # Save to SQLite/Redis via UnifiedMemory
+    um.store_memory(db_key, {
         "value": sanitized_value,
         "timestamp": datetime.now().isoformat()
-    }
-    _save(FILES[category], data)
-    print("📁 Writing memory to:", FILES[category])
-    
-    if category == "current":
-        try:
-            um = UnifiedMemory()
-            if um.enabled:
-                um.store_memory(key, sanitized_value, sharable=True, persistent=True)
-                print(f"⚡ [UnifiedMemory] Stored '{key}' in workspace cache.")
-        except Exception as um_err:
-            print(f"⚠️ [UnifiedMemory] Failed to store in cache: {um_err}")
+    }, persistent=True)
+    print(f"📁 Writing memory to database: {db_key}")
 
     return f"Stored {key} in {category} memory."
 
@@ -105,37 +132,35 @@ def fetch_memory(category=None, key=None):
         smart lookup in order:
         user → current → past
     """
+    um = UnifiedMemory()
+    if not um.enabled:
+        return None
 
     # -----------------------------
     # SMART RECALL MODE
     # -----------------------------
     if category is None and key:
         # Check user
-        user_data = _load(FILES["user"])
-        if key in user_data:
-            value = user_data[key].get("value")
+        user_val = um.retrieve_memory(f"user:{key}")
+        if user_val is not None:
+            value = user_val.get("value")
             print(f"🔁 recalled [user] → {key} = {value}")
             return value
 
-        # Check current / cache via UnifiedMemory first
-        try:
-            um = UnifiedMemory()
-            if um.enabled:
-                cache_val = um.retrieve_memory(key)
-                if cache_val is not None:
-                    value = cache_val.get("summary")
-                    print(f"🔁 recalled [current] (UnifiedMemory) → {key} = {value}")
-                    return value
-        except Exception as um_err:
-            print(f"⚠️ [UnifiedMemory] fetch error: {um_err}")
+        # Check current
+        current_val = um.retrieve_memory(f"current:{key}")
+        if current_val is not None:
+            value = current_val.get("value")
+            print(f"🔁 recalled [current] → {key} = {value}")
+            return value
 
-        # Fallback to local files for current and past
-        for cat in ("current", "past"):
-            data = _load(FILES[cat])
-            if key in data:
-                value = data[key].get("value")
-                print(f"🔁 recalled [{cat}] → {key} = {value}")
-                return value
+        # Check past
+        past_val = um.retrieve_memory(f"past:{key}")
+        if past_val is not None:
+            value = past_val.get("value")
+            print(f"🔁 recalled [past] → {key} = {value}")
+            return value
+
         print(f"⚠️ recall miss → {key}")
         return None
 
@@ -144,40 +169,65 @@ def fetch_memory(category=None, key=None):
     # -----------------------------
     if category and key:
         category_str = str(category).lower()
-        if category_str not in FILES:
+        if category_str not in ["current", "user", "past"]:
             if "user" in category_str or "profile" in category_str:
                 category = "user"
             else:
                 category = "past"
+        else:
+            category = category_str
 
-        if category == "current":
-            try:
-                um = UnifiedMemory()
-                if um.enabled:
-                    cache_val = um.retrieve_memory(key)
-                    if cache_val is not None:
-                        value = cache_val.get("summary")
-                        print(f"🔁 recalled [{category}] (UnifiedMemory) → {key} = {value}")
-                        return value
-            except Exception as um_err:
-                print(f"⚠️ [UnifiedMemory] fetch error: {um_err}")
-                
-        data = _load(FILES[category])
-        value = data.get(key, {}).get("value")
-        print(f"🔁 recalled [{category}] → {key} = {value}")
-        return value
+        db_key = f"{category}:{key}"
+        val_obj = um.retrieve_memory(db_key)
+        if val_obj is not None:
+            value = val_obj.get("value")
+            print(f"🔁 recalled [{category}] → {key} = {value}")
+            return value
+        return None
 
     # -----------------------------
     # FULL CATEGORY DUMP
     # -----------------------------
     if category:
         category_str = str(category).lower()
-        if category_str not in FILES:
+        if category_str not in ["current", "user", "past"]:
             if "user" in category_str or "profile" in category_str:
                 category = "user"
             else:
                 category = "past"
-        return _load(FILES[category])
+        else:
+            category = category_str
+
+        category_keys = um.list_keys(f"{category}:*")
+        dump = {}
+        for ck in category_keys:
+            orig_k = ck.split(":", 1)[1]
+            payload = um.retrieve_memory(ck)
+            if payload:
+                dump[orig_k] = {
+                    "value": payload.get("value"),
+                    "timestamp": payload.get("timestamp", datetime.now().isoformat())
+                }
+        return dump
 
     return None
 
+
+def delete_memory(category, key):
+    """
+    Deletes a memory key from the database.
+    """
+    category_str = str(category).lower()
+    if category_str not in ["current", "user", "past"]:
+        if "user" in category_str or "profile" in category_str:
+            category = "user"
+        else:
+            category = "past"
+    else:
+        category = category_str
+
+    um = UnifiedMemory()
+    db_key = f"{category}:{key}"
+    um.delete_memory(db_key)
+    print(f"🗑️ Deleted memory key from database: {db_key}")
+    return f"Deleted memory '{key}' from '{category}' memory."
