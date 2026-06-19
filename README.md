@@ -99,6 +99,10 @@ We have recently upgraded the personal assistant with a series of core security,
 * **📇 Stack-Introspected Banners**: Prompts now walk active python call stacks (`inspect.stack()`) to render a visual card showing (1) The requesting agent name, (2) The active task being run, (3) The exact step/reason for the prompt.
 * **🔄 Orchestration Deadlock Resolution**: Orchestrator node now actively detects and resets orphaned `in_progress` tasks from previous aborted sessions to `pending`, preventing graph execution deadlocks and infinite loops during State-Graph processing.
 * **🧠 Context Memory Optimization**: The `TaskRouter` to `Worker` context injection is now strictly sandboxed via dependency mapping. Workers only receive the output of explicitly requested prerequisite tasks (`depends_on`), preventing context bloat and saving LLM tokens.
+* **⚡ Context Cache Lifecycle Management (Gemini Caching)**: Implemented a custom `GeminiCacheManager` and `CachedChatGoogleGenerativeAI` subclass to automatically manage Google Gemini context caches at runtime. It monitors prompt sizes, registers/retrieves context caches, and handles cache expiration (404s) seamlessly. This significantly lowers token costs and speeds up inference on heavy worker prompt cycles.
+* **🧠 Memory Introspection & Programmatic Tools**: Introduced new programmatic memory manipulation tools (`update_unified_memory`, `list_memory_keys`) to allow workers to list existing cache keys and update the transactional Unified Memory database directly, reflecting state changes instantly.
+* **🛠️ Interactive Unified Memory CLI Helpers**: Added utility scripts (`write_memory.py`, `dump_memory.py`) for terminal-based Unified Memory management (creating/updating user profile attributes, dumping database keys) to easily inspect and edit backend state.
+* **🧪 State-Graph Memory Access Integration Testing**: Introduced a new test framework under `tests/manual_memory_access_test.py` to end-to-end verify preference context injection in the state machine (validating `MemoryInjector` behavior, vector database recall, and target worker state reading).
 
 ---
 
@@ -300,7 +304,7 @@ python src/CoreFunctions/StateGraph/main_graph.py
 * [ ] **Advanced CLI Companion**: Expand the active spinner visualizer into an interactive, real-time terminal dashboard displaying running processes and tool-calling flows.
 * [ ] **Localized Voice Engine**: Integrate highly optimized speech-to-text (Whisper) and lightweight voice synthesizers (TTS) for hands-free local control.
 * [X] **Proactive Context Engine**: Implicit preference-retention and context-aware injection (State-Graph `MemoryInjector` + `Reflection` Node).
-* [ ] **Advanced Obsidian Automation**: Integrated a nested multi-agent Sub-Graph team featuring an Obsidian Manager and specialized sub-workers (Note, Canvas, and Refactor agents) with dynamic folder nesting.
+* [X] **Advanced Obsidian Automation**: Integrated a nested multi-agent Sub-Graph team featuring an Obsidian Manager and specialized sub-workers (Note, Canvas, and Refactor agents) with dynamic folder nesting.
 * [X] **Structured Execution Observability**: Node-level logging, trace summaries, and machine-readable JSON history outputs.
 * [X] **Skills Semantic Vector Database**: Local FAISS-indexed procedural skill lookups.
 * [X] **Serialized Parallel Console Interactions**: Global mutex lock on standard input and stack-introspected visual prompt banners.
