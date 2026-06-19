@@ -48,6 +48,113 @@ Always explain the exact reason for pausing when calling the tool.
 
 AGENT_MAP = {}
 _model_cache = {}
+AGENT_CACHED = {}
+
+class GeminiCacheManager:
+    """Manages the creation, lookup, and refresh lifecycle of Gemini Context Caches using composition."""
+    def __init__(self, worker_name: str, system_prompt: str, tools: list, stable_guideline: str, skills_section: str):
+        self.worker_name = worker_name
+        self.system_prompt = system_prompt
+        self.tools = tools
+        self.stable_guideline = stable_guideline
+        self.skills_section = skills_section
+        
+        self.cache_name = None
+        self.cache_object = None
+        self.enabled = False
+        self.token_count = 0
+
+    def check_and_create_cache(self, base_model) -> bool:
+        """Determines if the prompt meets size requirements and attempts to create the context cache."""
+        from langchain_core.messages import SystemMessage, HumanMessage
+        from langchain_google_genai import create_context_cache
+        
+        # 1. Estimate token size (system prompt + stable guidelines + specialized skills + serialized tool info)
+        tools_str = "".join([str(t) for t in self.tools])
+        test_text = self.system_prompt + "\n" + self.stable_guideline + "\n" + self.skills_section + "\n" + tools_str
+        
+        try:
+            self.token_count = base_model.get_num_tokens(test_text)
+        except Exception:
+            self.token_count = len(test_text) // 4  # Rough fallback estimation
+            
+        # Context caching requires >= 1024 tokens for Gemini models (e.g. 3.x Flash-Lite / Flash / Pro)
+        if self.token_count < 1024:
+            print(f"  ℹ️ [Prompt Caching] Worker '{self.worker_name}' prompt is too small ({self.token_count} tokens). Caching disabled.")
+            self.enabled = False
+            return False
+
+        # 2. Try to create context cache
+        try:
+            print(f"  ⚡ [Prompt Caching] Attempting to create context cache for '{self.worker_name}' ({self.token_count} tokens)...")
+            
+            messages = [
+                SystemMessage(content=self.system_prompt),
+                HumanMessage(content=f"{self.stable_guideline}\n\n{self.skills_section}")
+            ]
+            
+            self.cache_object = create_context_cache(
+                model=base_model,
+                messages=messages,
+                tools=self.tools,
+                ttl="1800s" # 30 minutes TTL
+            )
+            self.cache_name = self.cache_object.name
+            self.enabled = True
+            print(f"  ⚡ [Prompt Caching] Successfully created cache for '{self.worker_name}': {self.cache_name}")
+            return True
+        except Exception as e:
+            print(f"  ⚠️ [Prompt Caching] Failed to create cache for '{self.worker_name}' (falling back to standard model): {e}")
+            self.enabled = False
+            self.cache_object = None
+            self.cache_name = None
+            return False
+
+    def refresh_cache(self, base_model) -> bool:
+        """Refreshes / recreates the context cache when expired."""
+        print(f"  🔄 [Prompt Caching] Refreshing context cache for worker '{self.worker_name}'...")
+        return self.check_and_create_cache(base_model)
+
+
+class CachedChatGoogleGenerativeAI(ChatGoogleGenerativeAI):
+    """Subclass of ChatGoogleGenerativeAI that delegates caching lifecycle decisions to a composed GeminiCacheManager."""
+    
+    def __init__(self, *args, cache_manager: GeminiCacheManager = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cache_manager = cache_manager
+
+    def bind_tools(self, tools, **kwargs):
+        # If cache manager is active, do not bind tools to the model requests to avoid Gemini API conflicts
+        if self.cache_manager and self.cache_manager.enabled:
+            return self
+        return super().bind_tools(tools, **kwargs)
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        try:
+            return super()._generate(messages, stop, run_manager, **kwargs)
+        except Exception as e:
+            # Check if this error is due to cache expiration (404 / cache not found)
+            if self.cache_manager and self.cache_manager.enabled and ("not found" in str(e).lower() or "404" in str(e)):
+                refreshed = self.cache_manager.refresh_cache(self)
+                if refreshed:
+                    self.cached_content = self.cache_manager.cache_name
+                    # Retry call with refreshed cache
+                    return super()._generate(messages, stop, run_manager, **kwargs)
+            raise e
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        try:
+            return await super()._agenerate(messages, stop, run_manager, **kwargs)
+        except Exception as e:
+            # Check if this error is due to cache expiration (404 / cache not found)
+            if self.cache_manager and self.cache_manager.enabled and ("not found" in str(e).lower() or "404" in str(e)):
+                refreshed = self.cache_manager.refresh_cache(self)
+                if refreshed:
+                    self.cached_content = self.cache_manager.cache_name
+                    # Retry call with refreshed cache
+                    return await super()._agenerate(messages, stop, run_manager, **kwargs)
+            raise e
+
 
 def get_model_for_worker(worker_name: str):
     global _model_cache
@@ -87,14 +194,85 @@ def get_model_for_worker(worker_name: str):
     return model
 
 def compile_worker_agents():
-    """Compiles react agents dynamically for all registered workers."""
-    global AGENT_MAP
+    """Compiles react agents dynamically for all registered workers, enabling Gemini Context Caching where appropriate."""
+    global AGENT_MAP, AGENT_CACHED
+    
+    from langchain_core.tools import StructuredTool
+    from src.CoreFunctions.tools import recall, remember, forget_memory, delete_fact, list_memory_keys, update_unified_memory
+    
+    # Wrap core memory tools to inject directly into all workers
+    shared_memory_tools = [
+        StructuredTool.from_function(recall),
+        StructuredTool.from_function(remember),
+        StructuredTool.from_function(update_unified_memory),
+        StructuredTool.from_function(forget_memory),
+        StructuredTool.from_function(delete_fact),
+        StructuredTool.from_function(list_memory_keys)
+    ]
+
+
     for name, worker in WorkerRegistry.get_all_workers().items():
         if not worker.tools and not worker.instructions:
             continue
+            
+        worker_tools = list(worker.tools) if worker.tools else []
+        
+        # Inject memory tools into all workers (skip duplicates if already explicitly registered)
+        if name != "MemoryWorker":
+            for tool in shared_memory_tools:
+                if not any(t.name == tool.name for t in worker_tools):
+                    worker_tools.append(tool)
+            
         model = get_model_for_worker(name)
         prompt = worker.instructions + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
-        AGENT_MAP[name] = create_react_agent(model, worker.tools, prompt=prompt)
+        
+        cache_manager = None
+        if isinstance(model, ChatGoogleGenerativeAI) and getattr(worker, "enable_prompt_caching", True):
+            stable_guideline = (
+                "IMPORTANT NOTE ON LARGE DATA:\n"
+                "If any entry in the Working Memory contains a `\"__file_reference__\"`, the actual large data has "
+                "been saved to that local file path to avoid context bloat. You can directly read the content of "
+                "that file using your file-reading tools (like `read_file_tool` or running python/terminal commands), "
+                "copy/move the file, or use the file path as an attachment/input for other tools."
+            )
+            
+            skills_str = _load_worker_skills(name)
+            skills_section = ""
+            if skills_str:
+                skills_section = (
+                    f"\n\n### Specialized Skills for {name}:\n"
+                    f"Use the following step-by-step procedures when resolving tasks in your domain:\n"
+                    f"{skills_str}"
+                )
+            
+            # Create a cache manager for composition
+            manager = GeminiCacheManager(
+                worker_name=name,
+                system_prompt=prompt,
+                tools=worker_tools,
+                stable_guideline=stable_guideline,
+                skills_section=skills_section
+            )
+            
+            if manager.check_and_create_cache(model):
+                cache_manager = manager
+                
+        if cache_manager is not None and cache_manager.enabled:
+            # Instantiate custom Cached model that composes the cache manager
+            cached_model = CachedChatGoogleGenerativeAI(
+                model=model.model_name,
+                temperature=model.temperature,
+                cached_content=cache_manager.cache_name,
+                cache_manager=cache_manager,
+                model_kwargs=model.model_kwargs
+            )
+            # Compile ReAct agent with None prompt (prompt is already stored inside the context cache)
+            # Tools list is still passed so the ToolNode is generated, but bind_tools is intercepted inside cached_model
+            AGENT_MAP[name] = create_react_agent(cached_model, worker_tools, prompt=None)
+            AGENT_CACHED[name] = True
+        else:
+            AGENT_MAP[name] = create_react_agent(model, worker_tools, prompt=prompt)
+            AGENT_CACHED[name] = False
     
     # Legacy fallback mapping
     if "BrowserNavigator" in AGENT_MAP:
@@ -205,7 +383,10 @@ Working Memory (Data from previous tasks):
 
 Execute the tools necessary to complete this task. Return a concise, data-rich summary of your findings or actions.
 """
-    prompt = f"{stable_guideline}{skills_section}\n\n{volatile_inputs}"
+    if AGENT_CACHED.get(worker_name, False):
+        prompt = volatile_inputs
+    else:
+        prompt = f"{stable_guideline}{skills_section}\n\n{volatile_inputs}"
     
     # Log worker run start
     try:
@@ -355,7 +536,10 @@ Working Memory (Data from previous tasks):
 
 Execute the tools necessary to complete this task. Return a concise, data-rich summary of your findings or actions.
 """
-    prompt = f"{stable_guideline}{skills_section}\n\n{volatile_inputs}"
+    if AGENT_CACHED.get(worker_name, False):
+        prompt = volatile_inputs
+    else:
+        prompt = f"{stable_guideline}{skills_section}\n\n{volatile_inputs}"
     
     # Log worker run start
     try:
