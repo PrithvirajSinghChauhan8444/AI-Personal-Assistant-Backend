@@ -101,7 +101,7 @@ def store_vector(text):
 
             _save(index, data)
 
-def search_vector(query, k=3):
+def search_vector(query, k=3, threshold=None):
     with _vector_lock:
         index = _load_index()
         data = _load_data()
@@ -110,8 +110,15 @@ def search_vector(query, k=3):
 
         model = _get_model()
         q = model.encode([query])
-        _, idx = index.search(q, k)
-        return [data[i] for i in idx[0] if i < len(data)]
+        D, idx = index.search(q, k)
+        
+        results = []
+        for i, dist in zip(idx[0], D[0]):
+            if i < len(data):
+                if threshold is None or dist <= threshold:
+                    results.append(data[i])
+        return results
+
 
 # --- Dedicated Skills Vector Store ---
 

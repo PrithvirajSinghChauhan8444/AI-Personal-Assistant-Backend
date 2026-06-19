@@ -91,7 +91,8 @@ def is_personal_query(query: str) -> bool:
         "brother", "sister", "father", "mother", "parent", "family", "friend", "rohan", "prithvi",
         "favorite", "college", "university", "school", "major", "academic", "study",
         "email", "mail", "calendar", "event", "task", "todo", "appointment", "meeting",
-        "who am i", "my name", "what do you know about", "remember", "recall", "skills", "skill"
+        "who am i", "my name", "what do you know about", "remember", "recall", "skills", "skill",
+        "memory", "unified memory", "stored", "saved", "preference", "preferences"
     ]
     
     for kw in personal_keywords:
@@ -99,6 +100,7 @@ def is_personal_query(query: str) -> bool:
             return True
             
     return False
+
 
 def check_fast_path(primary_goal: str) -> Optional[str]:
     """
@@ -133,8 +135,8 @@ def check_fast_path(primary_goal: str) -> Optional[str]:
         if structured_val:
             return f"I recall that your {topic} is: {structured_val}."
             
-        # 2. Search vector database semantically
-        vector_results = search_vector(topic, k=2)
+        # 2. Search vector database semantically (with threshold filtering)
+        vector_results = search_vector(topic, k=2, threshold=1.15)
         if vector_results:
             summary = "\n".join([f"- {res}" for res in vector_results])
             return f"Here is what I remember about '{topic}':\n{summary}"
@@ -150,8 +152,9 @@ def memory_injector_node(state: AgentState):
     
     # 0. Check Fast-Path (Phase 2 Speed Optimization)
     fast_path_response = check_fast_path(primary_goal)
+    working_memory = state.get("working_memory", {}) or {}
+    
     if fast_path_response:
-        working_memory = state.get("working_memory", {}) or {}
         working_memory["fast_path_matched"] = True
         output_state = {
             "working_memory": working_memory,
@@ -159,6 +162,9 @@ def memory_injector_node(state: AgentState):
         }
         log_node_end("MemoryInjector", output_state)
         return output_state
+    else:
+        # Reset fast path flag for this turn to prevent state pollution from previous turns
+        working_memory["fast_path_matched"] = False
     
     # 2. Level 0 & Level 1 Skills Ingestion (Progressive Disclosure via Semantic Vector Search)
     active_skills_content = []
@@ -191,18 +197,18 @@ def memory_injector_node(state: AgentState):
             "working_memory": working_memory
         }
     
-    # 4. Fetch User Profile from Unified Database Memory
+    # 4. Fetch User Profile & Stored Memories from Unified Database Memory
     user_profile = {}
     try:
-        raw_profile = fetch_memory("user")
-        if raw_profile:
-            for key, val_obj in raw_profile.items():
-                if isinstance(val_obj, dict) and "value" in val_obj:
-                    user_profile[key] = val_obj["value"]
-                else:
-                    user_profile[key] = val_obj
+        for category in ["user", "past", "current"]:
+            raw_mem = fetch_memory(category)
+            if raw_mem:
+                for key, val_obj in raw_mem.items():
+                    val = val_obj.get("value") if isinstance(val_obj, dict) else val_obj
+                    user_profile[key] = val
+                    user_profile[f"{category}:{key}"] = val
     except Exception as e:
-        print(f"  ⚠️ Error loading user profile: {e}")
+        print(f"  ⚠️ Error loading unified memory: {e}")
         
     # 5. Semantic Search over Vector memory
     relevant_memories = []

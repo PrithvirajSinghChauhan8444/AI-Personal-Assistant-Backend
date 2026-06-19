@@ -42,6 +42,11 @@ class BaseWorker(ABC):
         return False
 
     @property
+    def enable_prompt_caching(self) -> bool:
+        """Flag to enable Gemini prompt context caching (only works with Gemini models)."""
+        return False
+
+    @property
     def is_graph_node(self) -> bool:
         """Whether this worker should be exposed as a top-level node in the main LangGraph and router."""
         return True

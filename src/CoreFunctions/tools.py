@@ -66,12 +66,12 @@ def read_memory(key):
 
 
 
-def remember(key: str, value: Any, category: str = "past") -> str:
+def remember(key: str, value: str, category: str = "past") -> str:
     """Store important information for future use.
 
     Args:
         key (str): The unique identifier or topic name for the memory (e.g., 'user_name').
-        value (Any): The actual details or context to remember (e.g., 'John' or a structured dictionary/list).
+        value (str): The actual details or context to remember (e.g., 'John' or a structured dictionary/list).
         category (str): The grouping category for the memory. Defaults to 'past'.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: remember")
@@ -82,16 +82,70 @@ def remember(key: str, value: Any, category: str = "past") -> str:
     return f"Saved memory: {key}"
 
 
+
 def recall(key: str) -> str:
-    """Recall memory by key using smart lookup.
+    """Recall memory by key using smart lookup. Checks the structured SQL/Redis database first, then falls back to vector database search.
 
     Args:
         key (str): The unique identifier or topic name of the memory to fetch.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: recall")
     print(f"   Args: key={key}")
+    # 1. Search structured memory first (SQL / Redis)
     value = fetch_memory(None, key)
-    return value if value else f"No memory found for '{key}'."
+    if value is not None:
+        return value
+        
+    # 2. Fallback to vector search if no structured key matches
+    from CoreFunctions.vector_memory import search_vector
+    vector_results = search_vector(key, k=3, threshold=1.15)
+    if vector_results:
+        return "\n".join(vector_results)
+        
+    return f"No memory found for '{key}'."
+
+
+def list_memory_keys(pattern: str = "*") -> str:
+    """Lists all available memory keys stored in the unified memory database matching the glob pattern.
+
+    Args:
+        pattern (str): The glob pattern to filter keys (e.g. '*'). Defaults to '*'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: list_memory_keys")
+    print(f"   Args: pattern={pattern}")
+    from CoreFunctions.unified_memory import UnifiedMemory
+    um = UnifiedMemory()
+    if not um.enabled:
+        return "Unified Memory is disabled."
+    keys = um.list_keys(pattern)
+    if not keys:
+        return f"No memory keys matching '{pattern}' found."
+    return "Available memory keys:\n" + "\n".join([f"- {k}" for k in keys])
+
+
+def update_unified_memory(key: str, value: str, category: str = "user") -> str:
+    """Updates or saves a key-value pair directly in the Unified Memory database,
+    and updates the semantic vector database with the fact.
+    
+    Args:
+        key (str): The unique identifier of the memory key (e.g. 'GmailWorker').
+        value (str): The string value/content to store.
+        category (str): The category under which to store (user/past/current). Defaults to 'user'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: update_unified_memory")
+    print(f"   Args: key={key}, value={value}, category={category}")
+    try:
+        # Save to structured memory
+        store_memory(category, key, value)
+        
+        # Save to vector memory
+        from CoreFunctions.vector_memory import store_vector
+        vector_fact = f"The value of {key} in unified memory is: {value}."
+        store_vector(vector_fact)
+        
+        return f"Successfully updated memory key '{key}' to '{value}'."
+    except Exception as e:
+        return f"Error updating unified memory: {e}"
 
 
 def forget_memory(key: str, category: str = "user") -> str:
