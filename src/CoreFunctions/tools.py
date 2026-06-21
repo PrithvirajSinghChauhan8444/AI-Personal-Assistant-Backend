@@ -755,6 +755,10 @@ def run_terminal_tool(command: str) -> str:
     print(f"\n[DEBUG] 🛠️ Calling Tool: run_terminal_tool")
     print(f"   Args: command={command}")
     
+    import re
+    if re.search(r'\bsleep\b', command.lower()):
+        return "❌ Error: Synchronous 'sleep' or delay commands are strictly prohibited in run_cmd to prevent terminal freeze. To run tasks at a future time or schedule a reminder, you MUST use `schedule_delayed_task` or `schedule_task_at_time` instead."
+    
     import sys
     import builtins
     vis = getattr(builtins, "active_cli_visualizer", None)
@@ -2138,23 +2142,27 @@ def submit_classroom_assignment_tool(course_id: str, coursework_id: str, file_pa
     """
     return _submit_class_assign(course_id, coursework_id, file_paths, account)
 
-def schedule_delayed_task_tool(description: str, delay_seconds: int) -> str:
-    """Schedules a task/prompt to run after a delay in seconds.
+def schedule_delayed_task_tool(description: str, delay_seconds: int, task_type: str = "agent_task", recurrence: str = None) -> str:
+    """Schedules a task or reminder to run after a delay in seconds.
     
     Args:
-        description (str): The assistant task instruction or prompt to run.
-        delay_seconds (int): Delay in seconds before running the task.
+        description (str): The assistant task prompt or reminder message (e.g., 'go for a walk' or 'check unread emails').
+        delay_seconds (int): Delay in seconds before execution.
+        task_type (str): Either 'reminder' (for simple alarms/alerts to the user) or 'agent_task' (for tasks where the assistant must run tools/workflows). Defaults to 'agent_task'.
+        recurrence (str): Recurrence interval: 'minutely', 'hourly', 'daily', 'weekly' or None. Defaults to None.
     """
-    return _sched_delay(description, delay_seconds)
+    return _sched_delay(description, delay_seconds, task_type, recurrence)
 
-def schedule_task_at_time_tool(description: str, time_str: str) -> str:
-    """Schedules a task/prompt to run at a specific calendar date and time.
+def schedule_task_at_time_tool(description: str, time_str: str, task_type: str = "agent_task", recurrence: str = None) -> str:
+    """Schedules a task or reminder to run at a specific calendar date and time.
     
     Args:
-        description (str): The assistant task instruction or prompt to run.
-        time_str (str): Target time string (e.g., '14:30:00' for 2:30 PM today, or 'YYYY-MM-DD HH:MM:SS').
+        description (str): The assistant task prompt or reminder message (e.g., 'go for a walk' or 'check unread emails').
+        time_str (str): Target time string (e.g. '14:30:00' for 2:30 PM today, or 'YYYY-MM-DD HH:MM:SS').
+        task_type (str): Either 'reminder' (for simple alarms/alerts to the user) or 'agent_task' (for tasks where the assistant must run tools/workflows). Defaults to 'agent_task'.
+        recurrence (str): Recurrence interval: 'minutely', 'hourly', 'daily', 'weekly' or None. Defaults to None.
     """
-    return _sched_at(description, time_str)
+    return _sched_at(description, time_str, task_type, recurrence)
 
 def list_scheduled_tasks_tool() -> str:
     """Lists all pending scheduled tasks."""
