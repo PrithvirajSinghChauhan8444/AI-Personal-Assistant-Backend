@@ -70,16 +70,18 @@ def test_scheduler():
         print("  Task list:\n", task_list)
         assert desc in task_list, "Task not found in scheduler queue"
         
-        print("  Waiting for 3 seconds for scheduler execution...")
-        time.sleep(3)
-        
-        # Verify it transitioned to running/completed status
-        tasks = load_tasks()
-        for t in tasks:
-            if t["description"] == desc:
-                print(f"  Task status after 3s: '{t['status']}'")
-                assert t["status"] in ["running", "completed", "failed"], f"Unexpected task status: {t['status']}"
+        print("  Waiting for scheduler execution (up to 30 seconds)...")
+        start_time = time.time()
+        status = "pending"
+        while time.time() - start_time < 30:
+            time.sleep(0.5)
+            tasks = load_tasks()
+            status = next((t["status"] for t in tasks if t["description"] == desc), "pending")
+            if status in ["completed", "failed"]:
+                break
                 
+        print(f"  Task status reached: '{status}'")
+        assert status in ["completed", "failed"], f"Unexpected task status: {status}"
         print("  ✅ Scheduler test passed.")
     finally:
         # Restore original tasks
