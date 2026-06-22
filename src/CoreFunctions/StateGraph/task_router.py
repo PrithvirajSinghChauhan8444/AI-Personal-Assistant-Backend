@@ -114,10 +114,39 @@ def task_router_node(state: AgentState):
     llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
     structured_llm = llm.with_structured_output(TaskPlan)
     
-    plan: TaskPlan = structured_llm.invoke([
-        SystemMessage(content=get_router_prompt()),
-        HumanMessage(content=input_content)
-    ])
+    try:
+        plan: TaskPlan = structured_llm.invoke([
+            SystemMessage(content=get_router_prompt()),
+            HumanMessage(content=input_content)
+        ])
+    except Exception as e:
+        print(f"  ⚠️ Task Router parsing/validation error: {e}. Retrying with error details...")
+        log_message(f"TaskRouter validation failed: {e}. Executing self-correction retry.")
+        
+        error_context = f"""
+Previous attempt failed validation/parsing with the following error:
+{str(e)}
+
+Please correct the JSON formatting, ensure all worker assignments are strictly from the 'Available workers' list, and try again.
+"""
+        try:
+            plan: TaskPlan = structured_llm.invoke([
+                SystemMessage(content=get_router_prompt()),
+                HumanMessage(content=input_content),
+                SystemMessage(content=error_context)
+            ])
+        except Exception as retry_err:
+            print(f"  ❌ Task Router failed self-correction retry: {retry_err}. Falling back to default execution node.")
+            log_message(f"TaskRouter retry failed: {retry_err}. Activating fallback routing.")
+            plan = TaskPlan(subtasks=[
+                SubTaskModel(
+                    id="fallback_task",
+                    description=f"Fallback execution of user request: {primary_goal}",
+                    assigned_worker="MiscWorker",
+                    depends_on=[]
+                )
+            ])
+
     active_subtasks = []
     active_names = WorkerRegistry.get_worker_names()
     completed_tasks = state.get("completed_tasks", {}) or {}

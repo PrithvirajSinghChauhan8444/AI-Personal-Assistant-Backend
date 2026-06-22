@@ -451,8 +451,17 @@ def process_request_interactive():
 
     print("🤖 \033[1;32mAgent Manager (Dynamic State-Graph)\033[0m - Type 'exit' to quit.")
     
-    # Initialize the Unified Memory cache singleton
-    UnifiedMemory()
+    # Initialize the Unified Memory cache singleton and clean transient current-session keys on startup
+    um = UnifiedMemory()
+    try:
+        if um.enabled:
+            current_keys = um.list_keys("current:*")
+            if current_keys:
+                for ck in current_keys:
+                    um.delete_memory(ck)
+                print(f"🧹 [UnifiedMemory] Cleared {len(current_keys)} transient current-session cache keys on startup.")
+    except Exception as e:
+        print(f"⚠️ [UnifiedMemory] Failed to clear transient current-session cache keys: {e}")
 
     # Load session context on startup
     chat_history = []
@@ -648,6 +657,15 @@ def process_request_interactive():
             working_memory_init, completed_tasks_init = run_graph_execution(
                 initial_state, config, thread_id, chat_history
             )
+            # Prompt user for optional behavior-tuning feedback
+            if working_memory_init and completed_tasks_init:
+                feedback = input("\n📝 Provide feedback/preferences for this task (or press Enter to skip): ").strip()
+                if feedback:
+                    from src.CoreFunctions.StateGraph.memory_nodes import trigger_feedback_extraction
+                    final_response_str = ""
+                    if chat_history and chat_history[-1]["role"] == "assistant":
+                        final_response_str = chat_history[-1]["content"]
+                    trigger_feedback_extraction(user_input, final_response_str, feedback)
         except KeyboardInterrupt:
             print("\n👋 Execution interrupted. State saved.")
             sys.exit(0)

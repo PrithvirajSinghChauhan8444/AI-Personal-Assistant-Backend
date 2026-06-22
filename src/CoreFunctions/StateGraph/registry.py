@@ -52,6 +52,11 @@ class BaseWorker(ABC):
         return True
 
     @property
+    def enable_worker_memory(self) -> bool:
+        """Flag to enable worker-level memory lookup fallback."""
+        return False
+
+    @property
     def routing_rules(self) -> List[str]:
         """Rules or workflows specific to this worker that should be added to the TaskRouter prompt."""
         return []
@@ -113,8 +118,12 @@ class WorkerRegistry:
                 default_model = "gemma4:e4b" if worker.use_local_llm else "gemini-3.1-flash-lite"
                 config[name] = {
                     "model": default_model,
-                    "active": True
+                    "active": True,
+                    "enable_worker_memory": worker.enable_worker_memory
                 }
+                updated = True
+            elif "enable_worker_memory" not in config[name]:
+                config[name]["enable_worker_memory"] = worker.enable_worker_memory
                 updated = True
                 
         if updated or not os.path.exists(config_path):
@@ -148,6 +157,18 @@ class WorkerRegistry:
         if name not in workers:
             raise KeyError(f"Worker '{name}' is not registered or is currently inactive.")
         return workers[name]
+
+    @classmethod
+    def is_worker_memory_enabled(cls, name: str) -> bool:
+        """Checks if worker-level memory fallback is enabled for the specified worker."""
+        if not cls._config:
+            cls.load_and_sync_config()
+        if name in cls._config:
+            return cls._config[name].get("enable_worker_memory", False)
+        try:
+            return cls.get_worker(name).enable_worker_memory
+        except Exception:
+            return False
 
 def scan_and_register_workers(workers_dir: str = None, force_reload: bool = False):
     """Dynamically walks and imports all python files inside the workers directory to trigger registration decorators."""

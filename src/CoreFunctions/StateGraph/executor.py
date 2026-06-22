@@ -345,6 +345,45 @@ def _clean_working_memory_for_worker(working_memory: dict, depends_on: list = No
                 cleaned[k] = v
     return cleaned
 
+def _get_worker_feedback_instructions(worker_name: str) -> str:
+    """Retrieves any active user-tuned behavior preferences for the target worker, handling once-scoped cleanup."""
+    from src.CoreFunctions.unified_memory import UnifiedMemory
+    import time
+    um = UnifiedMemory()
+    if not um.enabled:
+        return ""
+        
+    db_key = f"worker_feedback:{worker_name}"
+    existing = um.retrieve_memory(db_key)
+    if not existing or not existing.get("preferences"):
+        return ""
+        
+    preferences = existing["preferences"]
+    instructions = []
+    updated_preferences = []
+    
+    for pref in preferences:
+        scope = pref.get("scope", "persistent")
+        instruction = pref.get("preference", "").strip()
+        if instruction:
+            instructions.append(f"- {instruction}")
+            
+        # Keep it if it is not once-scoped
+        if scope != "once":
+            updated_preferences.append(pref)
+            
+    # Update UnifiedMemory: clear out once-scoped preferences
+    if len(updated_preferences) != len(preferences):
+        if updated_preferences:
+            um.store_memory(db_key, {"preferences": updated_preferences}, persistent=any(p.get("scope") == "persistent" for p in updated_preferences))
+        else:
+            um.delete_memory(db_key)
+            
+    if not instructions:
+        return ""
+        
+    return "\n### USER-TUNED PREFERENCES & BEHAVIOR:\nEnsure you follow these specific instructions from the user when executing this task:\n" + "\n".join(instructions) + "\n"
+
 def _run_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict, depends_on: list = None):
     """Runs a pre-compiled ReAct agent in complete isolation, returning only the final answer."""
     from src.CoreFunctions.logger import log_worker_start, log_worker_thought, log_worker_tool_call, log_worker_tool_response, log_worker_end
@@ -374,13 +413,19 @@ def _run_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict,
             f"{skills_str}"
         )
         
+    feedback_instructions = _get_worker_feedback_instructions(worker_name)
+    
     volatile_inputs = f"""
 ### Operational Context (Volatile):
 Task: {task_desc}
 
 Working Memory (Data from previous tasks):
 {memory_str}
-
+"""
+    if feedback_instructions:
+        volatile_inputs += f"\n{feedback_instructions}\n"
+        
+    volatile_inputs += """
 Execute the tools necessary to complete this task. Return a concise, data-rich summary of your findings or actions.
 """
     if AGENT_CACHED.get(worker_name, False):
@@ -414,6 +459,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
 
     from src.CoreFunctions.unified_memory import UnifiedMemory
     txn_id, token = UnifiedMemory().start_transaction()
+    worker_token = UnifiedMemory.set_current_worker(worker_name)
     success = False
     try:
         last_ai_message = None
@@ -491,6 +537,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         success = True
         return final_message
     finally:
+        UnifiedMemory.reset_current_worker(worker_token)
         if success:
             UnifiedMemory().commit_transaction(txn_id, token)
         else:
@@ -527,13 +574,19 @@ async def _run_async_ephemeral_agent(worker_name: str, task_desc: str, working_m
             f"{skills_str}"
         )
         
+    feedback_instructions = _get_worker_feedback_instructions(worker_name)
+    
     volatile_inputs = f"""
 ### Operational Context (Volatile):
 Task: {task_desc}
 
 Working Memory (Data from previous tasks):
 {memory_str}
-
+"""
+    if feedback_instructions:
+        volatile_inputs += f"\n{feedback_instructions}\n"
+        
+    volatile_inputs += """
 Execute the tools necessary to complete this task. Return a concise, data-rich summary of your findings or actions.
 """
     if AGENT_CACHED.get(worker_name, False):
@@ -567,6 +620,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
 
     from src.CoreFunctions.unified_memory import UnifiedMemory
     txn_id, token = UnifiedMemory().start_transaction()
+    worker_token = UnifiedMemory.set_current_worker(worker_name)
     success = False
     try:
         last_ai_message = None
@@ -644,6 +698,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         success = True
         return final_message
     finally:
+        UnifiedMemory.reset_current_worker(worker_token)
         if success:
             UnifiedMemory().commit_transaction(txn_id, token)
         else:

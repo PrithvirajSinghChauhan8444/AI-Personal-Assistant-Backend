@@ -439,6 +439,108 @@ def fetch_classroom_assignment_details(course_id: str, coursework_id: str, accou
         return f"Error fetching coursework details: {e}"
 
 # ===========================
+# 3B. GOOGLE DRIVE TOOLS
+# ===========================
+
+def list_drive_files_tool(query: str = None, limit: int = 10, account: str = "personal") -> str:
+    """Search and list files or folders on the user's Google Drive.
+
+    Args:
+        query (str): The search filter query (e.g. 'name contains "contract"', 'mimeType = "application/vnd.google-apps.folder"').
+        limit (int): The maximum number of files to return. Defaults to 10.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: list_drive_files_tool")
+    print(f"   Args: query={query}, limit={limit}, account={account}")
+    try:
+        from CoreFunctions.Integrations.GoogleDrive.drive_ops import list_drive_files
+        res = list_drive_files(query, limit, account=account)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error listing files: {e}"
+
+def download_drive_file_tool(file_id: str, local_path: str, account: str = "personal") -> str:
+    """Download a file from Google Drive to the local filesystem. Automatically exports Google Docs/Sheets/Slides.
+
+    Args:
+        file_id (str): The unique Google Drive file ID.
+        local_path (str): The local path where the file should be saved.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: download_drive_file_tool")
+    print(f"   Args: file_id={file_id}, local_path={local_path}, account={account}")
+    try:
+        from CoreFunctions.Integrations.GoogleDrive.drive_ops import download_drive_file
+        return download_drive_file(file_id, local_path, account=account)
+    except Exception as e:
+        return f"Error downloading file: {e}"
+
+def upload_drive_file_tool(local_path: str, name: str = None, parent_id: str = None, account: str = "personal") -> str:
+    """Upload a local file to Google Drive.
+
+    Args:
+        local_path (str): The local path of the file to upload.
+        name (str): The optional name of the file on Google Drive. Defaults to the local filename.
+        parent_id (str): The optional parent folder ID on Google Drive to place the file in.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: upload_drive_file_tool")
+    print(f"   Args: local_path={local_path}, name={name}, parent_id={parent_id}, account={account}")
+    try:
+        from CoreFunctions.Integrations.GoogleDrive.drive_ops import upload_drive_file
+        res = upload_drive_file(local_path, name, parent_id, account=account)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error uploading file: {e}"
+
+def create_drive_folder_tool(name: str, parent_id: str = None, account: str = "personal") -> str:
+    """Create a new folder on Google Drive.
+
+    Args:
+        name (str): The name of the new folder.
+        parent_id (str): The optional parent folder ID on Google Drive to place the folder in.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: create_drive_folder_tool")
+    print(f"   Args: name={name}, parent_id={parent_id}, account={account}")
+    try:
+        from CoreFunctions.Integrations.GoogleDrive.drive_ops import create_drive_folder
+        res = create_drive_folder(name, parent_id, account=account)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error creating folder: {e}"
+
+def delete_drive_file_tool(file_id: str, account: str = "personal") -> str:
+    """Trash a file or folder from Google Drive by ID.
+
+    Args:
+        file_id (str): The Google Drive file ID to trash.
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: delete_drive_file_tool")
+    print(f"   Args: file_id={file_id}, account={account}")
+    try:
+        from CoreFunctions.Integrations.GoogleDrive.drive_ops import delete_drive_file
+        return delete_drive_file(file_id, account=account)
+    except Exception as e:
+        return f"Error trashing file: {e}"
+
+def get_drive_about_tool(account: str = "personal") -> str:
+    """Retrieve Google Drive account info, storage quota, usage, and available free space.
+
+    Args:
+        account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
+    """
+    print(f"\n[DEBUG] 🛠️ Calling Tool: get_drive_about_tool")
+    print(f"   Args: account={account}")
+    try:
+        from CoreFunctions.Integrations.GoogleDrive.drive_ops import get_drive_about
+        res = get_drive_about(account=account)
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return f"Error retrieving Drive storage info: {e}"
+
+# ===========================
 # 4. SYSTEM & ENVIRONMENT
 # ===========================
 

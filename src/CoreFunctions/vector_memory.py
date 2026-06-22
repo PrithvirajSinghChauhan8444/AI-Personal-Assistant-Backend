@@ -34,10 +34,10 @@ def _get_model():
                 from sentence_transformers import SentenceTransformer
                 try:
                     # Attempt instant offline load first to prevent remote network checks and hangs
-                    MODEL = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=True)
+                    MODEL = SentenceTransformer("BAAI/bge-small-en-v1.5", local_files_only=True)
                 except Exception:
                     # Fallback to online download/check only if not cached locally
-                    MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+                    MODEL = SentenceTransformer("BAAI/bge-small-en-v1.5")
     return MODEL
 
 def _load_index():
@@ -94,12 +94,13 @@ def store_vector(text):
                           f"   Skipping store to avoid duplication.")
                     return
 
-            model = _get_model()
-            vec = model.encode([text])
-            index.add(vec)
-            data.append(text)
+        import numpy as np
+        model = _get_model()
+        vec = model.encode([text])
+        index.add(np.array(vec, dtype=np.float32))
+        data.append(text)
 
-            _save(index, data)
+        _save(index, data)
 
 def search_vector(query, k=3, threshold=None):
     with _vector_lock:
@@ -142,6 +143,7 @@ def rebuild_skills_vector_store():
     import re
     import faiss
     import numpy as np
+    import hashlib
     
     skills_dir = os.path.join(BASE_DIR, "Skills")
     if not os.path.exists(skills_dir) or not os.path.isdir(skills_dir):
@@ -178,12 +180,14 @@ def rebuild_skills_vector_store():
                     if tags_match:
                         tags = [t.strip().strip('"').strip("'") for t in tags_match.group(1).split(",") if t.strip()]
                         
+                content_hash = hashlib.md5(content.encode("utf-8")).hexdigest()
                 skills_list.append({
                     "name": name,
                     "description": description,
                     "category": category,
                     "tags": tags,
-                    "path": skill_md_path
+                    "path": skill_md_path,
+                    "content_hash": content_hash
                 })
             except Exception as e:
                 print(f"  ⚠️ Error loading skill metadata for indexing: {e}")
@@ -228,16 +232,37 @@ def search_skills_vector(query: str, k: int = 2) -> List[Dict[str, Any]]:
         index = _load_skills_index()
         data = _load_skills_data()
         
-        # Self-healing check: check if any matched/listed skill references a file path that no longer exists
+        # Self-healing check: check if any matched/listed skill references a file path that no longer exists or if hash differs
         stale_found = False
-        for skill in data:
-            skill_path = skill.get("path")
-            if not skill_path or not os.path.exists(skill_path):
-                stale_found = True
-                break
+        import hashlib
+        skills_dir = os.path.join(BASE_DIR, "Skills")
+        existing_paths = []
+        if os.path.exists(skills_dir):
+            for root, _, files in os.walk(skills_dir):
+                if "SKILL.md" in files:
+                    existing_paths.append(os.path.join(root, "SKILL.md"))
+        
+        if len(existing_paths) != len(data):
+            stale_found = True
+        else:
+            for skill in data:
+                skill_path = skill.get("path")
+                if not skill_path or not os.path.exists(skill_path):
+                    stale_found = True
+                    break
+                try:
+                    with open(skill_path, "r", encoding="utf-8") as sf:
+                        current_content = sf.read()
+                    current_hash = hashlib.md5(current_content.encode("utf-8")).hexdigest()
+                    if current_hash != skill.get("content_hash"):
+                        stale_found = True
+                        break
+                except Exception:
+                    stale_found = True
+                    break
                 
         if stale_found:
-            print("⚠️ Stale skills detected (some skill files are deleted/missing). Rebuilding vector store...")
+            print("⚠️ Stale skills detected (some skill files are deleted/missing/modified). Rebuilding vector store...")
             rebuild_skills_vector_store()
             index = _load_skills_index()
             data = _load_skills_data()
@@ -289,4 +314,62 @@ def delete_vector_fact(text: str) -> bool:
             
         print(f"🗑️ [Vector Store] Removed fact: \"{text}\"")
         return True
+
+def rebuild_general_vector_store():
+    """Rebuilds the general FAISS index from the facts stored in data.json."""
+    import faiss
+    import numpy as np
+    data = _load_data()
+    if not data:
+        index = faiss.IndexFlatL2(DIM)
+        faiss.write_index(index, INDEX_PATH)
+        return
+        
+    model = _get_model()
+    embeddings = model.encode(data)
+    index = faiss.IndexFlatL2(DIM)
+    index.add(np.array(embeddings, dtype=np.float32))
+    faiss.write_index(index, INDEX_PATH)
+    print(f"✅ Rebuilt General Vector Store with {len(data)} facts.")
+
+VERSION_FILE_PATH = os.path.join(BASE_DIR, "Memory", "vector_store", "model_version.txt")
+CURRENT_MODEL_NAME = "BAAI/bge-small-en-v1.5"
+
+def check_and_migrate_embeddings():
+    """Checks if the embedding model version matches BGE. If not, clears indices and rebuilds them."""
+    needs_rebuild = False
+    
+    if os.path.exists(VERSION_FILE_PATH):
+        try:
+            with open(VERSION_FILE_PATH, "r", encoding="utf-8") as f:
+                ver = f.read().strip()
+            if ver != CURRENT_MODEL_NAME:
+                needs_rebuild = True
+        except Exception:
+            needs_rebuild = True
+    else:
+        needs_rebuild = True
+        
+    if needs_rebuild:
+        print(f"🔄 [Embeddings Upgrade] Swapping vector embedding model to '{CURRENT_MODEL_NAME}'...")
+        print("🧹 Clearing legacy FAISS indices to prevent semantic coordinate mismatch...")
+        
+        for path in [INDEX_PATH, SKILLS_INDEX_PATH]:
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except Exception as e:
+                    print(f"  ⚠️ Warning: Could not delete legacy index file '{path}': {e}")
+                    
+        try:
+            rebuild_general_vector_store()
+            rebuild_skills_vector_store()
+            with open(VERSION_FILE_PATH, "w", encoding="utf-8") as f:
+                f.write(CURRENT_MODEL_NAME)
+            print("🎉 [Embeddings Upgrade] Rebuilt all FAISS vector stores successfully.")
+        except Exception as e:
+            print(f"  ❌ Failed to rebuild FAISS vector stores: {e}")
+
+# Run automatic migration validation on import
+check_and_migrate_embeddings()
 
