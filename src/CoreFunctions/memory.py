@@ -69,21 +69,34 @@ migrate_json_to_sqlite()
 # -------------------------
 def store_memory(category, key, value):
     """
-    Stores structured user/past/current memory in the unified database engine.
+    Stores structured user/past/current/worker memory in the unified database engine.
     """
     # Validate the memory key format to prevent JSON property injection or path traversals
     if not isinstance(key, str) or not re.match(r"^[a-zA-Z0-9_\-]+$", key):
         raise ValueError("Invalid memory key: only alphanumeric characters, underscores, and dashes are allowed.")
 
     # Normalize category mapping
-    category_str = str(category).lower()
-    if category_str not in ["current", "user", "past"]:
-        if "user" in category_str or "profile" in category_str:
-            category = "user"
+    category_orig = str(category).strip()
+    category_str = category_orig.lower()
+    if category_str.startswith("worker"):
+        if ":" in category_orig:
+            _, worker_name = category_orig.split(":", 1)
+            worker_name = worker_name.strip()
         else:
-            category = "past"
+            worker_name = UnifiedMemory.get_current_worker()
+            if not worker_name:
+                raise ValueError("Worker-specific memory requested but no active worker found in execution context.")
+        db_key = f"worker:{worker_name}:{key}"
+        category = f"worker:{worker_name}"
     else:
-        category = category_str
+        if category_str not in ["current", "user", "past"]:
+            if "user" in category_str or "profile" in category_str:
+                category = "user"
+            else:
+                category = "past"
+        else:
+            category = category_str
+        db_key = f"{category}:{key}"
 
     # Strip HTML tags/scripts from value as a sanitization guard
     sanitized_value = value
@@ -91,16 +104,24 @@ def store_memory(category, key, value):
         sanitized_value = re.sub(r"<[^>]*>", "", value).strip()
 
     um = UnifiedMemory()
-    db_key = f"{category}:{key}"
-
-    # Cross-check ALL categories to avoid duplicates
     normalized_key = key.strip().lower()
     normalized_val = str(sanitized_value).strip().lower()
 
-    for cat in ["current", "user", "past"]:
+    # Cross-check categories to avoid duplicates
+    check_categories = ["current", "user", "past"]
+    worker_name_context = UnifiedMemory.get_current_worker()
+    if worker_name_context:
+        check_categories.append(f"worker:{worker_name_context}")
+    if category.startswith("worker:") and category not in check_categories:
+        check_categories.append(category)
+
+    for cat in check_categories:
         cat_keys = um.list_keys(f"{cat}:*")
         for ck in cat_keys:
-            orig_k = ck.split(":", 1)[1]
+            if cat.startswith("worker:"):
+                orig_k = ck[len(cat)+1:]
+            else:
+                orig_k = ck.split(":", 1)[1]
             if orig_k.strip().lower() == normalized_key:
                 payload = um.retrieve_memory(ck)
                 if payload:
@@ -110,6 +131,18 @@ def store_memory(category, key, value):
                         return f"Stored {key} in {category} memory (already exists)."
 
     # Save to SQLite/Redis via UnifiedMemory
+    # Check for Vector Tombstoning first (drift prevention)
+    try:
+        old_payload = um.retrieve_memory(db_key)
+        if old_payload:
+            old_val = old_payload.get("value")
+            if old_val and str(old_val).strip() != str(sanitized_value).strip():
+                print(f"🗑️ [Vector Tombstoning] Old value for '{db_key}' was: \"{old_val}\". Deleting from vector memory...")
+                from src.CoreFunctions.vector_memory import delete_vector_fact
+                delete_vector_fact(str(old_val))
+    except Exception as tomb_err:
+        print(f"  ⚠️ [Vector Tombstoning] Warning: Could not execute vector tombstone clean-up: {tomb_err}")
+
     um.store_memory(db_key, {
         "value": sanitized_value,
         "timestamp": datetime.now().isoformat()
@@ -130,7 +163,7 @@ def fetch_memory(category=None, key=None):
 
     If category is None:
         smart lookup in order:
-        user → current → past
+        user → current → past → worker (if active & enabled)
     """
     um = UnifiedMemory()
     if not um.enabled:
@@ -161,6 +194,17 @@ def fetch_memory(category=None, key=None):
             print(f"🔁 recalled [past] → {key} = {value}")
             return value
 
+        # Check worker (if executing under worker context and enable_worker_memory is True)
+        worker_name = UnifiedMemory.get_current_worker()
+        if worker_name:
+            from src.CoreFunctions.StateGraph.registry import WorkerRegistry
+            if WorkerRegistry.is_worker_memory_enabled(worker_name):
+                worker_val = um.retrieve_memory(f"worker:{worker_name}:{key}")
+                if worker_val is not None:
+                    value = worker_val.get("value")
+                    print(f"🔁 recalled [worker:{worker_name}] → {key} = {value}")
+                    return value
+
         print(f"⚠️ recall miss → {key}")
         return None
 
@@ -168,16 +212,28 @@ def fetch_memory(category=None, key=None):
     # DIRECT CATEGORY MODE
     # -----------------------------
     if category and key:
-        category_str = str(category).lower()
-        if category_str not in ["current", "user", "past"]:
-            if "user" in category_str or "profile" in category_str:
-                category = "user"
+        category_orig = str(category).strip()
+        category_str = category_orig.lower()
+        if category_str.startswith("worker"):
+            if ":" in category_orig:
+                _, worker_name = category_orig.split(":", 1)
+                worker_name = worker_name.strip()
             else:
-                category = "past"
+                worker_name = UnifiedMemory.get_current_worker()
+                if not worker_name:
+                    raise ValueError("Worker-specific memory requested but no active worker found in execution context.")
+            db_key = f"worker:{worker_name}:{key}"
+            category = f"worker:{worker_name}"
         else:
-            category = category_str
+            if category_str not in ["current", "user", "past"]:
+                if "user" in category_str or "profile" in category_str:
+                    category = "user"
+                else:
+                    category = "past"
+            else:
+                category = category_str
+            db_key = f"{category}:{key}"
 
-        db_key = f"{category}:{key}"
         val_obj = um.retrieve_memory(db_key)
         if val_obj is not None:
             value = val_obj.get("value")
@@ -189,19 +245,30 @@ def fetch_memory(category=None, key=None):
     # FULL CATEGORY DUMP
     # -----------------------------
     if category:
-        category_str = str(category).lower()
-        if category_str not in ["current", "user", "past"]:
-            if "user" in category_str or "profile" in category_str:
-                category = "user"
+        category_orig = str(category).strip()
+        category_str = category_orig.lower()
+        if category_str.startswith("worker"):
+            if ":" in category_orig:
+                _, worker_name = category_orig.split(":", 1)
+                worker_name = worker_name.strip()
             else:
-                category = "past"
+                worker_name = UnifiedMemory.get_current_worker()
+                if not worker_name:
+                    raise ValueError("Worker-specific memory requested but no active worker found in execution context.")
+            category = f"worker:{worker_name}"
         else:
-            category = category_str
+            if category_str not in ["current", "user", "past"]:
+                if "user" in category_str or "profile" in category_str:
+                    category = "user"
+                else:
+                    category = "past"
+            else:
+                category = category_str
 
         category_keys = um.list_keys(f"{category}:*")
         dump = {}
         for ck in category_keys:
-            orig_k = ck.split(":", 1)[1]
+            orig_k = ck[len(category)+1:]
             payload = um.retrieve_memory(ck)
             if payload:
                 dump[orig_k] = {
@@ -212,22 +279,36 @@ def fetch_memory(category=None, key=None):
 
     return None
 
-
+# -------------------------
+# DELETE MEMORY
+# -------------------------
 def delete_memory(category, key):
     """
     Deletes a memory key from the database.
     """
-    category_str = str(category).lower()
-    if category_str not in ["current", "user", "past"]:
-        if "user" in category_str or "profile" in category_str:
-            category = "user"
+    category_orig = str(category).strip()
+    category_str = category_orig.lower()
+    if category_str.startswith("worker"):
+        if ":" in category_orig:
+            _, worker_name = category_orig.split(":", 1)
+            worker_name = worker_name.strip()
         else:
-            category = "past"
+            worker_name = UnifiedMemory.get_current_worker()
+            if not worker_name:
+                raise ValueError("Worker-specific memory requested but no active worker found in execution context.")
+        db_key = f"worker:{worker_name}:{key}"
+        category = f"worker:{worker_name}"
     else:
-        category = category_str
+        if category_str not in ["current", "user", "past"]:
+            if "user" in category_str or "profile" in category_str:
+                category = "user"
+            else:
+                category = "past"
+        else:
+            category = category_str
+        db_key = f"{category}:{key}"
 
     um = UnifiedMemory()
-    db_key = f"{category}:{key}"
     um.delete_memory(db_key)
     print(f"🗑️ Deleted memory key from database: {db_key}")
     return f"Deleted memory '{key}' from '{category}' memory."

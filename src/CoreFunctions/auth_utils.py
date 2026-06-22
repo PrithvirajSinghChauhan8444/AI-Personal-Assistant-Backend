@@ -45,7 +45,8 @@ SCOPES = [
     'https://www.googleapis.com/auth/tasks',
     'https://www.googleapis.com/auth/classroom.courses.readonly',
     'https://www.googleapis.com/auth/classroom.coursework.me',
-    'https://www.googleapis.com/auth/classroom.announcements.readonly'
+    'https://www.googleapis.com/auth/classroom.announcements.readonly',
+    'https://www.googleapis.com/auth/drive'
 ]
 
 def get_config_dir():
@@ -172,7 +173,14 @@ def get_valid_credentials(account: str = "personal"):
         try:
             token_data = load_encrypted_json(token_path)
             if token_data:
-                creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+                # Check if the cached token has all currently required scopes
+                token_scopes = token_data.get('scopes', [])
+                missing_scopes = [s for s in SCOPES if s not in token_scopes]
+                if missing_scopes:
+                    print(f"🔄 Token is missing required scopes: {missing_scopes}. Forcing re-authorization...")
+                    creds = None
+                else:
+                    creds = Credentials.from_authorized_user_info(token_data, SCOPES)
             else:
                 creds = None
         except Exception as e:

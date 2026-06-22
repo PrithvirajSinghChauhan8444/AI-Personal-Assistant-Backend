@@ -11,6 +11,9 @@ from typing import List, Dict, Any, Optional
 # Context variable to hold transaction ID for thread-local and async task-local isolation
 _current_transaction = contextvars.ContextVar("current_transaction", default=None)
 
+# Context variable to track the currently executing worker in the thread/task context
+_current_worker = contextvars.ContextVar("current_worker", default=None)
+
 # Regex patterns for custom XML tags in worker outputs
 ENTITY_PATTERNS = {
     "urls": [r"<url>(.*?)</url>"],
@@ -468,6 +471,24 @@ class UnifiedMemory:
             "summary": clean_text.strip(),
             "extracted_entities": {k: v for k, v in extracted.items() if v},
         }
+
+    @staticmethod
+    def get_current_worker() -> Optional[str]:
+        """Gets the active worker name from the execution context."""
+        return _current_worker.get()
+
+    @staticmethod
+    def set_current_worker(worker_name: Optional[str]):
+        """Sets the active worker name in the execution context and returns the token to reset it."""
+        return _current_worker.set(worker_name)
+
+    @staticmethod
+    def reset_current_worker(token) -> None:
+        """Resets the active worker name in the execution context using the token."""
+        try:
+            _current_worker.reset(token)
+        except Exception:
+            pass
 
     # --- CORE APIs ---
     def init_transaction(self, txn_id: str) -> None:

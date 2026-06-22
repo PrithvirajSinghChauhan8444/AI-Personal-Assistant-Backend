@@ -213,9 +213,49 @@ def memory_injector_node(state: AgentState):
     # 5. Semantic Search over Vector memory
     relevant_memories = []
     try:
-        relevant_memories = search_vector(primary_goal, k=3)
+        relevant_memories = search_vector(primary_goal, k=5)
     except Exception as e:
         print(f"  ⚠️ Error searching vector memory: {e}")
+        
+    # --- CONTEXT WINDOW BUDGETING & LATENCY CONTROL ---
+    # Hard budget limit of ~800 tokens (~3200 characters) to prevent context overflows
+    max_char_budget = 3200
+    current_char_count = 0
+    
+    budget_user_profile = {}
+    for key, val in user_profile.items():
+        if ":" in key:
+            serialized_fact = f"{key}: {val}\n"
+            fact_len = len(serialized_fact)
+            if current_char_count + fact_len <= max_char_budget:
+                budget_user_profile[key] = val
+                base_key = key.split(":", 1)[1]
+                budget_user_profile[base_key] = val
+                current_char_count += fact_len
+            else:
+                break
+        elif f"user:{key}" not in user_profile and f"past:{key}" not in user_profile and f"current:{key}" not in user_profile:
+            serialized_fact = f"{key}: {val}\n"
+            fact_len = len(serialized_fact)
+            if current_char_count + fact_len <= max_char_budget:
+                budget_user_profile[key] = val
+                current_char_count += fact_len
+            else:
+                break
+
+    budget_relevant_memories = []
+    for mem in relevant_memories:
+        serialized_mem = f"- {mem}\n"
+        mem_len = len(serialized_mem)
+        if current_char_count + mem_len <= max_char_budget:
+            budget_relevant_memories.append(mem)
+            current_char_count += mem_len
+        else:
+            print(f"  ⚠️ [Context Budget] Reached character budget limit ({current_char_count}/{max_char_budget}). Truncating remaining memories.")
+            break
+            
+    user_profile = budget_user_profile
+    relevant_memories = budget_relevant_memories
         
     working_memory["user_profile"] = user_profile
     working_memory["relevant_memories"] = relevant_memories
@@ -349,3 +389,135 @@ Use this skill when you need to execute workflows related to {", ".join(skill.ta
         
     log_node_end("Reflection", {})
     return {}
+
+from typing import Literal
+import threading
+import time
+
+class FeedbackPreference(BaseModel):
+    target_worker: str = Field(
+        description="Name of the worker this feedback applies to. Must match one of the active worker names exactly (e.g., 'ObsidianNoteWorker', 'GmailWorker', 'SystemWorker', 'BrowserWorker', 'ProductivityWorker', 'ClassroomWorker', 'MiscWorker')."
+    )
+    scope: Literal["once", "session", "persistent"] = Field(
+        description="Scope of preference: 'once' (apply to the very next run only), 'session' (apply during this chat session), or 'persistent' (long-term preference)."
+    )
+    preference: str = Field(
+        description="A concise, actionable instruction/rule for the target worker."
+    )
+
+def trigger_feedback_extraction(user_input: str, final_response: str, feedback: str):
+    """Spawns a background thread to analyze and extract worker tuning preference without blocking CLI."""
+    def run_extraction():
+        try:
+            from langchain_ollama import ChatOllama
+            from src.CoreFunctions.unified_memory import UnifiedMemory
+            from src.CoreFunctions.StateGraph.registry import WorkerRegistry
+            
+            um = UnifiedMemory()
+            if not um.enabled:
+                return
+                
+            model_name = "gemma4:e2b"
+            llm = ChatOllama(model=model_name, temperature=0)
+            structured_llm = llm.with_structured_output(FeedbackPreference)
+            
+            prompt = f"""You are the Behavior Tuning Preference Extractor.
+Your job is to analyze:
+1. The user's original goal/prompt: "{user_input}"
+2. The assistant's completed response: "{final_response}"
+3. The user's corrective feedback/preference: "{feedback}"
+
+Identify which specific worker this feedback targets. The active workers are:
+{", ".join(WorkerRegistry.get_worker_names())}
+
+Categorize the scope of the instruction:
+- 'once': A one-off instruction/tweak specifically for the next time this type of task is run.
+- 'session': A general rule to be followed during the current chat session.
+- 'persistent': A long-term preference, habit, or strict rule.
+
+Extract the preference as a clear, concise instruction.
+"""
+            
+            preference_data: FeedbackPreference = structured_llm.invoke([
+                SystemMessage(content=prompt)
+            ])
+            
+            extracted_worker = preference_data.target_worker.strip()
+            active_names = WorkerRegistry.get_worker_names()
+            
+            worker_name = None
+            
+            # 1. Exact match
+            if extracted_worker in active_names:
+                worker_name = extracted_worker
+                
+            # 2. Case-insensitive and space-normalization match
+            if not worker_name:
+                normalized_target = extracted_worker.lower().replace(" ", "").replace("_", "").replace("-", "")
+                normalized_target = normalized_target.replace("worker", "")
+                
+                for name in active_names:
+                    norm_active = name.lower().replace(" ", "").replace("_", "").replace("-", "").replace("worker", "")
+                    if normalized_target == norm_active:
+                        worker_name = name
+                        break
+            
+            # 3. Fuzzy match fallback
+            if not worker_name:
+                import difflib
+                close_matches = difflib.get_close_matches(extracted_worker, active_names, n=1, cutoff=0.5)
+                if close_matches:
+                    worker_name = close_matches[0]
+                    
+            # 4. Keyword heuristic fallback
+            if not worker_name:
+                lowered_feedback = (feedback.lower() + " " + preference_data.preference.lower() + " " + extracted_worker.lower())
+                if any(x in lowered_feedback for x in ["drive", "download", "google drive"]):
+                    worker_name = "GoogleDriveWorker"
+                elif any(x in lowered_feedback for x in ["gmail", "email", "mail"]):
+                    worker_name = "GmailWorker"
+                elif any(x in lowered_feedback for x in ["browser", "web", "page", "url"]):
+                    worker_name = "BrowserWorker"
+                elif any(x in lowered_feedback for x in ["classroom", "course"]):
+                    worker_name = "ClassroomWorker"
+                elif any(x in lowered_feedback for x in ["github", "git", "repo"]):
+                    worker_name = "GithubWorker"
+                elif any(x in lowered_feedback for x in ["system", "terminal", "command", "process"]):
+                    worker_name = "SystemWorker"
+                else:
+                    worker_name = "MiscWorker"
+            
+            if worker_name:
+                db_key = f"worker_feedback:{worker_name}"
+                existing = um.retrieve_memory(db_key) or {}
+                
+                new_pref = {
+                    "preference": preference_data.preference,
+                    "scope": preference_data.scope,
+                    "timestamp": time.time()
+                }
+                
+                preferences_list = existing.get("preferences", [])
+                preferences_list.append(new_pref)
+                
+                is_persistent = preference_data.scope == "persistent"
+                um.store_memory(
+                    db_key,
+                    {"preferences": preferences_list},
+                    persistent=is_persistent
+                )
+                print(f"\n🧠 [Feedback Loop] Learnt preference for '{worker_name}' (extracted: '{extracted_worker}'): \"{preference_data.preference}\" (Scope: {preference_data.scope})")
+            else:
+                print(f"\n⚠️ [Feedback Loop] Ignored feedback: Extracted worker '{extracted_worker}' is not in active workers list.")
+        except Exception as e:
+            try:
+                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                log_path = os.path.join(base_dir, "Memory", "reflection.log")
+                os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(f"\nFeedback Loop Extraction Error: {e}\n")
+            except Exception:
+                pass
+
+    thread = threading.Thread(target=run_extraction, daemon=True)
+    thread.start()
