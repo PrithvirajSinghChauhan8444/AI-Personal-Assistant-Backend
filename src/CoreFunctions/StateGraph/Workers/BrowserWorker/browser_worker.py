@@ -45,6 +45,14 @@ User Goal / Task: {task["description"]}
 Working Memory Context:
 {json.dumps(state.get("working_memory", {}), indent=2)}
 
+CRITICAL PLANNING RULES FOR EFFICIENCY & SPEED:
+1. **Unified Memory Cache Check**: Instruct workers to check if the target website's deep URL is already cached in Unified Memory by calling `recall(key='url_<domain_with_underscores>_<purpose>')`. If found and valid, navigate directly to that URL.
+2. **Homepage-First Navigation**: If no cached URL is present, instruct workers to navigate to the official homepage of the site first (e.g. 'https://www.fifa.com') rather than trying to guess, estimate, or construct deep subpage URLs.
+3. **Deep Link Caching**: Instruct the sub-workers to save successful deep page URLs they find to Unified Memory by calling `remember(key='url_<domain_with_underscores>_<purpose>', value='<url>', category='past')` for future instant retrieval. Note: Do not use dots or colons in the key name to comply with strict key validation rules.
+4. **Prefer web_search for Search Queries**: If the task requires searching the web, looking up information, finding a URL, or retrieving dates/weather/fixtures, assign a subtask to call the `web_search` tool directly (e.g. '[BrowserNavigator] Search the web for <query> using web_search'). Do NOT route to search engines like Google/Bing or fill search input fields manually in the browser. Using the `web_search` tool is 10x faster and avoids bot detection.
+5. **Retrieve Actual Fixtures/Details**: If the user asks for fixtures, matches, or specific lists, ensure the subtasks explicitly request extracting the actual matchups (teams, dates, locations, times), not just high-level schedules or dates.
+6. **Minimize Browser Actions**: Only plan manual navigation, clicks, and inputs when interacting with a web application (e.g., logging in, scheduling, or posting content) or when a direct search fails to provide the answer.
+
 Create a detailed sequential sub-plan to execute this goal.
 """
         try:

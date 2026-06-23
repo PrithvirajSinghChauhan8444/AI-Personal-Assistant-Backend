@@ -614,18 +614,129 @@ def web_search(query: str, max_results: int = 5) -> str:
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: web_search")
     print(f"   Args: query={query}")
+    
+    # 1. Try Parallel Search MCP via subprocess
+    try:
+        import subprocess
+        import uuid
+        
+        print("   Using Parallel Search MCP...")
+        proc = subprocess.Popen(
+            ["npx", "-y", "mcp-remote", "https://search.parallel.ai/mcp"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1
+        )
+        try:
+            # Step 1: Initialize handshake
+            init_req = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "python-client", "version": "1.0.0"}
+                }
+            }
+            proc.stdin.write(json.dumps(init_req) + "\n")
+            proc.stdin.flush()
+            
+            # Read initialize response
+            init_res_line = proc.stdout.readline()
+            if not init_res_line:
+                raise Exception("No initialize response from MCP server")
+                
+            # Send initialized notification
+            initialized_notification = {
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized"
+            }
+            proc.stdin.write(json.dumps(initialized_notification) + "\n")
+            proc.stdin.flush()
+            
+            # Step 2: Call web_search tool
+            session_id = str(uuid.uuid4())
+            call_req = {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": "web_search",
+                    "arguments": {
+                        "objective": f"Find information to answer: {query}",
+                        "search_queries": [query],
+                        "session_id": session_id,
+                        "model_name": "gemini-2.5-pro"
+                    }
+                }
+            }
+            proc.stdin.write(json.dumps(call_req) + "\n")
+            proc.stdin.flush()
+            
+            # Read tool call response
+            call_res_line = proc.stdout.readline()
+            if not call_res_line:
+                raise Exception("No response from web_search tool call")
+                
+            res = json.loads(call_res_line)
+            if "error" in res:
+                raise Exception(f"MCP error: {res['error']}")
+                
+            # Parse output
+            result = res.get("result", {})
+            content = result.get("content", [])
+            if not content:
+                raise Exception("No content returned in MCP result")
+                
+            text_val = content[0].get("text", "")
+            try:
+                parsed_text = json.loads(text_val)
+                results = parsed_text.get("results", [])
+                formatted = []
+                for r in results[:max_results]:
+                    title = r.get("title", "No Title")
+                    url = r.get("url", "")
+                    excerpts = r.get("excerpts", [])
+                    snippet = "\n".join(excerpts) if isinstance(excerpts, list) else str(excerpts)
+                    formatted.append(f"Title: {title}\nURL: {url}\nSnippet: {snippet}\n")
+                if formatted:
+                    return "\n".join(formatted)[:3000]
+            except Exception:
+                # If not JSON, return raw text
+                if text_val:
+                    return text_val[:3000]
+            
+            raise Exception("No formatted results found in Parallel Search output")
+            
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+    except Exception as e:
+        print(f"   ⚠️ Parallel Search MCP failed: {e}. Falling back to DuckDuckGo...")
+
+    # 2. Fallback to DuckDuckGo search
     try:
         import warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            from duckduckgo_search import DDGS
+            try:
+                from ddgs import DDGS
+            except ImportError:
+                from duckduckgo_search import DDGS
+            
             results = []
             with DDGS() as ddgs:
                 for r in ddgs.text(query, max_results=max_results):
                     results.append(f"Title: {r['title']}\nURL: {r['href']}\nSnippet: {r['body']}\n")
         if not results:
             return "No search results found."
-        return "\n".join(results)[:3000] # Truncate for token safety
+        return "\n".join(results)[:3000]
     except Exception as e:
         return f"Error executing web search: {e}"
 
@@ -1198,6 +1309,134 @@ _browser = None
 _browser_context = None
 _page = None
 
+async def _apply_stealth_scripts(context):
+    stealth_js = """
+    () => {
+        try {
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        } catch (e) {}
+
+        window.chrome = {
+            runtime: {},
+            loadTimes: function() {},
+            csi: function() {},
+            app: {}
+        };
+
+        try {
+            const mockPlugins = [
+                { name: 'PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                { name: 'Chromium PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' }
+            ];
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => mockPlugins
+            });
+        } catch (e) {}
+
+        try {
+            const originalQuery = navigator.permissions.query;
+            navigator.permissions.query = (parameters) => 
+                parameters.name === 'notifications' ? 
+                    Promise.resolve({ state: Notification.permission }) : 
+                    originalQuery(parameters);
+        } catch (e) {}
+
+        try {
+            const getParameter = WebGLRenderingContext.prototype.getParameter;
+            WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                if (parameter === 37445) {
+                    return 'Intel Inc.';
+                }
+                if (parameter === 37446) {
+                    return 'Intel(R) Iris(R) Xe Graphics';
+                }
+                return getParameter.call(this, parameter);
+            };
+        } catch (e) {}
+    }
+    """
+    await context.add_init_script(stealth_js)
+
+async def _human_click(page, selector):
+    import random
+    import asyncio
+    
+    element = await page.wait_for_selector(selector, timeout=10000)
+    box = await element.bounding_box()
+    if not box:
+        await page.click(selector, timeout=10000)
+        return
+        
+    target_x = box['x'] + box['width'] * random.uniform(0.2, 0.8)
+    target_y = box['y'] + box['height'] * random.uniform(0.2, 0.8)
+    
+    start_x = random.randint(0, 1024)
+    start_y = random.randint(0, 768)
+    
+    steps = 10
+    for i in range(steps + 1):
+        t = i / steps
+        mid_x = (start_x + target_x) / 2
+        mid_y = (start_y + target_y) / 2
+        control_x = mid_x + random.uniform(-100, 100)
+        control_y = mid_y + random.uniform(-100, 100)
+        
+        x = (1 - t)**2 * start_x + 2 * (1 - t) * t * control_x + t**2 * target_x
+        y = (1 - t)**2 * start_y + 2 * (1 - t) * t * control_y + t**2 * target_y
+        
+        await page.mouse.move(x, y)
+        await asyncio.sleep(random.uniform(0.01, 0.03))
+        
+    await asyncio.sleep(random.uniform(0.1, 0.3))
+    
+    await page.mouse.down()
+    await asyncio.sleep(random.uniform(0.05, 0.15))
+    await page.mouse.up()
+
+async def _human_type(page, selector, text):
+    import random
+    import asyncio
+    
+    element = await page.wait_for_selector(selector, timeout=10000)
+    await element.click()
+    
+    await page.keyboard.press("Control+A")
+    await page.keyboard.press("Backspace")
+    await asyncio.sleep(random.uniform(0.1, 0.2))
+    
+    for char in text:
+        if random.random() < 0.03 and char.isalnum():
+            wrong_char = random.choice("abcdefghijklmnopqrstuvwxyz")
+            await page.keyboard.type(wrong_char)
+            await asyncio.sleep(random.uniform(0.1, 0.25))
+            await page.keyboard.press("Backspace")
+            await asyncio.sleep(random.uniform(0.15, 0.3))
+            
+        await page.keyboard.type(char)
+        if char in ".,!?":
+            delay = random.uniform(0.3, 0.6)
+        elif char == " ":
+            delay = random.uniform(0.15, 0.3)
+        else:
+            delay = random.uniform(0.05, 0.15)
+        await asyncio.sleep(delay)
+
+async def _human_scroll(page, direction="down", distance=300):
+    import random
+    import asyncio
+    import math
+    
+    sign = 1 if direction == "down" else -1
+    steps = 15
+    for i in range(steps + 1):
+        t = i / steps
+        multiplier = 0.5 * (1 - math.cos(t * math.pi))
+        await page.evaluate(f"window.scrollBy(0, {distance / steps * sign})")
+        await asyncio.sleep(random.uniform(0.015, 0.03))
+
 async def _get_browser_page():
     global _playwright_ctx, _browser, _browser_context, _page
     if _page is None or _page.is_closed():
@@ -1253,6 +1492,7 @@ async def _get_browser_page():
                 print(f"🌐 [Browser] Connecting to active browser session over CDP at {cdp_url}...", flush=True)
                 _browser = await _playwright_ctx.chromium.connect_over_cdp(cdp_url)
                 _browser_context = _browser.contexts[0] if _browser.contexts else await _browser.new_context()
+                await _apply_stealth_scripts(_browser_context)
             
             # Reuse existing active page/tab if available
             if _browser_context.pages:
@@ -1297,6 +1537,7 @@ async def _get_browser_page():
                     executable_path=executable_path if executable_path else None,
                     args=launch_args
                 )
+                await _apply_stealth_scripts(_browser_context)
             else:
                 if _browser is None:
                     print(f"🌐 [Browser] Launching {browser_type_str} (headless={headless_mode}, slow_mo={slow_mo_ms}ms)...", flush=True)
@@ -1314,6 +1555,7 @@ async def _get_browser_page():
                     viewport={"width": 1280, "height": 720},
                     user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" if browser_type_str == "chromium" else None
                 )
+                await _apply_stealth_scripts(_browser_context)
         
         _page = await _browser_context.new_page()
     return _page
@@ -1570,7 +1812,7 @@ async def browser_click(element_id: int, offset: int = 0, limit: int = 30) -> st
     try:
         page = await _get_browser_page()
         selector = f'[data-agent-id="{element_id}"]'
-        await page.click(selector, timeout=10000)
+        await _human_click(page, selector)
         try:
             await page.wait_for_load_state("networkidle", timeout=4000)
         except Exception:
@@ -1593,7 +1835,7 @@ async def browser_click_selector(selector: str, offset: int = 0, limit: int = 30
     print(f"   Args: selector={selector}, offset={offset}, limit={limit}")
     try:
         page = await _get_browser_page()
-        await page.click(selector, timeout=10000)
+        await _human_click(page, selector)
         try:
             await page.wait_for_load_state("networkidle", timeout=4000)
         except Exception:
@@ -1618,7 +1860,7 @@ async def browser_input(element_id: int, text: str, offset: int = 0, limit: int 
     try:
         page = await _get_browser_page()
         selector = f'[data-agent-id="{element_id}"]'
-        await page.fill(selector, text, timeout=10000)
+        await _human_type(page, selector, text)
         await page.wait_for_timeout(1000)
         elements_str = await _get_elements_formatted(offset=offset, limit=limit)
         return elements_str
@@ -1638,7 +1880,7 @@ async def browser_input_selector(selector: str, text: str, offset: int = 0, limi
     print(f"   Args: selector={selector}, text={text}, offset={offset}, limit={limit}")
     try:
         page = await _get_browser_page()
-        await page.fill(selector, text, timeout=10000)
+        await _human_type(page, selector, text)
         await page.wait_for_timeout(1000)
         elements_str = await _get_elements_formatted(offset=offset, limit=limit)
         return elements_str

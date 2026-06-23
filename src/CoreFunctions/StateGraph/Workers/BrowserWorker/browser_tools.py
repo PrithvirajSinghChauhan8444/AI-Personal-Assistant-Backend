@@ -4,7 +4,7 @@ from src.CoreFunctions.tools import (
     browser_navigate, browser_click, browser_click_selector,
     browser_input, browser_input_selector, browser_go_back,
     browser_read_current_page, browser_read_page_content,
-    web_search
+    web_search, remember, recall
 )
 
 human_intervention_tool = StructuredTool.from_function(
@@ -24,5 +24,7 @@ browser_tools = [
     StructuredTool.from_function(name="browser_read_current_page", description="Read the current active tab's URL, page title, and interactive elements without navigating", coroutine=browser_read_current_page),
     StructuredTool.from_function(name="browser_read_page_content", description="Read or query the textual content (paragraphs, headings) of the current page in chunks or using a local LLM summary/query mode", coroutine=browser_read_page_content),
     StructuredTool.from_function(web_search),
+    StructuredTool.from_function(remember),
+    StructuredTool.from_function(recall),
     human_intervention_tool,
 ]
