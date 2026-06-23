@@ -302,7 +302,7 @@ def reflection_node(state: AgentState):
         
     try:
         from langchain_ollama import ChatOllama
-        model_name = "gemma4:e2b"
+        model_name = "gemma4:e4b"
         log_message(f"Reflection: Invoking model {model_name} for self-reflection & skill extraction.")
         llm = ChatOllama(model=model_name, temperature=0)
         structured_llm = llm.with_structured_output(MemoryReflection)
@@ -417,7 +417,7 @@ def trigger_feedback_extraction(user_input: str, final_response: str, feedback: 
             if not um.enabled:
                 return
                 
-            model_name = "gemma4:e2b"
+            model_name = "gemma4:e4b"
             llm = ChatOllama(model=model_name, temperature=0)
             structured_llm = llm.with_structured_output(FeedbackPreference)
             

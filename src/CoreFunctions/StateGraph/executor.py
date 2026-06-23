@@ -384,7 +384,7 @@ def _get_worker_feedback_instructions(worker_name: str) -> str:
         
     return "\n### USER-TUNED PREFERENCES & BEHAVIOR:\nEnsure you follow these specific instructions from the user when executing this task:\n" + "\n".join(instructions) + "\n"
 
-def _run_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict, depends_on: list = None):
+def _run_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict, depends_on: list = None, recursion_limit: int = 100):
     """Runs a pre-compiled ReAct agent in complete isolation, returning only the final answer."""
     from src.CoreFunctions.logger import log_worker_start, log_worker_thought, log_worker_tool_call, log_worker_tool_response, log_worker_end
     
@@ -463,7 +463,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
     success = False
     try:
         last_ai_message = None
-        for chunk in agent.stream({"messages": [HumanMessage(content=prompt)]}):
+        for chunk in agent.stream({"messages": [HumanMessage(content=prompt)]}, config={"recursion_limit": recursion_limit}):
             for node_name, node_update in chunk.items():
                 messages = node_update.get("messages", [])
                 for msg in messages:
@@ -520,7 +520,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         
         if not final_message:
             print(f"  ⚠️ [{worker_name}] Warning: Final message not captured via stream. Triggering fallback invoke...")
-            result = agent.invoke({"messages": [HumanMessage(content=prompt)]})
+            result = agent.invoke({"messages": [HumanMessage(content=prompt)]}, config={"recursion_limit": recursion_limit})
             content = result["messages"][-1].content
             if isinstance(content, list):
                 text_parts = []
@@ -545,7 +545,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         if vis and vis.active:
             vis.is_paused = False
 
-async def _run_async_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict, depends_on: list = None):
+async def _run_async_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict, depends_on: list = None, recursion_limit: int = 100):
     """Runs a pre-compiled async ReAct agent in complete isolation, returning only the final answer."""
     from src.CoreFunctions.logger import log_worker_start, log_worker_thought, log_worker_tool_call, log_worker_tool_response, log_worker_end
     
@@ -624,7 +624,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
     success = False
     try:
         last_ai_message = None
-        async for chunk in agent.astream({"messages": [HumanMessage(content=prompt)]}):
+        async for chunk in agent.astream({"messages": [HumanMessage(content=prompt)]}, config={"recursion_limit": recursion_limit}):
             for node_name, node_update in chunk.items():
                 messages = node_update.get("messages", [])
                 for msg in messages:
@@ -660,7 +660,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
                     
                     elif msg.type == "tool":
                         print(f"  📥 [{worker_name}] Tool \033[1;32m{msg.name}\033[0m successfully returned response.")
-                        log_worker_tool_call(worker_name, msg.name, getattr(msg, "content", ""))
+                        log_worker_tool_response(worker_name, msg.name, getattr(msg, "content", ""))
                     
                     if msg.type == "ai":
                         last_ai_message = msg
@@ -681,7 +681,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         
         if not final_message:
             print(f"  ⚠️ [{worker_name}] Warning: Final message not captured via stream. Triggering fallback invoke...")
-            result = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
+            result = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]}, config={"recursion_limit": recursion_limit})
             content = result["messages"][-1].content
             if isinstance(content, list):
                 text_parts = []
