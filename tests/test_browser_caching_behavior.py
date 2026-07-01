@@ -8,10 +8,11 @@ import shutil
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from src.CoreFunctions.StateGraph.Workers.BrowserWorker.browser_tools import browser_tools
-from src.CoreFunctions.unified_memory import UnifiedMemory
-from src.CoreFunctions.memory import store_memory, fetch_memory, delete_memory
-from src.CoreFunctions.tools import remember, recall
+from src.CoreFunctions.StateGraph.Workers.BrowserWorker.browser_worker_tools import browser_tools
+from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
+from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory, delete_memory
+from src.CoreFunctions.StateGraph.Workers.MemoryWorker.memory_worker_tools.memory_worker_tool_remember import remember
+from src.CoreFunctions.StateGraph.Workers.MemoryWorker.memory_worker_tools.memory_worker_tool_recall import recall
 
 class TestBrowserCachingBehavior(unittest.TestCase):
     def setUp(self):

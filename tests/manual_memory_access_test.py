@@ -10,9 +10,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src'
 # Load .env file
 load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env')), override=True)
 
-from src.CoreFunctions.unified_memory import UnifiedMemory
-from src.CoreFunctions.memory import store_memory, fetch_memory, delete_memory
-from src.CoreFunctions.vector_memory import store_vector, delete_vector_fact, search_vector
+from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
+from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory, delete_memory
+from src.CoreFunctions.Infrastructure.vector_memory import store_vector, delete_vector_fact, search_vector
 from src.CoreFunctions.StateGraph.main_graph import app
 
 def run_test():

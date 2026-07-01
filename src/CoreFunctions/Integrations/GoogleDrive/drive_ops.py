@@ -3,7 +3,7 @@ import io
 import sys
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
-from CoreFunctions.auth_utils import get_valid_credentials
+from src.CoreFunctions.Infrastructure.auth_utils import get_valid_credentials
 
 def get_drive_service(account: str = "personal"):
     """Authenticates and returns the Google Drive API service client for a specific account."""

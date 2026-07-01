@@ -7,12 +7,11 @@ from unittest.mock import patch, MagicMock
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-# Prevent duplicate module objects being loaded under different namespaces
-import src.CoreFunctions.unified_memory
-sys.modules['CoreFunctions.unified_memory'] = src.CoreFunctions.unified_memory
+import src.CoreFunctions.Infrastructure.unified_memory
+sys.modules['CoreFunctions.unified_memory'] = src.CoreFunctions.Infrastructure.unified_memory
 
-import src.CoreFunctions.memory
-sys.modules['CoreFunctions.memory'] = src.CoreFunctions.memory
+import src.CoreFunctions.Infrastructure.memory
+sys.modules['CoreFunctions.memory'] = src.CoreFunctions.Infrastructure.memory
 
 import src.CoreFunctions.StateGraph.registry
 sys.modules['CoreFunctions.StateGraph.registry'] = src.CoreFunctions.StateGraph.registry

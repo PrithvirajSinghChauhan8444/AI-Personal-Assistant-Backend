@@ -9,7 +9,7 @@ src_dir = os.path.dirname(os.path.dirname(current_dir))
 if src_dir not in sys.path:
     sys.path.append(src_dir)
 
-from CoreFunctions.auth_utils import get_valid_credentials
+from src.CoreFunctions.Infrastructure.auth_utils import get_valid_credentials
 
 def get_service(account: str = "personal"):
     """

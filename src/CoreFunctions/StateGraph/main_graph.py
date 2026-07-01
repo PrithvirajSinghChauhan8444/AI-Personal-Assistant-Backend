@@ -18,7 +18,7 @@ from src.CoreFunctions.StateGraph.system_state import system_state_node
 from src.CoreFunctions.StateGraph.orchestrator import orchestrator_node, orchestrator_router
 from src.CoreFunctions.StateGraph.finalizer import output_finalizer_node
 from src.CoreFunctions.StateGraph.memory_nodes import memory_injector_node, reflection_node
-from src.CoreFunctions.unified_memory import UnifiedMemory
+from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
 
 # Load registry and force decorator execution by scanning workers directory
 from src.CoreFunctions.StateGraph.registry import WorkerRegistry, scan_and_register_workers
@@ -87,12 +87,14 @@ def create_graph():
             workflow.add_edge(name, "Orchestrator")
     
     # OutputFinalizer completes the user-facing graph synchronously
-    workflow.add_edge("OutputFinalizer", END)
+    workflow.add_edge("OutputFinalizer","Reflection")
+    workflow.add_edge("Reflection", END)
     
     # Checkpointer for state persistence
     memory = MemorySaver()
     
     # Compile Graph
+    
     return workflow.compile(checkpointer=memory)
 
 
@@ -101,6 +103,7 @@ app = create_graph()
 
 import time
 import threading
+print(app.get_graph().draw_mermaid())
 
 class CLIStatusVisualizer:
     instance = None
@@ -255,7 +258,7 @@ def save_session_context_async(chat_history, working_memory, completed_tasks):
                 from langchain_core.messages import SystemMessage, HumanMessage
                 
                 llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0)
-                summary_prompt = """
+                summary_prompt = """reflection_node
                 You are a context saver. Summarize the user's goals and what actions the assistant completed in this session in 2-3 concise sentences.
                 Focus on outcomes: what files were created, what decisions were made, and what data was retrieved.
                 Do not include system instructions or formatting tags. Keep it plain text.
@@ -390,7 +393,7 @@ def run_graph_execution(initial_state, config, thread_id, chat_history_list):
             state_snapshot = dict(state_data.values)
             def run_background_reflection(snap):
                 try:
-                    from src.CoreFunctions.logger import set_thread_session_id
+                    from src.CoreFunctions.Infrastructure.logger import set_thread_session_id
                     set_thread_session_id(thread_id)
                     reflection_node(snap)
                 except Exception as ex:
@@ -425,7 +428,7 @@ def run_graph_execution(initial_state, config, thread_id, chat_history_list):
         clear_interrupted_task_checkpoint()
 
         # End logging session successfully
-        from src.CoreFunctions.logger import end_session_logger
+        from src.CoreFunctions.Infrastructure.logger import end_session_logger
         end_session_logger(final_resp, success=True)
         
         return working_memory_latest, completed_tasks_latest
@@ -433,7 +436,7 @@ def run_graph_execution(initial_state, config, thread_id, chat_history_list):
     except Exception as e:
         visualizer.stop()
         print(f"❌ Execution Error: {e}")
-        from src.CoreFunctions.logger import log_error, end_session_logger
+        from src.CoreFunctions.Infrastructure.logger import log_error, end_session_logger
         log_error("main_graph", str(e))
         end_session_logger("", success=False)
         raise e
@@ -558,7 +561,7 @@ def process_request_interactive():
                             "chat_history": recovered_task.get("chat_history", chat_history)
                         }
                         
-                        from src.CoreFunctions.logger import init_session_logger
+                        from src.CoreFunctions.Infrastructure.logger import init_session_logger
                         init_session_logger(thread_id, f"Resuming: {goal}")
                         
                         try:
@@ -650,7 +653,7 @@ def process_request_interactive():
         save_interrupted_task_checkpoint(initial_state, status="initializing")
 
         # Initialize session logger for execution tracing
-        from src.CoreFunctions.logger import init_session_logger
+        from src.CoreFunctions.Infrastructure.logger import init_session_logger
         init_session_logger(thread_id, user_input)
 
         try:
@@ -675,3 +678,5 @@ def process_request_interactive():
 
 if __name__ == "__main__":
     process_request_interactive()
+
+workflow.add_edge("condition_MemoryInjector_memory_injector_router", "OutputFinalizer")

@@ -1,6 +1,6 @@
 from src.CoreFunctions.StateGraph.registry import BaseWorker, WorkerRegistry
 from src.CoreFunctions.StateGraph.Workers.ClassroomWorker.classroom_prompt import SYSTEM_PROMPT
-from src.CoreFunctions.StateGraph.Workers.ClassroomWorker.classroom_tools import classroom_tools
+from src.CoreFunctions.StateGraph.Workers.ClassroomWorker.classroom_worker_tools import classroom_tools
 
 @WorkerRegistry.register
 class ClassroomWorker(BaseWorker):

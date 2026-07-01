@@ -6,10 +6,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))) 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))     # Add src/ for CoreFunctions imports
 
 
-from src.CoreFunctions.security_utils import is_path_safe, is_command_safe, is_extension_safe
+from src.CoreFunctions.Infrastructure.security_utils import is_path_safe, is_command_safe, is_extension_safe
 from src.CoreFunctions.Integrations.FileOperations.file_manager import write_file, read_file
 from src.CoreFunctions.Integrations.SystemControl.execution import run_terminal_command, run_python_script
-from src.CoreFunctions.file_vector_store import index_file, search_files_semantically, rag_qa_file
+from src.CoreFunctions.Infrastructure.file_vector_store import index_file, search_files_semantically, rag_qa_file
 
 def run_tests():
     print("🧪 Starting Sandbox Security & RAG Pipeline Tests...")

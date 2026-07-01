@@ -21,6 +21,9 @@ class TestWorkersConfig(unittest.TestCase):
         self.backup_path = self.config_path + ".bak"
         if os.path.exists(self.config_path):
             os.replace(self.config_path, self.backup_path)
+        # Clear executor's model cache
+        import src.CoreFunctions.StateGraph.executor as executor
+        executor._model_cache.clear()
 
     def tearDown(self):
         # Restore backup config

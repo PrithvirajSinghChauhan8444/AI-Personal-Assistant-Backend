@@ -9,7 +9,7 @@ from src.CoreFunctions.StateGraph.Workers.ObsidianWorker.obsidian_prompt import 
     SYSTEM_PROMPT_OBSIDIAN_CANVAS,
     SYSTEM_PROMPT_OBSIDIAN_REFACTOR
 )
-from src.CoreFunctions.StateGraph.Workers.ObsidianWorker.obsidian_tools import obsidian_tools
+from src.CoreFunctions.StateGraph.Workers.ObsidianWorker.obsidian_worker_tools import obsidian_tools
 
 class ObsidianSubTask(BaseModel):
     id: str = Field(description="Subtask ID (e.g., 'obs_1')")
@@ -25,9 +25,9 @@ class ObsidianSubPlan(BaseModel):
     subtasks: List[ObsidianSubTask] = Field(description="Sequential list of specialized tasks to execute")
 
 def obsidian_worker_node(state: AgentState):
-    from src.CoreFunctions.logger import log_node_start, log_node_end, log_error, log_message
+    from src.CoreFunctions.Infrastructure.logger import log_node_start, log_node_end, log_error, log_message
     from src.CoreFunctions.StateGraph.executor import llm, _run_ephemeral_agent, _get_active_task, _update_state_completed
-    from src.CoreFunctions.tools import HumanInterventionAbortError, HumanInterventionReplanError
+    from src.CoreFunctions.SharedTools import HumanInterventionAbortError, HumanInterventionReplanError
 
     log_node_start("ObsidianWorker", state)
     

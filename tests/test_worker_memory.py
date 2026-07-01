@@ -11,17 +11,17 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 # Prevent duplicate module objects being loaded under different namespaces
-import src.CoreFunctions.unified_memory
-sys.modules['CoreFunctions.unified_memory'] = src.CoreFunctions.unified_memory
+import src.CoreFunctions.Infrastructure.unified_memory
+sys.modules['CoreFunctions.unified_memory'] = src.CoreFunctions.Infrastructure.unified_memory
 
-import src.CoreFunctions.memory
-sys.modules['CoreFunctions.memory'] = src.CoreFunctions.memory
+import src.CoreFunctions.Infrastructure.memory
+sys.modules['CoreFunctions.memory'] = src.CoreFunctions.Infrastructure.memory
 
 import src.CoreFunctions.StateGraph.registry
 sys.modules['CoreFunctions.StateGraph.registry'] = src.CoreFunctions.StateGraph.registry
 
-from src.CoreFunctions.unified_memory import UnifiedMemory
-from src.CoreFunctions.memory import store_memory, fetch_memory, delete_memory
+from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
+from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory, delete_memory
 from src.CoreFunctions.StateGraph.registry import WorkerRegistry, BaseWorker
 
 class MockTestWorker(BaseWorker):

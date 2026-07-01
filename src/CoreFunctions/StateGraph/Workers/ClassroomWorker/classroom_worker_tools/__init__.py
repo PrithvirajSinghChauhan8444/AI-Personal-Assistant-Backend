@@ -1,0 +1,17 @@
+from src.CoreFunctions.SharedTools import human_intervention_tool
+from .classroom_worker_tool_fetch_courses import classroom_worker_tool_fetch_courses
+from .classroom_worker_tool_fetch_assignments import classroom_worker_tool_fetch_assignments
+from .classroom_worker_tool_fetch_announcements import classroom_worker_tool_fetch_announcements
+from .classroom_worker_tool_fetch_assignment_details import classroom_worker_tool_fetch_assignment_details
+from .classroom_worker_tool_download_materials import classroom_worker_tool_download_materials
+from .classroom_worker_tool_submit_assignment import classroom_worker_tool_submit_assignment
+
+classroom_tools = [
+    classroom_worker_tool_fetch_courses,
+    classroom_worker_tool_fetch_assignments,
+    classroom_worker_tool_fetch_announcements,
+    classroom_worker_tool_fetch_assignment_details,
+    classroom_worker_tool_download_materials,
+    classroom_worker_tool_submit_assignment,
+    human_intervention_tool
+]

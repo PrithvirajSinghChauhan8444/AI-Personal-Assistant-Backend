@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from src.CoreFunctions.StateGraph.registry import BaseWorker, WorkerRegistry
 from src.CoreFunctions.StateGraph.state import AgentState
 from src.CoreFunctions.StateGraph.Workers.BrowserWorker.browser_prompt import SYSTEM_PROMPT_BROWSER_NAVIGATOR, SYSTEM_PROMPT_BROWSER_READER
-from src.CoreFunctions.StateGraph.Workers.BrowserWorker.browser_tools import browser_tools
+from src.CoreFunctions.StateGraph.Workers.BrowserWorker.browser_worker_tools import browser_tools
 
 class BrowserSubTask(BaseModel):
     id: str = Field(description="Subtask ID (e.g., 'br_1')")
@@ -22,9 +22,9 @@ class BrowserSubPlan(BaseModel):
     subtasks: List[BrowserSubTask] = Field(description="Sequential list of browser subtasks")
 
 def browser_worker_node(state: AgentState):
-    from src.CoreFunctions.logger import log_node_start, log_node_end, log_error, log_message
-    from src.CoreFunctions.StateGraph.executor import llm, _run_async_ephemeral_agent, _get_active_task, _update_state_completed
-    from src.CoreFunctions.tools import HumanInterventionAbortError, HumanInterventionReplanError
+    from src.CoreFunctions.Infrastructure.logger import log_node_start, log_node_end, log_error, log_message
+    from src.CoreFunctions.StateGraph.executor import local_llm,llm, _run_async_ephemeral_agent, _get_active_task, _update_state_completed
+    from src.CoreFunctions.SharedTools import HumanInterventionAbortError, HumanInterventionReplanError
 
     log_node_start("BrowserWorker", state)
     
@@ -57,7 +57,7 @@ Create a detailed sequential sub-plan to execute this goal.
 """
         try:
             log_message("BrowserWorker: Invoking model for structured subtask plan decomposition.")
-            structured_llm = llm.with_structured_output(BrowserSubPlan)
+            structured_llm = local_llm.with_structured_output(BrowserSubPlan)
             plan: BrowserSubPlan = structured_llm.invoke(manager_prompt)
             print(f"  🤔 [Browser Manager Thought]: {plan.reasoning}")
             print(f"  📋 Generated subtasks for Browser team:")
@@ -77,11 +77,20 @@ Create a detailed sequential sub-plan to execute this goal.
                 ]
             )
 
-        # Run the plan asynchronously
+        # Run the plan — resolve sub-workers from parent's private sub_workers list
         async def run_plan():
+            # Build a local name-to-worker map so sub-workers are resolved without
+            # touching the global WorkerRegistry.
+            parent_worker = BrowserWorker()
+            sub_worker_map = {sw.name: sw for sw in parent_worker.sub_workers}
+
             shared_memory = dict(state.get("working_memory", {}))
             for st in plan.subtasks:
-                print(f"\n🚀 [Browser Manager] Activating Worker: {st.assigned_worker} ({st.id})...")
+                print(f"\n🚀 [Browser Manager] Activating Sub-Worker: {st.assigned_worker} ({st.id})...")
+                if st.assigned_worker not in sub_worker_map:
+                    print(f"  ⚠️ Unknown sub-worker '{st.assigned_worker}'. Skipping subtask {st.id}.")
+                    shared_memory[st.id] = f"Skipped: unknown sub-worker '{st.assigned_worker}'"
+                    continue
                 output = await _run_async_ephemeral_agent(st.assigned_worker, st.description, shared_memory)
                 shared_memory[st.id] = output
             return shared_memory
@@ -156,30 +165,22 @@ class BrowserWorker(BaseWorker):
     instructions = SYSTEM_PROMPT_BROWSER_NAVIGATOR
     tools = browser_tools
     categories = ["browser", "information-retrieval", "BrowserWorker"]
-    
+
     @property
     def routing_rules(self) -> List[str]:
         return [
             "**Browser/Web Automation Workflow**:\n   - Web automation sessions (e.g. navigating to a website, searching, clicking, logging in, or playing media) MUST be kept as a single, combined subtask assigned to BrowserWorker.\n   - Do NOT break a single web session into multiple sequential BrowserWorker subtasks (e.g. step 1 navigate, step 2 search, step 3 click), because the browser page state and context are lost between different worker runs. Keep them combined in one subtask description (e.g., 'Navigate to music.youtube.com, search for j-pop, and play the first result')."
         ]
 
+    @property
+    def sub_workers(self) -> List["BaseWorker"]:
+        """Private sub-workers managed exclusively by BrowserWorker.
+        BrowserNavigator and BrowserReader are NOT in the global WorkerRegistry;
+        they are compiled into AGENT_MAP through the recursive sub-worker compile pass.
+        """
+        from src.CoreFunctions.StateGraph.Workers.BrowserWorker.browser_worker_sub_workers.BrowserNavigator import BrowserNavigator
+        from src.CoreFunctions.StateGraph.Workers.BrowserWorker.browser_worker_sub_workers.BrowserReader import BrowserReader
+        return [BrowserNavigator(), BrowserReader()]
+
     def execute(self, state: AgentState) -> dict:
         return browser_worker_node(state)
-
-@WorkerRegistry.register
-class BrowserNavigator(BaseWorker):
-    name = "BrowserNavigator"
-    description = "Handles browser navigation and click/type interactions."
-    instructions = SYSTEM_PROMPT_BROWSER_NAVIGATOR
-    tools = browser_tools
-    categories = ["browser", "BrowserNavigator"]
-    is_graph_node = False
-
-@WorkerRegistry.register
-class BrowserReader(BaseWorker):
-    name = "BrowserReader"
-    description = "Reads and scrapes browser page content."
-    instructions = SYSTEM_PROMPT_BROWSER_READER
-    tools = browser_tools
-    categories = ["browser", "BrowserReader"]
-    is_graph_node = False

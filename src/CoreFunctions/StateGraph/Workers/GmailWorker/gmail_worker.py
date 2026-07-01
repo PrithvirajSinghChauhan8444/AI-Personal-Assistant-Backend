@@ -1,6 +1,6 @@
 from src.CoreFunctions.StateGraph.registry import BaseWorker, WorkerRegistry
 from src.CoreFunctions.StateGraph.Workers.GmailWorker.gmail_prompt import SYSTEM_PROMPT
-from src.CoreFunctions.StateGraph.Workers.GmailWorker.gmail_tools import gmail_tools
+from src.CoreFunctions.StateGraph.Workers.GmailWorker.gmail_worker_tools import gmail_tools
 
 @WorkerRegistry.register
 class GmailWorker(BaseWorker):

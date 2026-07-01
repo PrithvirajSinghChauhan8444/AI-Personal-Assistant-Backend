@@ -68,7 +68,7 @@ RULES & WORKFLOW FOR SPECIALIZED TASKS:
 """
 
 def task_router_node(state: AgentState):
-    from src.CoreFunctions.logger import log_node_start, log_node_end, log_message
+    from src.CoreFunctions.Infrastructure.logger import log_node_start, log_node_end, log_message
     log_node_start("TaskRouter", state)
     
     print("\n[Node: Task Router] Analyzing request...")

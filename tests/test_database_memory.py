@@ -10,9 +10,9 @@ from datetime import datetime
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from src.CoreFunctions.unified_memory import UnifiedMemory
-from src.CoreFunctions.memory import store_memory, fetch_memory, migrate_json_to_sqlite, delete_memory
-from src.CoreFunctions.vector_memory import delete_vector_fact, store_vector, search_vector
+from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
+from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory, migrate_json_to_sqlite, delete_memory
+from src.CoreFunctions.Infrastructure.vector_memory import delete_vector_fact, store_vector, search_vector
 
 class TestDatabaseMemory(unittest.TestCase):
     def setUp(self):
@@ -78,7 +78,7 @@ class TestDatabaseMemory(unittest.TestCase):
             json.dump(legacy_data, f)
             
         # Temporarily mock the FILES dict in memory.py to point to our legacy JSON path
-        from src.CoreFunctions import memory
+        from src.CoreFunctions.Infrastructure import memory
         original_files = memory.FILES
         memory.FILES = {
             "user": legacy_path,

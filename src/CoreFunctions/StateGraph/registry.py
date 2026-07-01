@@ -61,6 +61,17 @@ class BaseWorker(ABC):
         """Rules or workflows specific to this worker that should be added to the TaskRouter prompt."""
         return []
 
+    @property
+    def sub_workers(self) -> List["BaseWorker"]:
+        """Optional list of sub-worker instances private to this worker.
+        Sub-workers are NOT registered in the global WorkerRegistry; they are only
+        accessible through their parent's sub_workers list.
+        Sub-workers follow the same BaseWorker contract and may themselves declare
+        sub_workers, making the hierarchy fully recursive.
+        Defaults to an empty list.
+        """
+        return []
+
     def execute(self, state: AgentState) -> dict:
         """Execution node function added to the LangGraph."""
         # Import dynamically to prevent circular imports
@@ -206,3 +217,30 @@ def scan_and_register_workers(workers_dir: str = None, force_reload: bool = Fals
                     importlib.import_module(module_name)
                 except Exception as e:
                     print(f"⚠️ Error dynamically importing worker module '{module_name}': {e}")
+
+    # Also scan *_sub_workers/ directories inside each worker folder.
+    # Sub-worker files are imported so their classes become available, but they
+    # do NOT call @WorkerRegistry.register — they remain private to their parent.
+    for worker_folder in os.listdir(workers_dir):
+        worker_path = os.path.join(workers_dir, worker_folder)
+        if not os.path.isdir(worker_path):
+            continue
+        sub_workers_dir = os.path.join(worker_path, f"{worker_folder.lower()}_sub_workers")
+        if not os.path.isdir(sub_workers_dir):
+            # Fallback: look for any folder ending with _sub_workers inside the worker dir
+            for entry in os.listdir(worker_path):
+                candidate = os.path.join(worker_path, entry)
+                if os.path.isdir(candidate) and entry.endswith("_sub_workers"):
+                    sub_workers_dir = candidate
+                    break
+            else:
+                continue
+        for sub_root, _, sub_files in os.walk(sub_workers_dir):
+            for sub_file in sub_files:
+                if sub_file.endswith("_worker.py") and not sub_file.startswith("__"):
+                    rel_path = os.path.relpath(os.path.join(sub_root, sub_file), parent_dir)
+                    module_name = os.path.splitext(rel_path)[0].replace(os.sep, ".")
+                    try:
+                        importlib.import_module(module_name)
+                    except Exception as e:
+                        print(f"⚠️ Error dynamically importing sub-worker module '{module_name}': {e}")

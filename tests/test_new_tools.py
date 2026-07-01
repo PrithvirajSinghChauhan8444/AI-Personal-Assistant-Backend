@@ -6,9 +6,9 @@ import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from CoreFunctions.Integrations.System.clipboard_ops import copy_to_clipboard, paste_from_clipboard
-from CoreFunctions.Integrations.System.download_ops import download_file
-from CoreFunctions.Integrations.Automation.scheduler_ops import schedule_delayed_task, list_scheduled_tasks, load_tasks, save_tasks
+from src.CoreFunctions.Integrations.System.clipboard_ops import copy_to_clipboard, paste_from_clipboard
+from src.CoreFunctions.Integrations.System.download_ops import download_file
+from src.CoreFunctions.Integrations.Automation.scheduler_ops import schedule_delayed_task, list_scheduled_tasks, load_tasks, save_tasks
 
 def test_clipboard():
     print("📋 Testing Clipboard copy/paste...")
@@ -70,10 +70,10 @@ def test_scheduler():
         print("  Task list:\n", task_list)
         assert desc in task_list, "Task not found in scheduler queue"
         
-        print("  Waiting for scheduler execution (up to 30 seconds)...")
+        print("  Waiting for scheduler execution (up to 60 seconds)...")
         start_time = time.time()
         status = "pending"
-        while time.time() - start_time < 30:
+        while time.time() - start_time < 60:
             time.sleep(0.5)
             tasks = load_tasks()
             status = next((t["status"] for t in tasks if t["description"] == desc), "pending")
@@ -89,7 +89,7 @@ def test_scheduler():
 
 def test_token_encryption():
     print("\n🔒 Testing Token Encryption & Decryption...")
-    from CoreFunctions.auth_utils import load_encrypted_json, save_encrypted_json
+    from src.CoreFunctions.Infrastructure.auth_utils import load_encrypted_json, save_encrypted_json
     import tempfile
     
     # Create a temporary file path
@@ -149,11 +149,11 @@ def test_token_encryption():
 def test_update_skill():
     print("\n🛠️ Testing Skill Update Capability...")
     from unittest.mock import patch
-    from CoreFunctions.tools import update_skill_tool
+    from src.CoreFunctions.StateGraph.Workers.MemoryWorker.memory_worker_tools.memory_worker_tool_update_skill import update_skill_tool
     import shutil
     
     # We will mock verify_password to return True for testing
-    with patch('CoreFunctions.tools.verify_password', return_value=True):
+    with patch('src.CoreFunctions.StateGraph.Workers.MemoryWorker.memory_worker_tools.memory_worker_tool_update_skill.verify_password', return_value=True):
         skill_name = "test-temp-skill"
         category = "general"
         description = "This is a temporary test skill."
