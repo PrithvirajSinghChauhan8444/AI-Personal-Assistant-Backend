@@ -1,5 +1,5 @@
 from langchain_core.tools import StructuredTool
-from .browser_manager import _get_browser_page, _get_elements_formatted
+from .browser_manager import _get_browser_page, _get_dom_map
 
 async def browser_navigate(url: str, offset: int = 0, limit: int = 30) -> str:
     """Navigates the browser to the specified URL and returns its interactive elements.
@@ -19,7 +19,7 @@ async def browser_navigate(url: str, offset: int = 0, limit: int = 30) -> str:
         except Exception:
             pass
         await page.wait_for_timeout(2000)
-        elements_str = await _get_elements_formatted(offset=offset, limit=limit)
+        elements_str = await _get_dom_map(offset=offset, limit=limit)
         print(elements_str)
         return elements_str
     except Exception as e:

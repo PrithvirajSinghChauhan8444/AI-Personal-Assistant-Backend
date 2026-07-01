@@ -1,5 +1,5 @@
 from langchain_core.tools import StructuredTool
-from .browser_manager import _get_browser_page, _human_type, _get_elements_formatted
+from .browser_manager import _get_browser_page, _human_type, _get_dom_map
 
 async def browser_input(element_id: int, text: str, offset: int = 0, limit: int = 30) -> str:
     """Fills a text input field matching a specific numerical element_id with text.
@@ -17,7 +17,7 @@ async def browser_input(element_id: int, text: str, offset: int = 0, limit: int 
         selector = f'[data-agent-id="{element_id}"]'
         await _human_type(page, selector, text)
         await page.wait_for_timeout(1000)
-        elements_str = await _get_elements_formatted(offset=offset, limit=limit)
+        elements_str = await _get_dom_map(offset=offset, limit=limit)
         return elements_str
     except Exception as e:
         return f"Error filling element [{element_id}]: {e}"
@@ -37,7 +37,7 @@ async def browser_input_selector(selector: str, text: str, offset: int = 0, limi
         page = await _get_browser_page()
         await _human_type(page, selector, text)
         await page.wait_for_timeout(1000)
-        elements_str = await _get_elements_formatted(offset=offset, limit=limit)
+        elements_str = await _get_dom_map(offset=offset, limit=limit)
         return elements_str
     except Exception as e:
         return f"Error filling selector '{selector}': {e}"

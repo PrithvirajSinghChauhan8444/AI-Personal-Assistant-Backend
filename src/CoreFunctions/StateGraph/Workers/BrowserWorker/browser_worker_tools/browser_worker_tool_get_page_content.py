@@ -1,5 +1,5 @@
 from langchain_core.tools import StructuredTool
-from .browser_manager import _get_browser_page, _get_elements_formatted
+from .browser_manager import _get_browser_page, _get_dom_map
 import os
 
 def _get_local_llm():
@@ -24,7 +24,7 @@ async def browser_read_current_page(offset: int = 0, limit: int = 30) -> str:
         page = await _get_browser_page()
         url = page.url
         title = await page.title()
-        elements_str = await _get_elements_formatted(offset=offset, limit=limit)
+        elements_str = await _get_dom_map(offset=offset, limit=limit)
         print(f"Current Page Title: {title}\nCurrent Page URL: {url}\n\nInteractive Elements:\n{elements_str}")
         return f"Current Page Title: {title}\nCurrent Page URL: {url}\n\nInteractive Elements:\n{elements_str}"
     except Exception as e:
@@ -135,7 +135,7 @@ async def browser_go_back(offset: int = 0, limit: int = 30) -> str:
         except Exception:
             pass
         await page.wait_for_timeout(2000)
-        elements_str = await _get_elements_formatted(offset=offset, limit=limit)
+        elements_str = await _get_dom_map(offset=offset, limit=limit)
         return elements_str
     except Exception as e:
         return f"Error going back: {e}"

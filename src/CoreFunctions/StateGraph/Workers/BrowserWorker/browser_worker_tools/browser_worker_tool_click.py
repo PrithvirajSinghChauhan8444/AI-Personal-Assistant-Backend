@@ -1,5 +1,5 @@
 from langchain_core.tools import StructuredTool
-from .browser_manager import _get_browser_page, _human_click, _get_elements_formatted
+from .browser_manager import _get_browser_page, _human_click, _get_dom_map
 
 async def browser_click(element_id: int, offset: int = 0, limit: int = 30) -> str:
     """Clicks an interactive element matching a specific numerical element_id.
@@ -20,7 +20,7 @@ async def browser_click(element_id: int, offset: int = 0, limit: int = 30) -> st
         except Exception:
             pass
         await page.wait_for_timeout(2000)
-        elements_str = await _get_elements_formatted(offset=offset, limit=limit)
+        elements_str = await _get_dom_map(offset=offset, limit=limit)
         return elements_str
     except Exception as e:
         return f"Error clicking element [{element_id}]: {e}"
@@ -43,7 +43,7 @@ async def browser_click_selector(selector: str, offset: int = 0, limit: int = 30
         except Exception:
             pass
         await page.wait_for_timeout(2000)
-        elements_str = await _get_elements_formatted(offset=offset, limit=limit)
+        elements_str = await _get_dom_map(offset=offset, limit=limit)
         return elements_str
     except Exception as e:
         return f"Error clicking selector '{selector}': {e}"
