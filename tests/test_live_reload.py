@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src'
 
 from src.CoreFunctions.StateGraph.registry import WorkerRegistry, scan_and_register_workers
 from src.CoreFunctions.StateGraph.main_graph import create_graph, SESSION_CONTEXT_PATH
-from src.CoreFunctions.unified_memory import UnifiedMemory
+from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
 
 def main():
     print("=========================================================")

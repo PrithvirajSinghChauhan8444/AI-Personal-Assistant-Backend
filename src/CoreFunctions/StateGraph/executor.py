@@ -11,7 +11,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 
 from src.CoreFunctions.StateGraph.state import AgentState
-from src.CoreFunctions.tools import HumanInterventionAbortError, HumanInterventionReplanError
+from src.CoreFunctions.SharedTools import HumanInterventionAbortError, HumanInterventionReplanError
 from src.CoreFunctions.StateGraph.registry import WorkerRegistry
 
 # LLM for workers. Using Gemini/Gemma cloud models.
@@ -197,17 +197,23 @@ def compile_worker_agents():
     """Compiles react agents dynamically for all registered workers, enabling Gemini Context Caching where appropriate."""
     global AGENT_MAP, AGENT_CACHED
     
-    from langchain_core.tools import StructuredTool
-    from src.CoreFunctions.tools import recall, remember, forget_memory, delete_fact, list_memory_keys, update_unified_memory
+    from src.CoreFunctions.StateGraph.Workers.MemoryWorker.memory_worker_tools import (
+        memory_worker_tool_recall,
+        memory_worker_tool_remember,
+        memory_worker_tool_update_unified_memory,
+        memory_worker_tool_forget_memory,
+        memory_worker_tool_delete_fact,
+        memory_worker_tool_list_keys
+    )
     
-    # Wrap core memory tools to inject directly into all workers
+    # Inject core memory tools directly into all workers
     shared_memory_tools = [
-        StructuredTool.from_function(recall),
-        StructuredTool.from_function(remember),
-        StructuredTool.from_function(update_unified_memory),
-        StructuredTool.from_function(forget_memory),
-        StructuredTool.from_function(delete_fact),
-        StructuredTool.from_function(list_memory_keys)
+        memory_worker_tool_recall,
+        memory_worker_tool_remember,
+        memory_worker_tool_update_unified_memory,
+        memory_worker_tool_forget_memory,
+        memory_worker_tool_delete_fact,
+        memory_worker_tool_list_keys
     ]
 
 
@@ -274,9 +280,38 @@ def compile_worker_agents():
             AGENT_MAP[name] = create_react_agent(model, worker_tools, prompt=prompt)
             AGENT_CACHED[name] = False
     
-    # Legacy fallback mapping
-    if "BrowserNavigator" in AGENT_MAP:
-        AGENT_MAP["BrowserWorker"] = AGENT_MAP["BrowserNavigator"]
+    # Legacy fallback mapping removed: BrowserNavigator is now a private sub-worker
+    # compiled through the recursive sub-worker compilation pass below.
+
+    def _compile_sub_workers(sub_worker_list, shared_memory_tools):
+        """Recursively compiles agents for all sub-workers and inserts them into AGENT_MAP."""
+        for sub_worker in sub_worker_list:
+            name = sub_worker.name
+            if name in AGENT_MAP:
+                # Already compiled (e.g. referenced by multiple parents)
+                continue
+            if not sub_worker.tools and not sub_worker.instructions:
+                continue
+
+            worker_tools = list(sub_worker.tools) if sub_worker.tools else []
+            if name != "MemoryWorker":
+                for tool in shared_memory_tools:
+                    if not any(t.name == tool.name for t in worker_tools):
+                        worker_tools.append(tool)
+
+            model = get_model_for_worker(name)
+            prompt = sub_worker.instructions + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
+            AGENT_MAP[name] = create_react_agent(model, worker_tools, prompt=prompt)
+            AGENT_CACHED[name] = False
+            print(f"  ✓ [SubWorker Compiled] '{name}' (private to parent)")
+
+            # Recurse into this sub-worker's own sub-workers
+            _compile_sub_workers(sub_worker.sub_workers, shared_memory_tools)
+
+    _compile_sub_workers(
+        [sw for w in WorkerRegistry.get_all_workers().values() for sw in w.sub_workers],
+        shared_memory_tools
+    )
 
 def _get_active_task(state: AgentState, worker_name: str):
     """Finds the task currently marked 'in_progress' and assigned to the given worker"""
@@ -287,7 +322,7 @@ def _get_active_task(state: AgentState, worker_name: str):
 
 def _load_worker_skills(worker_name: str) -> str:
     """Dynamically loads and formats procedural skills matching the categories assigned to a worker using the skills index cache."""
-    from src.CoreFunctions.vector_memory import _load_skills_data
+    from src.CoreFunctions.Infrastructure.vector_memory import _load_skills_data
     
     try:
         categories = WorkerRegistry.get_worker(worker_name).categories
@@ -347,7 +382,7 @@ def _clean_working_memory_for_worker(working_memory: dict, depends_on: list = No
 
 def _get_worker_feedback_instructions(worker_name: str) -> str:
     """Retrieves any active user-tuned behavior preferences for the target worker, handling once-scoped cleanup."""
-    from src.CoreFunctions.unified_memory import UnifiedMemory
+    from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
     import time
     um = UnifiedMemory()
     if not um.enabled:
@@ -386,7 +421,7 @@ def _get_worker_feedback_instructions(worker_name: str) -> str:
 
 def _run_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict, depends_on: list = None, recursion_limit: int = 100):
     """Runs a pre-compiled ReAct agent in complete isolation, returning only the final answer."""
-    from src.CoreFunctions.logger import log_worker_start, log_worker_thought, log_worker_tool_call, log_worker_tool_response, log_worker_end
+    from src.CoreFunctions.Infrastructure.logger import log_worker_start, log_worker_thought, log_worker_tool_call, log_worker_tool_response, log_worker_end
     
     # Ensure compile has run at least once
     if not AGENT_MAP:
@@ -457,7 +492,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         sys.stdout.write("\r\033[K")
         sys.stdout.flush()
 
-    from src.CoreFunctions.unified_memory import UnifiedMemory
+    from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
     txn_id, token = UnifiedMemory().start_transaction()
     worker_token = UnifiedMemory.set_current_worker(worker_name)
     success = False
@@ -547,7 +582,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
 
 async def _run_async_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict, depends_on: list = None, recursion_limit: int = 100):
     """Runs a pre-compiled async ReAct agent in complete isolation, returning only the final answer."""
-    from src.CoreFunctions.logger import log_worker_start, log_worker_thought, log_worker_tool_call, log_worker_tool_response, log_worker_end
+    from src.CoreFunctions.Infrastructure.logger import log_worker_start, log_worker_thought, log_worker_tool_call, log_worker_tool_response, log_worker_end
     
     # Ensure compile has run at least once
     if not AGENT_MAP:
@@ -618,7 +653,7 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         sys.stdout.write("\r\033[K")
         sys.stdout.flush()
 
-    from src.CoreFunctions.unified_memory import UnifiedMemory
+    from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
     txn_id, token = UnifiedMemory().start_transaction()
     worker_token = UnifiedMemory.set_current_worker(worker_name)
     success = False
@@ -719,7 +754,7 @@ def _update_state_completed(state: AgentState, task_id: str, final_data: str):
     working_memory = state.get("working_memory", {})
     
     try:
-        from src.CoreFunctions.unified_memory import UnifiedMemory
+        from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
         um = UnifiedMemory()
         
         clean_summary = final_data
@@ -791,7 +826,7 @@ def _update_state_completed(state: AgentState, task_id: str, final_data: str):
     }
 
 def _execute_worker_node(state: AgentState, worker_name: str):
-    from src.CoreFunctions.logger import log_node_start, log_node_end, log_error
+    from src.CoreFunctions.Infrastructure.logger import log_node_start, log_node_end, log_error
     log_node_start(worker_name, state)
     
     task = _get_active_task(state, worker_name)

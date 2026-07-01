@@ -11,9 +11,9 @@ from unittest.mock import MagicMock, patch
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from src.CoreFunctions.unified_memory import UnifiedMemory
-from src.CoreFunctions.memory import store_memory, fetch_memory, delete_memory
-from src.CoreFunctions.vector_memory import store_vector, search_vector, delete_vector_fact, rebuild_skills_vector_store, search_skills_vector
+from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
+from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory, delete_memory
+from src.CoreFunctions.Infrastructure.vector_memory import store_vector, search_vector, delete_vector_fact, rebuild_skills_vector_store, search_skills_vector
 from src.CoreFunctions.StateGraph.task_router import task_router_node
 from src.CoreFunctions.StateGraph.executor import _run_ephemeral_agent, _get_worker_feedback_instructions
 
@@ -29,7 +29,7 @@ class TestArchitectureRefinement(unittest.TestCase):
         self.um = UnifiedMemory(db_path=self.db_path)
         
         # Override Vector Store paths
-        import src.CoreFunctions.vector_memory as vm
+        import src.CoreFunctions.Infrastructure.vector_memory as vm
         self.original_vm_index = vm.INDEX_PATH
         self.original_vm_data = vm.DATA_PATH
         self.original_skills_index = vm.SKILLS_INDEX_PATH
@@ -43,7 +43,7 @@ class TestArchitectureRefinement(unittest.TestCase):
     def tearDown(self):
         UnifiedMemory._instance = None
         
-        import src.CoreFunctions.vector_memory as vm
+        import src.CoreFunctions.Infrastructure.vector_memory as vm
         vm.INDEX_PATH = self.original_vm_index
         vm.DATA_PATH = self.original_vm_data
         vm.SKILLS_INDEX_PATH = self.original_skills_index
@@ -130,7 +130,7 @@ class TestArchitectureRefinement(unittest.TestCase):
         
         # 2. Update memory fact (triggers Vector Tombstoning)
         # Patch delete_vector_fact inside vector_memory because memory.py dynamically imports it
-        with patch("src.CoreFunctions.vector_memory.delete_vector_fact", wraps=delete_vector_fact) as mock_delete:
+        with patch("src.CoreFunctions.Infrastructure.vector_memory.delete_vector_fact", wraps=delete_vector_fact) as mock_delete:
             store_memory("user", "favorite_color", "Blue")
             
             # Assert delete_vector_fact was called with the old value "Red"
@@ -173,7 +173,7 @@ class TestArchitectureRefinement(unittest.TestCase):
 
     def test_skills_index_md5_drift_check(self):
         # Mock rebuilding skills store
-        import src.CoreFunctions.vector_memory as vm
+        import src.CoreFunctions.Infrastructure.vector_memory as vm
         
         # Create a mock skill directory and SKILL.md file in test_dir
         skills_dir = os.path.join(self.test_dir, "Skills")
@@ -205,7 +205,7 @@ tags: [temp, test]
             self.assertTrue(os.path.exists(vm.SKILLS_INDEX_PATH))
             
             # Check search executes with no rebuild (stale_found = False)
-            with patch("src.CoreFunctions.vector_memory.rebuild_skills_vector_store", wraps=rebuild_skills_vector_store) as mock_rebuild:
+            with patch("src.CoreFunctions.Infrastructure.vector_memory.rebuild_skills_vector_store", wraps=rebuild_skills_vector_store) as mock_rebuild:
                 results = search_skills_vector("temporary verification", k=1)
                 self.assertEqual(len(results), 1)
                 self.assertEqual(results[0]["name"], "test-skill")
@@ -217,7 +217,7 @@ tags: [temp, test]
                 f.write(skill_content + "\n# Modified Line to trigger hash mismatch.")
                 
             # Check search executes and triggers automatic rebuild
-            with patch("src.CoreFunctions.vector_memory.rebuild_skills_vector_store", wraps=rebuild_skills_vector_store) as mock_rebuild_drift:
+            with patch("src.CoreFunctions.Infrastructure.vector_memory.rebuild_skills_vector_store", wraps=rebuild_skills_vector_store) as mock_rebuild_drift:
                 results_drift = search_skills_vector("temporary verification", k=1)
                 self.assertEqual(len(results_drift), 1)
                 # Rebuild SHOULD have been triggered due to hash drift

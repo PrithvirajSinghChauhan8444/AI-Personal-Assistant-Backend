@@ -5,7 +5,7 @@ import sys
 import platform
 import shlex
 from dotenv import load_dotenv
-from CoreFunctions.security_utils import is_path_safe, is_command_safe
+from src.CoreFunctions.Infrastructure.security_utils import is_path_safe, is_command_safe
 
 # Load environmental variables
 load_dotenv()

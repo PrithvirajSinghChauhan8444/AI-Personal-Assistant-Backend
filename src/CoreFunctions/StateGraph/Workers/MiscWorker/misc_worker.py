@@ -1,6 +1,7 @@
+from typing import List
 from src.CoreFunctions.StateGraph.registry import BaseWorker, WorkerRegistry
 from src.CoreFunctions.StateGraph.Workers.MiscWorker.misc_prompt import SYSTEM_PROMPT
-from src.CoreFunctions.StateGraph.Workers.MiscWorker.misc_tools import misc_tools
+from src.CoreFunctions.StateGraph.Workers.MiscWorker.misc_worker_tools import misc_tools
 
 @WorkerRegistry.register
 class MiscWorker(BaseWorker):

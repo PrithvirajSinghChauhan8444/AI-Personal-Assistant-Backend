@@ -1,0 +1,44 @@
+# Order matters: most frequently used tools first, destructive tools last.
+from src.CoreFunctions.SharedTools import human_intervention_tool
+from .gmail_worker_tool_count_emails import gmail_worker_tool_count_emails
+from .gmail_worker_tool_fetch_email_ids import gmail_worker_tool_fetch_email_ids
+from .gmail_worker_tool_search_emails_metadata import gmail_worker_tool_search_emails_metadata
+from .gmail_worker_tool_read_email_content import gmail_worker_tool_read_email_content
+from .gmail_worker_tool_process_email import gmail_worker_tool_process_email
+from .gmail_worker_tool_send_email import gmail_worker_tool_send_email
+from .gmail_worker_tool_reply_to_email import gmail_worker_tool_reply_to_email
+from .gmail_worker_tool_create_draft import gmail_worker_tool_create_draft
+from .gmail_worker_tool_mark_emails_as_read import gmail_worker_tool_mark_emails_as_read
+from .gmail_worker_tool_mark_emails_as_unread import gmail_worker_tool_mark_emails_as_unread
+from .gmail_worker_tool_trash_emails import gmail_worker_tool_trash_emails
+from .gmail_worker_tool_apply_label_to_emails import gmail_worker_tool_apply_label_to_emails
+from .gmail_worker_tool_remove_label_from_emails import gmail_worker_tool_remove_label_from_emails
+from .gmail_worker_tool_list_emails_with_label import gmail_worker_tool_list_emails_with_label
+from .gmail_worker_tool_create_label import gmail_worker_tool_create_label
+from .gmail_worker_tool_list_labels import gmail_worker_tool_list_labels
+from .gmail_worker_tool_rename_label import gmail_worker_tool_rename_label
+from .gmail_worker_tool_delete_label import gmail_worker_tool_delete_label
+from .gmail_worker_tool_delete_emails_permanently import gmail_worker_tool_delete_emails_permanently
+
+gmail_tools = [
+    gmail_worker_tool_count_emails,
+    gmail_worker_tool_fetch_email_ids,
+    gmail_worker_tool_search_emails_metadata,
+    gmail_worker_tool_read_email_content,
+    gmail_worker_tool_process_email,
+    gmail_worker_tool_send_email,
+    gmail_worker_tool_reply_to_email,
+    gmail_worker_tool_create_draft,
+    gmail_worker_tool_mark_emails_as_read,
+    gmail_worker_tool_mark_emails_as_unread,
+    gmail_worker_tool_trash_emails,
+    gmail_worker_tool_apply_label_to_emails,
+    gmail_worker_tool_remove_label_from_emails,
+    gmail_worker_tool_list_emails_with_label,
+    gmail_worker_tool_create_label,
+    gmail_worker_tool_list_labels,
+    gmail_worker_tool_rename_label,
+    gmail_worker_tool_delete_label,
+    gmail_worker_tool_delete_emails_permanently,
+    human_intervention_tool
+]

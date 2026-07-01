@@ -17,7 +17,7 @@ CRITICAL RULES:
 from datetime import datetime
 
 def output_finalizer_node(state: AgentState):
-    from src.CoreFunctions.logger import log_node_start, log_node_end, log_message
+    from src.CoreFunctions.Infrastructure.logger import log_node_start, log_node_end, log_message
     log_node_start("OutputFinalizer", state)
     
     timestamp = datetime.now().strftime("%H:%M:%S")

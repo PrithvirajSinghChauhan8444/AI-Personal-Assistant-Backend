@@ -9,8 +9,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src'
 load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..', '.env')))
 
 from src.CoreFunctions.StateGraph.main_graph import app
-from src.CoreFunctions.memory import store_memory
-from src.CoreFunctions.vector_memory import store_vector
+from src.CoreFunctions.Infrastructure.memory import store_memory
+from src.CoreFunctions.Infrastructure.vector_memory import store_vector
 
 def run_test():
     print("🚀 Running StateGraph Memory Pipeline Test...")

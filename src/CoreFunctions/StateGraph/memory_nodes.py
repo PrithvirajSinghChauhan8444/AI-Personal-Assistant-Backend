@@ -10,8 +10,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.
 
 base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.CoreFunctions.memory import store_memory, fetch_memory
-from src.CoreFunctions.vector_memory import store_vector, search_vector
+from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory
+from src.CoreFunctions.Infrastructure.vector_memory import store_vector, search_vector
 from src.CoreFunctions.StateGraph.state import AgentState
 
 # Pydantic Model for Hermes Skills
@@ -144,7 +144,7 @@ def check_fast_path(primary_goal: str) -> Optional[str]:
     return None
 
 def memory_injector_node(state: AgentState):
-    from src.CoreFunctions.logger import log_node_start, log_node_end, log_message
+    from src.CoreFunctions.Infrastructure.logger import log_node_start, log_node_end, log_message
     log_node_start("MemoryInjector", state)
     
     print("\n[Node: Memory Injector] Retrieving relevant user context & skills...")
@@ -169,7 +169,7 @@ def memory_injector_node(state: AgentState):
     # 2. Level 0 & Level 1 Skills Ingestion (Progressive Disclosure via Semantic Vector Search)
     active_skills_content = []
     
-    from src.CoreFunctions.vector_memory import search_skills_vector, _load_skills_data
+    from src.CoreFunctions.Infrastructure.vector_memory import search_skills_vector, _load_skills_data
     
     # Retrieve semantically matching skills
     matched_skills = search_skills_vector(primary_goal, k=2)
@@ -288,7 +288,7 @@ def reflection_node(state: AgentState):
             if flush:
                 sys.stdout.flush()
 
-    from src.CoreFunctions.logger import log_node_start, log_node_end, log_error, log_message
+    from src.CoreFunctions.Infrastructure.logger import log_node_start, log_node_end, log_error, log_message
     log_node_start("Reflection", state)
 
     print("\n[Node: Reflection] Reflecting on conversation & extracting Hermes Skills...")
@@ -410,7 +410,7 @@ def trigger_feedback_extraction(user_input: str, final_response: str, feedback: 
     def run_extraction():
         try:
             from langchain_ollama import ChatOllama
-            from src.CoreFunctions.unified_memory import UnifiedMemory
+            from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
             from src.CoreFunctions.StateGraph.registry import WorkerRegistry
             
             um = UnifiedMemory()

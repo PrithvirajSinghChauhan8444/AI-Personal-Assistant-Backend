@@ -5,7 +5,7 @@ from src.CoreFunctions.StateGraph.state import AgentState
 from src.CoreFunctions.StateGraph.registry import WorkerRegistry
 
 def system_state_node(state: AgentState) -> dict:
-    from src.CoreFunctions.logger import log_node_start, log_node_end
+    from src.CoreFunctions.Infrastructure.logger import log_node_start, log_node_end
     log_node_start("SystemState", state)
     
     print("\n" + "="*50)

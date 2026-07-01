@@ -1,7 +1,7 @@
 from typing import List
 from src.CoreFunctions.StateGraph.registry import BaseWorker, WorkerRegistry
 from src.CoreFunctions.StateGraph.Workers.SystemWorker.system_prompt import SYSTEM_PROMPT
-from src.CoreFunctions.StateGraph.Workers.SystemWorker.system_tools import system_tools
+from src.CoreFunctions.StateGraph.Workers.SystemWorker.system_worker_tools import system_tools
 
 @WorkerRegistry.register
 class SystemWorker(BaseWorker):

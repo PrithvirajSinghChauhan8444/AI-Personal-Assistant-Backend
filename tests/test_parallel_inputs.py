@@ -9,9 +9,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 # Import targets
-from src.CoreFunctions.auth_utils import verify_password
-from src.CoreFunctions.tools import search_skills_tool, request_human_intervention_sync
-from src.CoreFunctions.vector_memory import rebuild_skills_vector_store
+from src.CoreFunctions.Infrastructure.auth_utils import verify_password
+from src.CoreFunctions.StateGraph.Workers.MemoryWorker.memory_worker_tools.memory_worker_tool_search_skills import search_skills_tool
+from src.CoreFunctions.SharedTools.request_human_intervention import request_human_intervention_sync
+from src.CoreFunctions.Infrastructure.vector_memory import rebuild_skills_vector_store
 
 def test_skills_vector_store():
     print("Testing Skills Vector Store indexing & semantic search...")

@@ -1,5 +1,5 @@
 from googleapiclient.discovery import build
-from CoreFunctions.auth_utils import get_valid_credentials
+from src.CoreFunctions.Infrastructure.auth_utils import get_valid_credentials
 
 def get_tasks(account: str = "personal"):
     """

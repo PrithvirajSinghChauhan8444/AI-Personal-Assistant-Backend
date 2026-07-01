@@ -1,13 +1,7 @@
 from googleapiclient.discovery import build
-from CoreFunctions.auth_utils import get_valid_credentials
+from src.CoreFunctions.Infrastructure.auth_utils import get_valid_credentials
 import json
-
-def get_classroom_service(account: str = "personal"):
-    """Authenticates and returns the Google Classroom API service for a specific account."""
-    creds = get_valid_credentials(account)
-    if not creds:
-        raise Exception(f"Google API credentials authentication failed for account '{account}'.")
-    return build('classroom', 'v1', credentials=creds)
+from .classroom_service import get_classroom_service
 
 def list_courses(account: str = "personal") -> dict:
     """

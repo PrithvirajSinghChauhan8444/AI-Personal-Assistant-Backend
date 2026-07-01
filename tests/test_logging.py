@@ -49,7 +49,7 @@ def run_test():
     
     try:
         # Wrap the turn execution in init/end logging just like main_graph.py interactive loop
-        from src.CoreFunctions.logger import init_session_logger, end_session_logger
+        from src.CoreFunctions.Infrastructure.logger import init_session_logger, end_session_logger
         init_session_logger(test_session_id, goal)
         
         # Execute stream
@@ -65,7 +65,7 @@ def run_test():
         
     except Exception as e:
         print(f"❌ Error during graph run: {e}")
-        from src.CoreFunctions.logger import log_error, end_session_logger
+        from src.CoreFunctions.Infrastructure.logger import log_error, end_session_logger
         log_error("test_logging", str(e))
         end_session_logger("", success=False)
         
