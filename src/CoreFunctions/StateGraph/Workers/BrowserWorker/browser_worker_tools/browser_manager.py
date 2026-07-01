@@ -211,98 +211,147 @@ async def _get_browser_page():
             
     return _page
 
-DOM_TAGGING_SCRIPT = """
+DOM_MAP_SCRIPT = """
 () => {
-    // 1. Remove previous tags if any
-    const oldTags = document.querySelectorAll('[data-agent-id]');
-    oldTags.forEach(el => el.removeAttribute('data-agent-id'));
+    // Resolve the semantic role of an element
+    function getRole(el) {
+        const ariaRole = el.getAttribute('role');
+        if (ariaRole) {
+            if (['button', 'menuitem', 'tab', 'option'].includes(ariaRole)) return 'button';
+            if (ariaRole === 'link') return 'link';
+            if (ariaRole === 'checkbox') return 'checkbox';
+            if (ariaRole === 'combobox' || ariaRole === 'listbox') return 'select';
+            if (['textbox', 'searchbox', 'spinbutton'].includes(ariaRole)) return 'textbox';
+        }
+        const tag = el.tagName.toUpperCase();
+        if (tag === 'BUTTON') return 'button';
+        if (tag === 'A') return 'link';
+        if (tag === 'SELECT') return 'select';
+        if (tag === 'TEXTAREA') return 'textbox';
+        if (tag === 'INPUT') {
+            const t = (el.type || 'text').toLowerCase();
+            if (t === 'checkbox') return 'checkbox';
+            if (t === 'radio') return 'checkbox';
+            if (['submit', 'button', 'reset', 'image'].includes(t)) return 'button';
+            return 'textbox';
+        }
+        return 'other';
+    }
+
+    // Resolve human-readable label for an element
+    function getLabel(el) {
+        let text = (el.innerText || '').trim();
+        if (!text) text = (el.getAttribute('aria-label') || '').trim();
+        if (!text) text = (el.placeholder || '').trim();
+        if (!text) text = (el.title || '').trim();
+        if (!text) text = (el.getAttribute('name') || '').trim();
+        if (!text) text = (el.value || '').trim();
+        if (text.length > 80) text = text.substring(0, 77) + '...';
+        return text;
+    }
 
     const allElements = document.getElementsByTagName('*');
     const candidates = [];
-    
+
     for (let i = 0; i < allElements.length; i++) {
         const el = allElements[i];
         const rect = el.getBoundingClientRect();
-        
-        // Skip elements that are completely off-screen or zero-sized
+
+        // Skip zero-size or off-screen
         if (rect.width <= 0 || rect.height <= 0) continue;
-        
+
         const style = window.getComputedStyle(el);
-        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
-        
+        if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) continue;
+
         const tag = el.tagName.toUpperCase();
         const isStandardInteractive = ['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].includes(tag);
-        const hasInteractiveRole = ['button', 'link', 'checkbox', 'radio', 'tab', 'option', 'menuitem'].includes(el.getAttribute('role'));
+        const ariaRole = el.getAttribute('role') || '';
+        const hasInteractiveRole = ['button', 'link', 'checkbox', 'radio', 'tab', 'option',
+                                    'menuitem', 'textbox', 'searchbox', 'combobox', 'listbox',
+                                    'spinbutton'].includes(ariaRole);
         const hasClickAttr = el.hasAttribute('onclick') || el.getAttribute('tabindex') === '0';
         const hasCursorPointer = style.cursor === 'pointer';
-        
+
         if (isStandardInteractive || hasInteractiveRole || hasClickAttr || hasCursorPointer) {
-            candidates.push(el);
+            candidates.push({ el, rect });
         }
     }
-    
-    let idCounter = 0;
-    const interactiveElements = [];
 
-    candidates.forEach(el => {
+    // De-duplicate: skip elements that are fully contained within a BUTTON or A ancestor
+    let idCounter = 0;
+    const result = [];
+
+    candidates.forEach(({ el, rect }) => {
         let ancestor = el.parentElement;
-        let hasInteractiveAncestor = false;
         while (ancestor) {
-            if (candidates.includes(ancestor) && ['BUTTON', 'A'].includes(ancestor.tagName)) {
-                hasInteractiveAncestor = true;
-                break;
+            const aTag = ancestor.tagName.toUpperCase();
+            if (['BUTTON', 'A'].includes(aTag) && candidates.some(c => c.el === ancestor)) {
+                return; // skip, parent already captures this element
             }
             ancestor = ancestor.parentElement;
         }
-        if (hasInteractiveAncestor) return;
 
-        const id = idCounter++;
-        el.setAttribute('data-agent-id', id.toString());
-        
-        let text = el.innerText.trim();
-        if (!text && el.placeholder) text = el.placeholder.trim();
-        if (!text && el.getAttribute('aria-label')) text = el.getAttribute('aria-label').trim();
-        if (!text && el.value) text = el.value.trim();
-        if (!text && el.title) text = el.title.trim();
-        if (!text) text = el.name || "";
-        
-        if (text.length > 100) {
-            text = text.substring(0, 97) + "...";
-        }
-        
-        interactiveElements.push({
-            id: id,
+        const label = getLabel(el);
+        // Drop no-label decorative elements (except inputs which may have no visible text)
+        const tag = el.tagName.toUpperCase();
+        if (!label && !['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
+
+        const cx = Math.round(rect.x + rect.width / 2);
+        const cy = Math.round(rect.y + rect.height / 2);
+
+        // Stamp data-agent-id so click tools can still use selector-based clicking
+        el.setAttribute('data-agent-id', idCounter.toString());
+
+        result.push({
+            id: idCounter++,
             tag: el.tagName.toLowerCase(),
-            type: el.type || "",
-            text: text,
-            role: el.getAttribute('role') || ""
+            type: el.type || '',
+            role: getRole(el),
+            label: label,
+            x: cx,
+            y: cy,
+            width: Math.round(rect.width),
+            height: Math.round(rect.height)
         });
     });
 
-    return interactiveElements;
+    return result;
 }
 """
 
-async def _get_elements_formatted(offset: int = 0, limit: int = 30) -> str:
+async def _get_dom_map(offset: int = 0, limit: int = 30, filter_role: str = None) -> str:
+    """Internal helper: run DOM_MAP_SCRIPT on the current page and return a compact formatted string."""
     page = await _get_browser_page()
     try:
-        elements = await page.evaluate(DOM_TAGGING_SCRIPT)
+        elements = await page.evaluate(DOM_MAP_SCRIPT)
         if not elements:
             return "No interactive elements found on this page."
-        
+
+        if filter_role:
+            elements = [e for e in elements if e['role'] == filter_role]
+
         total_elements = len(elements)
-        paginated_elements = elements[offset:offset+limit]
-        
-        if not paginated_elements:
-            return f"No interactive elements found in range [{offset} to {offset+limit}]. (Total elements: {total_elements})"
-        
+        paginated = elements[offset:offset + limit]
+
+        if not paginated:
+            return (
+                f"No elements found in range [{offset}–{offset+limit}]. "
+                f"(Total: {total_elements})"
+            )
+
         lines = []
-        for el in paginated_elements:
-            type_str = f" (type='{el['type']}')" if el['type'] else ""
-            role_str = f" [role='{el['role']}']" if el['role'] else ""
-            lines.append(f"[{el['id']}] {el['tag'].upper()}: \"{el['text']}\"{type_str}{role_str}")
-        
-        header = f"Showing elements {offset} to {offset + len(paginated_elements) - 1} of {total_elements} total. (To see more, increase the offset parameter)\n"
+        for el in paginated:
+            label_str = f'"{el["label"]}"' if el['label'] else '(no label)'
+            lines.append(
+                f'[{el["id"]}] {el["role"]} {label_str} '
+                f'at ({el["x"]}, {el["y"]}) {el["width"]}\u00d7{el["height"]}'
+            )
+
+        header = (
+            f"DOM map — showing {offset}–{offset + len(paginated) - 1} of {total_elements} elements"
+            + (f" (filtered: role='{filter_role}')" if filter_role else "")
+            + ". Use offset/limit to paginate.\n"
+        )
         return header + "\n".join(lines)
     except Exception as e:
-        return f"Error gathering page elements: {e}"
+        return f"Error building DOM map: {e}"
