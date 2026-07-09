@@ -411,7 +411,7 @@ def trigger_feedback_extraction(user_input: str, final_response: str, feedback: 
         try:
             from langchain_ollama import ChatOllama
             from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
-            from src.CoreFunctions.StateGraph.registry import WorkerRegistry
+            from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry
             
             um = UnifiedMemory()
             if not um.enabled:

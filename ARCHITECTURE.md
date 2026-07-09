@@ -180,7 +180,7 @@ Files are stored dynamically:
 
 ## 8. Dynamic Plug-and-Play Worker Architecture
 
-To keep worker management modular, the system uses a registration-based architecture defined in [registry.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/registry.py):
+To keep worker management modular, the system uses a registration-based architecture defined in [worker_framework.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/worker_framework.py):
 
 * **`BaseWorker` Class**: Abstract base defining the interface for all workers, including properties for `name`, `description`, `instructions` (system prompt), `tools`, `categories` (for FAISS skills lookup), and `routing_rules`.
 * **`@WorkerRegistry.register`**: A decorator used to register worker subclasses dynamically.

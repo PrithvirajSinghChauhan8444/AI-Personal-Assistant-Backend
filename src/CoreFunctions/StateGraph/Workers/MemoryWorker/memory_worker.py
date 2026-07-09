@@ -1,4 +1,4 @@
-from src.CoreFunctions.StateGraph.registry import BaseWorker, WorkerRegistry
+from src.CoreFunctions.StateGraph.worker_framework import BaseWorker, WorkerRegistry
 from src.CoreFunctions.StateGraph.Workers.MemoryWorker.memory_prompt import SYSTEM_PROMPT
 from src.CoreFunctions.StateGraph.Workers.MemoryWorker.memory_worker_tools import memory_tools
 

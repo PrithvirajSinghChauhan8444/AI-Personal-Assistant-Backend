@@ -12,7 +12,7 @@ from langchain_ollama import ChatOllama
 
 from src.CoreFunctions.StateGraph.state import AgentState
 from src.CoreFunctions.SharedTools import HumanInterventionAbortError, HumanInterventionReplanError
-from src.CoreFunctions.StateGraph.registry import WorkerRegistry
+from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry
 
 # LLM for workers. Using Gemini/Gemma cloud models.
 gemini_model_name = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")

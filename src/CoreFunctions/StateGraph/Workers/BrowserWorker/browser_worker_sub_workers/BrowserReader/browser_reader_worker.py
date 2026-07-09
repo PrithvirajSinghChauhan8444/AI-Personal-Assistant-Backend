@@ -1,4 +1,4 @@
-from src.CoreFunctions.StateGraph.registry import BaseWorker
+from src.CoreFunctions.StateGraph.worker_framework import BaseWorker
 from src.CoreFunctions.StateGraph.Workers.BrowserWorker.browser_prompt import SYSTEM_PROMPT_BROWSER_READER
 from src.CoreFunctions.StateGraph.Workers.BrowserWorker.browser_worker_tools import browser_tools
 from typing import List

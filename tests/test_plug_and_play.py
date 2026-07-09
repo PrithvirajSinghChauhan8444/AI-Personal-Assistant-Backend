@@ -10,7 +10,7 @@ from unittest.mock import patch
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from src.CoreFunctions.StateGraph.registry import WorkerRegistry, scan_and_register_workers
+from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry, scan_and_register_workers
 from src.CoreFunctions.StateGraph.executor import _update_state_completed
 from src.CoreFunctions.Infrastructure.vector_memory import search_skills_vector, rebuild_skills_vector_store
 

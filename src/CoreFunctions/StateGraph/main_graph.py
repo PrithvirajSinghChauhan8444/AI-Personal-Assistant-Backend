@@ -21,7 +21,7 @@ from src.CoreFunctions.StateGraph.memory_nodes import memory_injector_node, refl
 from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
 
 # Load registry and force decorator execution by scanning workers directory
-from src.CoreFunctions.StateGraph.registry import WorkerRegistry, scan_and_register_workers
+from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry, scan_and_register_workers
 scan_and_register_workers()
 
 def memory_injector_router(state: AgentState):

@@ -7,7 +7,7 @@ from typing import List
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from src.CoreFunctions.StateGraph.registry import BaseWorker, WorkerRegistry
+from src.CoreFunctions.StateGraph.worker_framework import BaseWorker, WorkerRegistry
 
 class TestWorkerRegistry(unittest.TestCase):
     def setUp(self):
@@ -120,7 +120,7 @@ class TestWorkerRegistry(unittest.TestCase):
             WorkerRegistry.get_worker("InactiveWorker")
 
     def test_scan_and_register_workers_registers_active_workers(self):
-        from src.CoreFunctions.StateGraph.registry import scan_and_register_workers
+        from src.CoreFunctions.StateGraph.worker_framework import scan_and_register_workers
         
         # Set up a test configuration where only a subset of workers are active
         test_config = {

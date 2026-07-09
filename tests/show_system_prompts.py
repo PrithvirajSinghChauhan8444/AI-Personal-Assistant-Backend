@@ -5,7 +5,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from src.CoreFunctions.StateGraph.registry import WorkerRegistry, scan_and_register_workers
+from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry, scan_and_register_workers
 from src.CoreFunctions.StateGraph.task_router import get_router_prompt
 from src.CoreFunctions.StateGraph.executor import THINKING_INSTRUCTION, HUMAN_INTERVENTION_INSTRUCTION, _load_worker_skills
 

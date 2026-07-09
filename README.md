@@ -235,7 +235,7 @@ AI-Personal-Assistant-Backend/
 │   │   │
 │   │   ├── StateGraph/     # StateGraph structure, Orchestrator, & Worker nodes
 │   │   │   ├── Workers/        # Directory containing all plug-and-play worker modules
-│   │   │   ├── registry.py     # Class decorators and worker registry manager
+│   │   │   ├── worker_framework.py # Class decorators and worker registry manager
 │   │   │   ├── executor.py     # Worker ReAct compiler and engine runner
 │   │   │   ├── system_state.py # Runtime configuration and metadata gathering node
 │   │   │   ├── task_router.py  # Structured Pydantic LLM planning node

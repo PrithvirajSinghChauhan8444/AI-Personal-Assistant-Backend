@@ -2,7 +2,7 @@ import os
 import json
 from typing import Dict, Any
 from src.CoreFunctions.StateGraph.state import AgentState
-from src.CoreFunctions.StateGraph.registry import WorkerRegistry
+from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry
 
 def system_state_node(state: AgentState) -> dict:
     from src.CoreFunctions.Infrastructure.logger import log_node_start, log_node_end

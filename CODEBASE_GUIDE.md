@@ -23,7 +23,7 @@ Requests progress through isolated, specialized nodes that coordinate via the sh
 2. **Metadata Collection**: [system_state.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/system_state.py) aggregates active workers list, chat history metrics, and LLM thinking parameters to save to `system_state`.
 3. **Decomposition**: [task_router.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/task_router.py) uses a high-cognition model to break the user goal into structured subtasks (a Directed Acyclic Graph plan).
 4. **Execution Scheduling**: [orchestrator.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/orchestrator.py) monitors task dependencies, forks parallel ready subtasks, resets orphaned tasks, and dynamically routes them to worker agents.
-5. **Action Workers**: Discovered dynamically via [registry.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/registry.py) and compiled via [executor.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/executor.py). Each worker executes ReAct agents with strictly sandboxed tools.
+5. **Action Workers**: Discovered dynamically via [worker_framework.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/worker_framework.py) and compiled via [executor.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/executor.py). Each worker executes ReAct agents with strictly sandboxed tools.
 6. **Output Synthesis**: [finalizer.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/finalizer.py) merges the subtasks' outcomes into a single unified response.
 7. **Self-Learning**: [Reflection](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/memory_nodes.py) node runs in the background to extract user facts and save them for the next turn.
 
@@ -81,7 +81,7 @@ ROOT/
 │       │   │   ├── ProductivityWorker/ # Tasks and scheduling worker
 │       │   │   └── SystemWorker/ # System diagnostic and execution worker
 │       │   │
-│       │   ├── registry.py  # Decorators for plugin worker discovery
+│       │   ├── worker_framework.py  # Decorators for plugin worker discovery
 │       │   ├── executor.py  # ReAct compilation, transactions, and large outputs cache
 │       │   ├── system_state.py # Environment configuration and history metadata node
 │       │   ├── task_router.py # Pydantic LLM planning node (DAG planner)
@@ -289,7 +289,7 @@ These files define the LangGraph cyclic state machine. They schedule tasks, coor
 
 ---
 
-### 🔌 [registry.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/registry.py)
+### 🔌 [worker_framework.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/CoreFunctions/StateGraph/worker_framework.py)
 
 * **Role in the Assistant**: Handles dynamic registration and config synchronization. It scans the `Workers/` directory, registering ReAct agents via class decorators.
 
@@ -521,5 +521,5 @@ Standard tests verifying execution layers, sandbox security, memory engines, and
 * **[test_workers_config.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/tests/test_workers_config.py)**: Validates active/inactive filtering and custom LLM configurations loaded from config.
 * **[test_database_memory.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/tests/test_database_memory.py)**: Validates SQLite database storage and transactions via UnifiedMemory.
 * **[test_plug_and_play.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/tests/test_plug_and_play.py)**: Tests that scanned dynamic ReAct workers are successfully registered in the WorkerRegistry.
-* **[test_registry.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/tests/test_registry.py)**: Validates decorator registration logic and configurations.
+* **[test_worker_framework.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/tests/test_worker_framework.py)**: Validates decorator registration logic and configurations.
 * **[test_live_reload.py](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/tests/test_live_reload.py)**: Asserts reload/scanning loops dynamically sync changes.

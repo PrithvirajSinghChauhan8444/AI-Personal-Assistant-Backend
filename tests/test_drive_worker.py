@@ -13,10 +13,10 @@ sys.modules['CoreFunctions.unified_memory'] = src.CoreFunctions.Infrastructure.u
 import src.CoreFunctions.Infrastructure.memory
 sys.modules['CoreFunctions.memory'] = src.CoreFunctions.Infrastructure.memory
 
-import src.CoreFunctions.StateGraph.registry
-sys.modules['CoreFunctions.StateGraph.registry'] = src.CoreFunctions.StateGraph.registry
+import src.CoreFunctions.StateGraph.worker_framework
+sys.modules['CoreFunctions.StateGraph.worker_framework'] = src.CoreFunctions.StateGraph.worker_framework
 
-from src.CoreFunctions.StateGraph.registry import WorkerRegistry
+from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry
 from src.CoreFunctions.StateGraph.Workers.GoogleDriveWorker.drive_worker import GoogleDriveWorker
 from src.CoreFunctions.Integrations.GoogleDrive.drive_ops import (
     list_drive_files, download_drive_file, upload_drive_file,
@@ -46,7 +46,7 @@ class TestGoogleDriveWorker(unittest.TestCase):
 
     def test_worker_registration(self):
         # Verify that GoogleDriveWorker is registered in WorkerRegistry._registry
-        from src.CoreFunctions.StateGraph.registry import scan_and_register_workers
+        from src.CoreFunctions.StateGraph.worker_framework import scan_and_register_workers
         scan_and_register_workers()
         
         self.assertIn("GoogleDriveWorker", WorkerRegistry._registry)

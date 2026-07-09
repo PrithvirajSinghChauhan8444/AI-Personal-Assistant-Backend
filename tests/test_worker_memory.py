@@ -17,12 +17,12 @@ sys.modules['CoreFunctions.unified_memory'] = src.CoreFunctions.Infrastructure.u
 import src.CoreFunctions.Infrastructure.memory
 sys.modules['CoreFunctions.memory'] = src.CoreFunctions.Infrastructure.memory
 
-import src.CoreFunctions.StateGraph.registry
-sys.modules['CoreFunctions.StateGraph.registry'] = src.CoreFunctions.StateGraph.registry
+import src.CoreFunctions.StateGraph.worker_framework
+sys.modules['CoreFunctions.StateGraph.worker_framework'] = src.CoreFunctions.StateGraph.worker_framework
 
 from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
 from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory, delete_memory
-from src.CoreFunctions.StateGraph.registry import WorkerRegistry, BaseWorker
+from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry, BaseWorker
 
 class MockTestWorker(BaseWorker):
     def __init__(self, name_val, enable_mem):

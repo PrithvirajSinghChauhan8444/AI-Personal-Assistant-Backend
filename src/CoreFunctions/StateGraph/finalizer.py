@@ -51,7 +51,7 @@ def output_finalizer_node(state: AgentState):
     active_workers = list(system_state.get("active_workers", {}).keys())
     if not active_workers:
         try:
-            from src.CoreFunctions.StateGraph.registry import WorkerRegistry
+            from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry
             active_workers = WorkerRegistry.get_worker_names()
         except Exception:
             pass

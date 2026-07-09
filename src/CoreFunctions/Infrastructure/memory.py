@@ -197,7 +197,7 @@ def fetch_memory(category=None, key=None):
         # Check worker (if executing under worker context and enable_worker_memory is True)
         worker_name = UnifiedMemory.get_current_worker()
         if worker_name:
-            from src.CoreFunctions.StateGraph.registry import WorkerRegistry
+            from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry
             if WorkerRegistry.is_worker_memory_enabled(worker_name):
                 worker_val = um.retrieve_memory(f"worker:{worker_name}:{key}")
                 if worker_val is not None:

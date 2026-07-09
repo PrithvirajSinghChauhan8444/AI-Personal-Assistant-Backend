@@ -14,7 +14,7 @@ def list_active_workers_tool() -> str:
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: list_active_workers_tool")
     try:
-        from src.CoreFunctions.StateGraph.registry import WorkerRegistry
+        from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry
         if not hasattr(WorkerRegistry, "_config") or not WorkerRegistry._config:
             WorkerRegistry.load_and_sync_config()
             

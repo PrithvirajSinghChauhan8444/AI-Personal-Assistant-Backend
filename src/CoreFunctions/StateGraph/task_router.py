@@ -10,7 +10,7 @@ from src.CoreFunctions.StateGraph.state import AgentState
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
 # Load registry and force decorator execution by scanning workers directory
-from src.CoreFunctions.StateGraph.registry import WorkerRegistry, scan_and_register_workers
+from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry, scan_and_register_workers
 scan_and_register_workers()
 
 class SubTaskModel(BaseModel):

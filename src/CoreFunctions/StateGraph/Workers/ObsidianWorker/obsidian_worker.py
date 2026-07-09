@@ -2,7 +2,7 @@ import json
 from typing import List, Literal
 from pydantic import BaseModel, Field
 
-from src.CoreFunctions.StateGraph.registry import BaseWorker, WorkerRegistry
+from src.CoreFunctions.StateGraph.worker_framework import BaseWorker, WorkerRegistry
 from src.CoreFunctions.StateGraph.state import AgentState
 from src.CoreFunctions.StateGraph.Workers.ObsidianWorker.obsidian_prompt import (
     SYSTEM_PROMPT_OBSIDIAN_NOTE,
