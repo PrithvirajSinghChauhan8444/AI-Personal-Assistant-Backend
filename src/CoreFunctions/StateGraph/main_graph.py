@@ -678,5 +678,3 @@ def process_request_interactive():
 
 if __name__ == "__main__":
     process_request_interactive()
-
-workflow.add_edge("condition_MemoryInjector_memory_injector_router", "OutputFinalizer")
