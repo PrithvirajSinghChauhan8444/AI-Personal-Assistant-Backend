@@ -19,6 +19,7 @@ from .gmail_worker_tool_list_labels import gmail_worker_tool_list_labels
 from .gmail_worker_tool_rename_label import gmail_worker_tool_rename_label
 from .gmail_worker_tool_delete_label import gmail_worker_tool_delete_label
 from .gmail_worker_tool_delete_emails_permanently import gmail_worker_tool_delete_emails_permanently
+from .gmail_worker_tool_download_attachment import gmail_worker_tool_download_attachment
 
 gmail_tools = [
     gmail_worker_tool_count_emails,
@@ -40,5 +41,6 @@ gmail_tools = [
     gmail_worker_tool_rename_label,
     gmail_worker_tool_delete_label,
     gmail_worker_tool_delete_emails_permanently,
+    gmail_worker_tool_download_attachment,
     human_intervention_tool
 ]

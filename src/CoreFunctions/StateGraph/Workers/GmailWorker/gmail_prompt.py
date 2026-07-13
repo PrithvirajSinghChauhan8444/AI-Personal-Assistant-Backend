@@ -18,6 +18,7 @@ Operating Guidelines:
   1. Entry point: Always start by counting or fetching matching email IDs first using `count_emails` or `fetch_email_ids` (which returns a job_id).
   2. For bulk read operations, process emails iteratively using `read_email_content` or `process_email` (which reads and marks as read in one step).
   3. Set `confirmed=True` only if the user explicitly approved a permanent deletion via `delete_emails_permanently`.
+  4. To download attachments, first use `read_email_content` to find the attachment ID(s) and then use `download_attachment` (it defaults to the `AGENT_WORKSPACE` directory if `save_dir` is omitted).
 """
 
 SYSTEM_PROMPT = BASE_PROMPT + "\n\nAvailable Tools and Syntax:\n" + compile_tool_prompt_section(gmail_tools)
