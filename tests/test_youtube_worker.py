@@ -127,6 +127,32 @@ class TestYoutubeWorkerAndOps(unittest.TestCase):
         self.assertEqual(results[0]["video_id"], "search_vid_1")
         self.assertEqual(results[0]["title"], "Search Result Title")
 
+    @patch('src.CoreFunctions.Integrations.Google.youtube_ops.get_youtube_service')
+    def test_get_video_details(self, mock_get_service):
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        
+        mock_service.videos().list().execute.return_value = {
+            "items": [{
+                "id": "dQw4w9WgXcQ",
+                "snippet": {
+                    "title": "Mock Video Title",
+                    "description": "Mock Video Desc",
+                    "channelTitle": "Mock Channel",
+                    "tags": ["test"],
+                    "publishedAt": "2026-07-14T02:00:00Z"
+                }
+            }]
+        }
+        
+        from src.CoreFunctions.Integrations.Google.youtube_ops import get_video_details
+        details = get_video_details("dQw4w9WgXcQ")
+        self.assertIsNotNone(details)
+        self.assertEqual(details["video_id"], "dQw4w9WgXcQ")
+        self.assertEqual(details["title"], "Mock Video Title")
+        self.assertEqual(details["description"], "Mock Video Desc")
+
+
     @patch('src.CoreFunctions.Integrations.Google.youtube_ops.YouTubeTranscriptApi')
     def test_get_video_transcript(self, mock_api_class):
         # Mock instance and fetch method

@@ -5,6 +5,7 @@ from .youtube_worker_tool_check_new_videos import youtube_worker_tool_check_new_
 from .youtube_worker_tool_search_videos import youtube_worker_tool_search_videos
 from .youtube_worker_tool_transcribe_video import youtube_worker_tool_transcribe_video
 from .youtube_worker_tool_update_video_state import youtube_worker_tool_update_video_state
+from .youtube_worker_tool_get_video_details import youtube_worker_tool_get_video_details
 
 youtube_tools = [
     youtube_worker_tool_get_channel_details,
@@ -12,6 +13,7 @@ youtube_tools = [
     youtube_worker_tool_check_new_videos,
     youtube_worker_tool_search_videos,
     youtube_worker_tool_transcribe_video,
+    youtube_worker_tool_get_video_details,
     youtube_worker_tool_update_video_state,
     human_intervention_tool
 ]

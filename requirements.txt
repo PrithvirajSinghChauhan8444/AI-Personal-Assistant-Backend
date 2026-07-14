@@ -21,3 +21,4 @@ langchain-groq
 langchain-google-genai
 playwright
 youtube-transcript-api
+yt-dlp

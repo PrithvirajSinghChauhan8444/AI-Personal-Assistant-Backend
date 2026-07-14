@@ -278,3 +278,32 @@ def get_video_transcript(video_id: str):
     except Exception as e:
         print(f"⚠️ [YouTube Transcript] Transcript fetch failed for '{video_id}': {e}")
         return f"Error: No transcript or captions found for video ID '{video_id}' ({e})."
+
+def get_video_details(video_id: str, account: str = "personal"):
+    """Fetches metadata details (title, description, channel, tags) of a specific video ID.
+    """
+    service = get_youtube_service(account)
+    if not service:
+        return None
+    try:
+        response = service.videos().list(
+            id=video_id,
+            part="snippet"
+        ).execute()
+        items = response.get("items", [])
+        if not items:
+            return None
+        video = items[0]
+        snippet = video.get("snippet", {})
+        return {
+            "video_id": video_id,
+            "title": snippet.get("title"),
+            "description": snippet.get("description"),
+            "channel_title": snippet.get("channelTitle"),
+            "tags": snippet.get("tags", []),
+            "published_at": snippet.get("publishedAt"),
+            "link": f"https://youtube.com/watch?v={video_id}"
+        }
+    except Exception as e:
+        print(f"⚠️ [YouTube API] Error fetching video details for '{video_id}': {e}")
+        return None
