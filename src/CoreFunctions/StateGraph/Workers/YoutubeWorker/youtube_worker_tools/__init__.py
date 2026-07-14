@@ -1,0 +1,17 @@
+from src.CoreFunctions.SharedTools import human_intervention_tool
+from .youtube_worker_tool_get_channel_details import youtube_worker_tool_get_channel_details
+from .youtube_worker_tool_list_subscriptions import youtube_worker_tool_list_subscriptions
+from .youtube_worker_tool_check_new_videos import youtube_worker_tool_check_new_videos
+from .youtube_worker_tool_search_videos import youtube_worker_tool_search_videos
+from .youtube_worker_tool_transcribe_video import youtube_worker_tool_transcribe_video
+from .youtube_worker_tool_update_video_state import youtube_worker_tool_update_video_state
+
+youtube_tools = [
+    youtube_worker_tool_get_channel_details,
+    youtube_worker_tool_list_subscriptions,
+    youtube_worker_tool_check_new_videos,
+    youtube_worker_tool_search_videos,
+    youtube_worker_tool_transcribe_video,
+    youtube_worker_tool_update_video_state,
+    human_intervention_tool
+]
