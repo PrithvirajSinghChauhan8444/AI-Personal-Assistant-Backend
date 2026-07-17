@@ -64,7 +64,7 @@ class GeminiCacheManager:
         self.enabled = False
         self.token_count = 0
 
-    def check_and_create_cache(self, base_model) -> bool:
+    def check_and_create_cache(self, base_model: ChatGoogleGenerativeAI) -> bool:
         """Determines if the prompt meets size requirements and attempts to create the context cache."""
         from langchain_core.messages import SystemMessage, HumanMessage
         from langchain_google_genai import create_context_cache
@@ -110,7 +110,7 @@ class GeminiCacheManager:
             self.cache_name = None
             return False
 
-    def refresh_cache(self, base_model) -> bool:
+    def refresh_cache(self, base_model : ChatGoogleGenerativeAI) -> bool:
         """Refreshes / recreates the context cache when expired."""
         print(f"  🔄 [Prompt Caching] Refreshing context cache for worker '{self.worker_name}'...")
         return self.check_and_create_cache(base_model)
@@ -168,13 +168,11 @@ def get_model_for_worker(worker_name: str):
     model_name = worker_config.get("model")
     
     if not model_name:
-        try:
-            worker = WorkerRegistry.get_worker(worker_name)
-            use_local = worker.use_local_llm
-        except KeyError:
-            use_local = worker_name in ["MemoryWorker", "ObsidianNoteWorker", "ObsidianCanvasWorker", "ObsidianRefactorWorker"]
+        worker = WorkerRegistry.find_worker(worker_name)
+        use_local = worker.use_local_llm if worker else False
         model_name = os.environ.get("OLLAMA_MODEL", "gemma4:e4b") if use_local else os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
         
+    # Assigning model to the worker
     if "gemini" in model_name.lower():
         llm_kwargs = {}
         llm_kwargs["extra_body"] = {"thinking_config": {"thinking_budget": 2048}}
@@ -477,11 +475,8 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         model_name = None
         
     if not model_name:
-        try:
-            worker = WorkerRegistry.get_worker(worker_name)
-            use_local = worker.use_local_llm
-        except KeyError:
-            use_local = worker_name in ["MemoryWorker", "ObsidianNoteWorker", "ObsidianCanvasWorker", "ObsidianRefactorWorker"]
+        worker = WorkerRegistry.find_worker(worker_name)
+        use_local = worker.use_local_llm if worker else False
         model_name = os.environ.get("OLLAMA_MODEL", "gemma4:e4b") if use_local else os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
     log_worker_start(worker_name, task_desc, model_name, prompt)
 
@@ -638,11 +633,8 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         model_name = None
         
     if not model_name:
-        try:
-            worker = WorkerRegistry.get_worker(worker_name)
-            use_local = worker.use_local_llm
-        except KeyError:
-            use_local = worker_name in ["MemoryWorker", "ObsidianNoteWorker", "ObsidianCanvasWorker", "ObsidianRefactorWorker"]
+        worker = WorkerRegistry.find_worker(worker_name)
+        use_local = worker.use_local_llm if worker else False
         model_name = os.environ.get("OLLAMA_MODEL", "gemma4:e4b") if use_local else os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
     log_worker_start(worker_name, task_desc, model_name, prompt)
 

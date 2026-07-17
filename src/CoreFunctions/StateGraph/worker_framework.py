@@ -170,6 +170,33 @@ class WorkerRegistry:
         return workers[name]
 
     @classmethod
+    def find_worker(cls, name: str) -> BaseWorker | None:
+        """Retrieves a registered active worker or any of its sub-workers by name without raising KeyError."""
+        if not cls._registry:
+            scan_and_register_workers()
+            
+        workers = cls.get_all_workers()
+        if name in workers:
+            return workers[name]
+        
+        # Search recursively in sub-workers
+        def find_in_sub_workers(sub_workers: List[BaseWorker]) -> BaseWorker | None:
+            for sw in sub_workers:
+                if sw.name == name:
+                    return sw
+                found = find_in_sub_workers(sw.sub_workers)
+                if found:
+                    return found
+            return None
+
+        for worker in workers.values():
+            found = find_in_sub_workers(worker.sub_workers)
+            if found:
+                return found
+                
+        return None
+
+    @classmethod
     def is_worker_memory_enabled(cls, name: str) -> bool:
         """Checks if worker-level memory fallback is enabled for the specified worker."""
         if not cls._config:

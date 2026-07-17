@@ -199,6 +199,47 @@ class TestWorkerRegistry(unittest.TestCase):
         self.assertNotIn("TestInactiveWorker", prompt)
         self.assertNotIn("TestSubWorker", prompt)
 
+    def test_find_worker_recursive(self):
+        # Register a mock parent worker that has sub-workers
+        class DummySubWorker(BaseWorker):
+            name = "DummySubWorker"
+            description = "Sub worker."
+            instructions = "Do nothing."
+            tools = []
+            categories = ["test"]
+            use_local_llm = True
+
+        @WorkerRegistry.register
+        class DummyParentWorker(BaseWorker):
+            name = "DummyParentWorker"
+            description = "Parent worker."
+            instructions = "Orchestrate."
+            tools = []
+            categories = ["test"]
+            
+            @property
+            def sub_workers(self) -> List[BaseWorker]:
+                return [DummySubWorker()]
+
+        # Set config state so DummyParentWorker is active
+        WorkerRegistry._config = {
+            "DummyParentWorker": {"active": True}
+        }
+
+        # Check find_worker resolves parent
+        found_parent = WorkerRegistry.find_worker("DummyParentWorker")
+        self.assertIsNotNone(found_parent)
+        self.assertEqual(found_parent.name, "DummyParentWorker")
+
+        # Check find_worker resolves nested sub-worker
+        found_sub = WorkerRegistry.find_worker("DummySubWorker")
+        self.assertIsNotNone(found_sub)
+        self.assertEqual(found_sub.name, "DummySubWorker")
+        self.assertTrue(found_sub.use_local_llm)
+
+        # Check find_worker returns None for non-existent worker
+        self.assertIsNone(WorkerRegistry.find_worker("NonExistentWorker"))
+
 
 if __name__ == "__main__":
     unittest.main()
