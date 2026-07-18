@@ -53,8 +53,8 @@ def read_file(path):
         return f"❌ Error: File not found at {abs_path}"
     
     try:
-        with open(abs_path, 'r', encoding='utf-8') as f:
-            return f.read()
+        from .document_parser import extract_text_from_document
+        return extract_text_from_document(abs_path)
     except Exception as e:
         return f"❌ Error reading file: {e}"
 

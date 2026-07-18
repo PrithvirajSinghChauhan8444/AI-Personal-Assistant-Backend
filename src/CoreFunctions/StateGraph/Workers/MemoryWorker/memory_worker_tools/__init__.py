@@ -8,6 +8,7 @@ from .memory_worker_tool_list_keys import memory_worker_tool_list_keys
 from .memory_worker_tool_update_skill import memory_worker_tool_update_skill
 from .memory_worker_tool_list_active_workers import memory_worker_tool_list_active_workers
 from .memory_worker_tool_search_skills import memory_worker_tool_search_skills
+from src.CoreFunctions.StateGraph.Workers.SystemWorker.system_worker_tools.system_worker_tool_query_documents_db import query_documents_db_tool
 
 memory_tools = [
     memory_worker_tool_recall,
@@ -19,5 +20,6 @@ memory_tools = [
     memory_worker_tool_update_skill,
     memory_worker_tool_list_active_workers,
     memory_worker_tool_search_skills,
+    query_documents_db_tool,
     human_intervention_tool
 ]

@@ -9,4 +9,4 @@ class MemoryWorker(BaseWorker):
     instructions = SYSTEM_PROMPT
     tools = memory_tools
     categories = ["productivity", "MemoryWorker"]
-    use_local_llm = True
+    use_local_llm = False

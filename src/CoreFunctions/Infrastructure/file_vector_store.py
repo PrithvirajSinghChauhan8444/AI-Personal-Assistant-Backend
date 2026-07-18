@@ -118,8 +118,8 @@ def index_file(filepath):
         return f"ℹ️ Skipping '{filepath}': File exceeds 3MB limit."
 
     try:
-        with open(abs_path, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read()
+        from src.CoreFunctions.Integrations.FileOperations.document_parser import extract_text_from_document
+        content = extract_text_from_document(abs_path)
     except Exception as e:
         return f"❌ Error reading file '{filepath}': {e}"
 
@@ -190,7 +190,10 @@ def index_directory_recursive(dir_path):
     # Directories to completely ignore
     ignored_dirs = {".git", ".venv", "__pycache__", "node_modules", ".gemini", "build", "dist"}
     # File extensions to index
-    allowed_exts = {".py", ".md", ".json", ".txt", ".csv", ".yaml", ".yml", ".ini", ".conf", ".sh", ".js", ".ts", ".html", ".css"}
+    allowed_exts = {
+        ".py", ".md", ".json", ".txt", ".csv", ".yaml", ".yml", ".ini", ".conf", ".sh", ".js", ".ts", ".html", ".css",
+        ".pdf", ".docx", ".xlsx", ".pptx", ".png", ".jpg", ".jpeg", ".webp"
+    }
 
     for root, dirs, files in os.walk(abs_dir):
         # Prune ignored directories in place
@@ -257,8 +260,8 @@ def rag_qa_file(query, filepath):
         return f"❌ File not found at '{filepath}'."
 
     try:
-        with open(abs_path, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read()
+        from src.CoreFunctions.Integrations.FileOperations.document_parser import extract_text_from_document
+        content = extract_text_from_document(abs_path)
     except Exception as e:
         return f"❌ Error reading file: {e}"
 
@@ -319,3 +322,80 @@ Provide a concise, direct, and fact-based answer using the context extracts. If 
         return f"📝 **Answer for '{os.path.basename(abs_path)}':**\n{res.content}"
     except Exception as e:
         return f"❌ Error executing RAG QA: {e}\n\nMatching Context:\n{context}"
+
+def rag_qa_workspace_documents(query: str, k: int = 5) -> str:
+    """
+    Queries the global workspace/documents FAISS database to answer a question across all embedded files.
+    Thread-safe and supports parallel worker execution.
+    """
+    with _file_vector_lock:
+        index = _load_index()
+        data = _load_data()
+        
+    # Auto-index Documents folder if database is currently empty
+    if index.ntotal == 0:
+        documents_dir = os.path.join(BASE_DIR, "Documents")
+        if os.path.exists(documents_dir):
+            index_directory_recursive(documents_dir)
+            with _file_vector_lock:
+                index = _load_index()
+                data = _load_data()
+
+    if index.ntotal == 0:
+        return "ℹ️ Document database is empty and no files were found in the 'Documents/' directory to index."
+
+    model = _get_model()
+    q_vec = model.encode([query])
+
+    with _file_vector_lock:
+        D, idx = index.search(q_vec, min(k, index.ntotal))
+        
+        context_chunks = []
+        for dist, i in zip(D[0], idx[0]):
+            if i < len(data) and i >= 0:
+                item = data[i]
+                rel_path = os.path.relpath(item["filepath"], BASE_DIR)
+                context_chunks.append(
+                    f"📄 File: {rel_path} (Lines {item['start_line']}-{item['end_line']}):\n{item['text']}"
+                )
+
+    if not context_chunks:
+        return "No relevant context found in the document database."
+
+    context = "\n\n---\n\n".join(context_chunks)
+
+    try:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_core.messages import HumanMessage
+        
+        root_env_path = os.path.join(BASE_DIR, ".env")
+        config_env_path = root_env_path if os.path.exists(root_env_path) else os.path.join(BASE_DIR, "config", ".env")
+        from dotenv import load_dotenv
+        load_dotenv(config_env_path)
+
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-3.1-flash-lite", 
+            temperature=0
+        )
+
+        prompt = f"""You are an AI document analysis assistant.
+Use ONLY the following matching extracts retrieved from the user's document database to answer the question.
+
+Document Context Extracts:
+{context}
+
+User Question: {query}
+
+Provide a direct, concise, and accurate answer based on the context extracts above. Mention the source document file name if helpful. If the answer is not present in the context extracts, state that the document database does not contain this information.
+"""
+        res = llm.invoke([HumanMessage(content=prompt)])
+        
+        if isinstance(res.content, list):
+            answer_text = "".join([c if isinstance(c, str) else c.get("text", "") for c in res.content]).strip()
+        else:
+            answer_text = str(res.content).strip()
+            
+        return f"📚 **Document Database Answer:**\n{answer_text}"
+    except Exception as e:
+        return f"❌ Error executing Document RAG QA: {e}\n\nMatching Context:\n{context}"
+

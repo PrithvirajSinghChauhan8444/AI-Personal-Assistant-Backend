@@ -26,6 +26,7 @@ from .system_worker_tool_save_code import save_code_tool
 from .system_worker_tool_index_directory import index_directory_tool
 from .system_worker_tool_search_files_semantically import search_files_semantically_tool
 from .system_worker_tool_rag_file_qa import rag_file_qa_tool
+from .system_worker_tool_query_documents_db import query_documents_db_tool
 from .system_worker_tool_get_system_health import system_worker_tool_get_system_health
 
 system_tools = [
@@ -57,6 +58,7 @@ system_tools = [
     index_directory_tool,
     search_files_semantically_tool,
     rag_file_qa_tool,
+    query_documents_db_tool,
     system_worker_tool_get_system_health,
     get_weather_tool,
     get_time_tool,
