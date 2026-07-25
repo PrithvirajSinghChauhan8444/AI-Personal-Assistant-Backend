@@ -3,7 +3,7 @@ import sys
 import json
 import re
 import asyncio
-from typing import List, Literal, Dict, Any
+from typing import List, Literal, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage
 from langgraph.prebuilt import create_react_agent
@@ -361,9 +361,15 @@ def _load_worker_skills(worker_name: str) -> str:
         return ""
     return "\n\n---\n\n".join(skills_content)
 
-def _clean_working_memory_for_worker(working_memory: dict, depends_on: list = None) -> dict:
+def _clean_working_memory_for_worker(
+    working_memory: Optional[Dict[str, Any]], 
+    depends_on: Optional[List[str]] = None
+) -> Dict[str, Any]:
     """Cleans up the working memory dictionary to remove system-wide keys and optionally filter to direct task dependencies to prevent prompt context bloat."""
-    cleaned = {}
+    if not working_memory or not isinstance(working_memory, dict):
+        return {}
+
+    cleaned: Dict[str, Any] = {}
     if "user_profile" in working_memory:
         cleaned["user_profile"] = working_memory["user_profile"]
     
