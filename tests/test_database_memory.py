@@ -10,8 +10,8 @@ from datetime import datetime
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
-from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory, migrate_json_to_sqlite, delete_memory
+from src.CoreFunctions.Infrastructure.MemoryLayer import MemoryManager
+from src.CoreFunctions.Infrastructure.MemoryLayer import store_memory, fetch_memory, migrate_json_to_sqlite, delete_memory
 from src.CoreFunctions.Infrastructure.vector_memory import delete_vector_fact, store_vector, search_vector
 
 class TestDatabaseMemory(unittest.TestCase):
@@ -21,13 +21,13 @@ class TestDatabaseMemory(unittest.TestCase):
         self.db_path = os.path.join(self.test_dir, "test_cache.db")
         
         # Override the database path dynamically
-        self.original_db_path = UnifiedMemory().db_path
-        UnifiedMemory._instance = None # Reset singleton
-        self.um = UnifiedMemory(db_path=self.db_path)
+        self.original_db_path = MemoryManager().db_path
+        MemoryManager._instance = None # Reset singleton
+        self.um = MemoryManager(db_path=self.db_path)
 
     def tearDown(self):
         # Reset singleton to original settings and clean up directory
-        UnifiedMemory._instance = None
+        MemoryManager._instance = None
         shutil.rmtree(self.test_dir)
 
     def test_store_and_fetch_memory(self):

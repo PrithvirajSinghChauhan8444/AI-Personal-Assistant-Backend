@@ -37,7 +37,7 @@ class TestYoutubeWorkerAndOps(unittest.TestCase):
         self.assertIsNone(state)
 
     @patch('src.CoreFunctions.Integrations.Google.youtube_ops.store_memory')
-    @patch('src.CoreFunctions.Integrations.Google.youtube_ops.UnifiedMemory')
+    @patch('src.CoreFunctions.Integrations.Google.youtube_ops.MemoryManager')
     def test_set_video_state_and_limit(self, mock_um_class, mock_store):
         mock_um = MagicMock()
         mock_um.enabled = True

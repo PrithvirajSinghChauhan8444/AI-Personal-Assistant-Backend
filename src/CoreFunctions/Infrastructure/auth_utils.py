@@ -213,19 +213,45 @@ def get_valid_credentials(account: str = "personal"):
 
             try:
                 flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
-                # Tries port 8080 first (standard), then falls back to a random port
+                
+                # --- PREFILL LOGIN HINT ---
+                kwargs = {
+                    "access_type": "offline",
+                    "prompt": "consent"
+                }
+                if "@" in account:
+                    kwargs["login_hint"] = account
+
                 try:
-                    creds = flow.run_local_server(
-                        port=9915,
-                        access_type='offline', # Ask for offline access (refresh token)
-                        prompt='consent'       # Force the consent screen to ensure we get it
-                    )
+                    kwargs["port"] = 9915
+                    creds = flow.run_local_server(**kwargs)
                 except Exception:
-                    print("⚠️ Port 8080 blocked. Trying random port (Check console for Redirect Mismatch)...")
-                    creds = flow.run_local_server(port=9260)
+                    print("⚠️ Port 9915 blocked. Trying fallback port 9260...")
+                    kwargs["port"] = 9260
+                    creds = flow.run_local_server(**kwargs)
             except Exception as e:
                 print(f"❌ Login Flow Failed: {e}")
                 return None
+
+        # --- STEP 3.5: VERIFY ACTUAL EMAIL ADDRESS ---
+        actual_email = None
+        if creds and creds.valid:
+            try:
+                import requests
+                resp = requests.get("https://gmail.googleapis.com/gmail/v1/users/me/profile", 
+                                    headers={"Authorization": f"Bearer {creds.token}"}, timeout=5)
+                if resp.status_code == 200:
+                    actual_email = resp.json().get("emailAddress")
+            except Exception as e:
+                print(f"⚠️ Could not verify authenticated email: {e}")
+
+        target_account = account
+        if actual_email and "@" in actual_email:
+            if "@" in account and actual_email.lower() != account.lower():
+                print(f"\n⚠️  ACCOUNT MISMATCH: You requested '{account}' but authenticated as '{actual_email}'.")
+                print(f"💾 We will save the token for '{actual_email}' so you don't have to authenticate it again later.")
+                target_account = actual_email.lower()
+                token_path = os.path.join(config_dir, f'token_{target_account}.json')
 
         # --- STEP 4: SAVE THE NEW/REFRESHED TOKEN ---
         try:
@@ -234,6 +260,11 @@ def get_valid_credentials(account: str = "personal"):
             print(f"✅ Credentials saved securely (encrypted) to: {token_path}")
         except Exception as e:
             print(f"⚠️ Could not save token: {e}")
+
+        # If there was a mismatch, we still don't have the credentials for the originally requested account.
+        if target_account != account and "@" in account:
+            print(f"❌ Returning None because we still do not have access to the requested account '{account}'.")
+            return None
 
     return creds
 

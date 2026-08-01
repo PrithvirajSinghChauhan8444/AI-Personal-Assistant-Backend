@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 # Load env variables
 load_dotenv(override=True)
 
-from src.CoreFunctions.unified_memory import UnifiedMemory
+from src.CoreFunctions.Infrastructure.MemoryLayer import MemoryManager
 
 def clear_unified_memory():
     print("=" * 60)
@@ -17,7 +17,7 @@ def clear_unified_memory():
     print("=" * 60)
 
     # 1. Clear Structured Memory
-    um = UnifiedMemory()
+    um = MemoryManager()
     print(f"\n⚙️  Active Cache Provider: {um.engine.__class__.__name__}")
     
     if not um.enabled:

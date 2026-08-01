@@ -7,11 +7,11 @@ from unittest.mock import patch, MagicMock
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-import src.CoreFunctions.Infrastructure.unified_memory
-sys.modules['CoreFunctions.unified_memory'] = src.CoreFunctions.Infrastructure.unified_memory
+import src.CoreFunctions.Infrastructure.MemoryLayer
+sys.modules['CoreFunctions.MemoryLayer'] = src.CoreFunctions.Infrastructure.MemoryLayer
 
-import src.CoreFunctions.Infrastructure.memory
-sys.modules['CoreFunctions.memory'] = src.CoreFunctions.Infrastructure.memory
+import src.CoreFunctions.Infrastructure.MemoryLayer
+sys.modules['CoreFunctions.MemoryLayer'] = src.CoreFunctions.Infrastructure.MemoryLayer
 
 import src.CoreFunctions.StateGraph.worker_framework
 sys.modules['CoreFunctions.StateGraph.worker_framework'] = src.CoreFunctions.StateGraph.worker_framework

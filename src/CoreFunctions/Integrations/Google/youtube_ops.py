@@ -4,8 +4,8 @@ import re
 from datetime import datetime, timezone
 from googleapiclient.discovery import build
 from src.CoreFunctions.Infrastructure.auth_utils import get_valid_credentials
-from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
-from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory, delete_memory
+from src.CoreFunctions.Infrastructure.MemoryLayer import MemoryManager
+from src.CoreFunctions.Infrastructure.MemoryLayer import store_memory, fetch_memory, delete_memory
 from youtube_transcript_api import YouTubeTranscriptApi
 
 def get_youtube_service(account: str = "personal"):
@@ -105,7 +105,7 @@ def get_video_state(video_id: str) -> str:
         return None
 
 def set_video_state(video_id: str, state: str):
-    """Updates the video state to 'read' or 'viewed' in UnifiedMemory,
+    """Updates the video state to 'read' or 'viewed' in MemoryManager,
     enforcing a 500-item history limit.
     """
     if state not in ["read", "viewed"]:
@@ -116,7 +116,7 @@ def set_video_state(video_id: str, state: str):
         store_memory(category="past", key=f"yt_state_{video_id}", value=state)
         
         # 2. Enforce the 500-item history limit
-        um = UnifiedMemory()
+        um = MemoryManager()
         if um.enabled:
             keys = um.list_keys("past:yt_state_*")
             if len(keys) > 500:

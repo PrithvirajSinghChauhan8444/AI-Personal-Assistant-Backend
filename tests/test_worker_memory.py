@@ -11,17 +11,17 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 # Prevent duplicate module objects being loaded under different namespaces
-import src.CoreFunctions.Infrastructure.unified_memory
-sys.modules['CoreFunctions.unified_memory'] = src.CoreFunctions.Infrastructure.unified_memory
+import src.CoreFunctions.Infrastructure.MemoryLayer
+sys.modules['CoreFunctions.MemoryLayer'] = src.CoreFunctions.Infrastructure.MemoryLayer
 
-import src.CoreFunctions.Infrastructure.memory
-sys.modules['CoreFunctions.memory'] = src.CoreFunctions.Infrastructure.memory
+import src.CoreFunctions.Infrastructure.MemoryLayer
+sys.modules['CoreFunctions.MemoryLayer'] = src.CoreFunctions.Infrastructure.MemoryLayer
 
 import src.CoreFunctions.StateGraph.worker_framework
 sys.modules['CoreFunctions.StateGraph.worker_framework'] = src.CoreFunctions.StateGraph.worker_framework
 
-from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
-from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory, delete_memory
+from src.CoreFunctions.Infrastructure.MemoryLayer import MemoryManager
+from src.CoreFunctions.Infrastructure.MemoryLayer import store_memory, fetch_memory, delete_memory
 from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry, BaseWorker
 
 class MockTestWorker(BaseWorker):
@@ -61,9 +61,9 @@ class TestWorkerMemory(unittest.TestCase):
         self.db_path = os.path.join(self.test_dir, "test_worker_cache.db")
         
         # Override the database path dynamically
-        self.original_db_path = UnifiedMemory().db_path
-        UnifiedMemory._instance = None # Reset singleton
-        self.um = UnifiedMemory(db_path=self.db_path)
+        self.original_db_path = MemoryManager().db_path
+        MemoryManager._instance = None # Reset singleton
+        self.um = MemoryManager(db_path=self.db_path)
 
         # Backup WorkerRegistry state
         self.original_registry = dict(WorkerRegistry._registry)
@@ -111,18 +111,18 @@ class TestWorkerMemory(unittest.TestCase):
         WorkerRegistry._config = self.original_config
         
         # Reset singleton to original settings and clean up directory
-        UnifiedMemory._instance = None
+        MemoryManager._instance = None
         shutil.rmtree(self.test_dir)
 
     def test_context_set_and_get(self):
-        # Test basic UnifiedMemory context tracker
-        self.assertIsNone(UnifiedMemory.get_current_worker())
+        # Test basic MemoryManager context tracker
+        self.assertIsNone(MemoryManager.get_current_worker())
         
-        token = UnifiedMemory.set_current_worker("GmailWorker")
-        self.assertEqual(UnifiedMemory.get_current_worker(), "GmailWorker")
+        token = MemoryManager.set_current_worker("GmailWorker")
+        self.assertEqual(MemoryManager.get_current_worker(), "GmailWorker")
         
-        UnifiedMemory.reset_current_worker(token)
-        self.assertIsNone(UnifiedMemory.get_current_worker())
+        MemoryManager.reset_current_worker(token)
+        self.assertIsNone(MemoryManager.get_current_worker())
 
     def test_store_and_fetch_worker_memory_explicit(self):
         # Explicit worker category storage and fetching
@@ -140,7 +140,7 @@ class TestWorkerMemory(unittest.TestCase):
         store_memory("worker:GmailWorker", "signature", "Best regards, John")
         
         # Activate worker context
-        token = UnifiedMemory.set_current_worker("GmailWorker")
+        token = MemoryManager.set_current_worker("GmailWorker")
         try:
             # Smart recall should fall back to worker memory
             val = fetch_memory(category=None, key="signature")
@@ -158,14 +158,14 @@ class TestWorkerMemory(unittest.TestCase):
             val = fetch_memory(category=None, key="signature")
             self.assertEqual(val, "Best regards, John")
         finally:
-            UnifiedMemory.reset_current_worker(token)
+            MemoryManager.reset_current_worker(token)
 
     def test_waterfall_lookup_disabled(self):
         # Store a value specifically for ObsidianWorker
         store_memory("worker:ObsidianWorker", "vault_path", "/documents/notes")
         
         # Activate worker context for ObsidianWorker (memory fallback is disabled)
-        token = UnifiedMemory.set_current_worker("ObsidianWorker")
+        token = MemoryManager.set_current_worker("ObsidianWorker")
         try:
             # Smart recall should NOT fall back to worker memory because it's disabled
             val = fetch_memory(category=None, key="vault_path")
@@ -175,7 +175,7 @@ class TestWorkerMemory(unittest.TestCase):
             val_direct = fetch_memory("worker:ObsidianWorker", "vault_path")
             self.assertEqual(val_direct, "/documents/notes")
         finally:
-            UnifiedMemory.reset_current_worker(token)
+            MemoryManager.reset_current_worker(token)
 
     def test_full_category_dump_worker(self):
         store_memory("worker:GmailWorker", "sig", "Best")
@@ -201,7 +201,7 @@ class TestWorkerMemory(unittest.TestCase):
         results = {}
         
         def run_thread(worker_name):
-            token = UnifiedMemory.set_current_worker(worker_name)
+            token = MemoryManager.set_current_worker(worker_name)
             try:
                 # Simulate some random work/delay
                 time.sleep(0.05)
@@ -209,7 +209,7 @@ class TestWorkerMemory(unittest.TestCase):
                 val = fetch_memory(category="worker", key="shared_key")
                 results[worker_name] = val
             finally:
-                UnifiedMemory.reset_current_worker(token)
+                MemoryManager.reset_current_worker(token)
 
         t1 = threading.Thread(target=run_thread, args=("GmailWorker",))
         t2 = threading.Thread(target=run_thread, args=("ObsidianWorker",))

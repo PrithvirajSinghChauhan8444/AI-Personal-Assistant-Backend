@@ -9,8 +9,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 from src.CoreFunctions.StateGraph.Workers.BrowserWorker.browser_worker_tools import browser_tools
-from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
-from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory, delete_memory
+from src.CoreFunctions.Infrastructure.MemoryLayer import MemoryManager
+from src.CoreFunctions.Infrastructure.MemoryLayer import store_memory, fetch_memory, delete_memory
 from src.CoreFunctions.StateGraph.Workers.MemoryWorker.memory_worker_tools.memory_worker_tool_remember import remember
 from src.CoreFunctions.StateGraph.Workers.MemoryWorker.memory_worker_tools.memory_worker_tool_recall import recall
 
@@ -21,13 +21,13 @@ class TestBrowserCachingBehavior(unittest.TestCase):
         self.db_path = os.path.join(self.test_dir, "test_browser_cache.db")
         
         # Override the database path dynamically
-        self.original_db_path = UnifiedMemory().db_path
-        UnifiedMemory._instance = None # Reset singleton
-        self.um = UnifiedMemory(db_path=self.db_path)
+        self.original_db_path = MemoryManager().db_path
+        MemoryManager._instance = None # Reset singleton
+        self.um = MemoryManager(db_path=self.db_path)
 
     def tearDown(self):
         # Reset singleton to original settings and clean up directory
-        UnifiedMemory._instance = None
+        MemoryManager._instance = None
         shutil.rmtree(self.test_dir)
 
     def test_browser_tools_registration(self):

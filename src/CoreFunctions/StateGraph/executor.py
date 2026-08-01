@@ -386,9 +386,9 @@ def _clean_working_memory_for_worker(
 
 def _get_worker_feedback_instructions(worker_name: str) -> str:
     """Retrieves any active user-tuned behavior preferences for the target worker, handling once-scoped cleanup."""
-    from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
+    from src.CoreFunctions.Infrastructure.MemoryLayer import MemoryManager
     import time
-    um = UnifiedMemory()
+    um = MemoryManager()
     if not um.enabled:
         return ""
         
@@ -411,7 +411,7 @@ def _get_worker_feedback_instructions(worker_name: str) -> str:
         if scope != "once":
             updated_preferences.append(pref)
             
-    # Update UnifiedMemory: clear out once-scoped preferences
+    # Update MemoryManager: clear out once-scoped preferences
     if len(updated_preferences) != len(preferences):
         if updated_preferences:
             um.store_memory(db_key, {"preferences": updated_preferences}, persistent=any(p.get("scope") == "persistent" for p in updated_preferences))
@@ -493,9 +493,9 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         sys.stdout.write("\r\033[K")
         sys.stdout.flush()
 
-    from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
-    txn_id, token = UnifiedMemory().start_transaction()
-    worker_token = UnifiedMemory.set_current_worker(worker_name)
+    from src.CoreFunctions.Infrastructure.MemoryLayer import MemoryManager
+    txn_id, token = MemoryManager().start_transaction()
+    worker_token = MemoryManager.set_current_worker(worker_name)
     success = False
     try:
         last_ai_message = None
@@ -573,11 +573,11 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         success = True
         return final_message
     finally:
-        UnifiedMemory.reset_current_worker(worker_token)
+        MemoryManager.reset_current_worker(worker_token)
         if success:
-            UnifiedMemory().commit_transaction(txn_id, token)
+            MemoryManager().commit_transaction(txn_id, token)
         else:
-            UnifiedMemory().discard_transaction(txn_id, token)
+            MemoryManager().discard_transaction(txn_id, token)
         if vis and vis.active:
             vis.is_paused = False
 
@@ -651,9 +651,9 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         sys.stdout.write("\r\033[K")
         sys.stdout.flush()
 
-    from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
-    txn_id, token = UnifiedMemory().start_transaction()
-    worker_token = UnifiedMemory.set_current_worker(worker_name)
+    from src.CoreFunctions.Infrastructure.MemoryLayer import MemoryManager
+    txn_id, token = MemoryManager().start_transaction()
+    worker_token = MemoryManager.set_current_worker(worker_name)
     success = False
     try:
         last_ai_message = None
@@ -731,11 +731,11 @@ Execute the tools necessary to complete this task. Return a concise, data-rich s
         success = True
         return final_message
     finally:
-        UnifiedMemory.reset_current_worker(worker_token)
+        MemoryManager.reset_current_worker(worker_token)
         if success:
-            UnifiedMemory().commit_transaction(txn_id, token)
+            MemoryManager().commit_transaction(txn_id, token)
         else:
-            UnifiedMemory().discard_transaction(txn_id, token)
+            MemoryManager().discard_transaction(txn_id, token)
         if vis and vis.active:
             vis.is_paused = False
 
@@ -752,14 +752,14 @@ def _update_state_completed(state: AgentState, task_id: str, final_data: str):
     working_memory = state.get("working_memory", {})
     
     try:
-        from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
-        um = UnifiedMemory()
+        from src.CoreFunctions.Infrastructure.MemoryLayer import MemoryManager
+        um = MemoryManager()
         
         clean_summary = final_data
         has_entities = False
         
         if isinstance(final_data, str):
-            extracted = UnifiedMemory.extract_entities(final_data)
+            extracted = MemoryManager.extract_entities(final_data)
             clean_summary = extracted["summary"]
             has_entities = bool(extracted.get("extracted_entities"))
         elif isinstance(final_data, dict):
@@ -769,13 +769,13 @@ def _update_state_completed(state: AgentState, task_id: str, final_data: str):
         if um.enabled:
             if has_entities:
                 um.store_memory(task_id, final_data, sharable=True, persistent=True)
-                print(f"  ⚡ [UnifiedMemory] Shareable entities found. Storing '{task_id}' in workspace cache.")
+                print(f"  ⚡ [MemoryManager] Shareable entities found. Storing '{task_id}' in workspace cache.")
             else:
-                print(f"  ℹ️ [UnifiedMemory] Skipping store of transient output for '{task_id}' (no shareable tags found).")
+                print(f"  ℹ️ [MemoryManager] Skipping store of transient output for '{task_id}' (no shareable tags found).")
         
         final_data = clean_summary
     except Exception as um_err:
-        print(f"  ⚠️ [UnifiedMemory] Failed to evaluate/write output to cache: {um_err}")
+        print(f"  ⚠️ [MemoryManager] Failed to evaluate/write output to cache: {um_err}")
 
     is_large = False
     serialized_data = None

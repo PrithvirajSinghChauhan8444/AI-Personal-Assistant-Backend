@@ -2,7 +2,7 @@ import json
 import os
 import re
 from datetime import datetime
-from .unified_memory import UnifiedMemory
+from .memory_manager import MemoryManager
 
 # Absolute path relative to project root (goes up from /src/CoreFunctions/Infrastructure/)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -19,7 +19,7 @@ FILES = {
 # -------------------------
 def migrate_json_to_sqlite():
     """Migrates legacy flat JSON files to the unified database cache on startup."""
-    um = UnifiedMemory()
+    um = MemoryManager()
     if not um.enabled:
         return
         
@@ -83,7 +83,7 @@ def store_memory(category, key, value):
             _, worker_name = category_orig.split(":", 1)
             worker_name = worker_name.strip()
         else:
-            worker_name = UnifiedMemory.get_current_worker()
+            worker_name = MemoryManager.get_current_worker()
             if not worker_name:
                 raise ValueError("Worker-specific memory requested but no active worker found in execution context.")
         db_key = f"worker:{worker_name}:{key}"
@@ -103,13 +103,13 @@ def store_memory(category, key, value):
     if isinstance(value, str):
         sanitized_value = re.sub(r"<[^>]*>", "", value).strip()
 
-    um = UnifiedMemory()
+    um = MemoryManager()
     normalized_key = key.strip().lower()
     normalized_val = str(sanitized_value).strip().lower()
 
     # Cross-check categories to avoid duplicates
     check_categories = ["current", "user", "past"]
-    worker_name_context = UnifiedMemory.get_current_worker()
+    worker_name_context = MemoryManager.get_current_worker()
     if worker_name_context:
         check_categories.append(f"worker:{worker_name_context}")
     if category.startswith("worker:") and category not in check_categories:
@@ -130,7 +130,7 @@ def store_memory(category, key, value):
                         print(f"ℹ️ [Structured Memory] Fact already exists in [{cat}] under '{orig_k}': \"{val}\". Skipping store.")
                         return f"Stored {key} in {category} memory (already exists)."
 
-    # Save to SQLite/Redis via UnifiedMemory
+    # Save to SQLite/Postgres via MemoryManager
     # Check for Vector Tombstoning first (drift prevention)
     try:
         old_payload = um.retrieve_memory(db_key)
@@ -138,7 +138,9 @@ def store_memory(category, key, value):
             old_val = old_payload.get("value")
             if old_val and str(old_val).strip() != str(sanitized_value).strip():
                 print(f"🗑️ [Vector Tombstoning] Old value for '{db_key}' was: \"{old_val}\". Deleting from vector memory...")
-                from .vector_memory import delete_vector_fact
+                # NOTE: vector_memory is currently imported relatively, we need to adjust this to absolute import
+                # since vector_memory.py is still in Infrastructure/
+                from src.CoreFunctions.Infrastructure.vector_memory import delete_vector_fact
                 delete_vector_fact(str(old_val))
     except Exception as tomb_err:
         print(f"  ⚠️ [Vector Tombstoning] Warning: Could not execute vector tombstone clean-up: {tomb_err}")
@@ -165,7 +167,7 @@ def fetch_memory(category=None, key=None):
         smart lookup in order:
         user → current → past → worker (if active & enabled)
     """
-    um = UnifiedMemory()
+    um = MemoryManager()
     if not um.enabled:
         return None
 
@@ -195,7 +197,7 @@ def fetch_memory(category=None, key=None):
             return value
 
         # Check worker (if executing under worker context and enable_worker_memory is True)
-        worker_name = UnifiedMemory.get_current_worker()
+        worker_name = MemoryManager.get_current_worker()
         if worker_name:
             from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry
             if WorkerRegistry.is_worker_memory_enabled(worker_name):
@@ -219,7 +221,7 @@ def fetch_memory(category=None, key=None):
                 _, worker_name = category_orig.split(":", 1)
                 worker_name = worker_name.strip()
             else:
-                worker_name = UnifiedMemory.get_current_worker()
+                worker_name = MemoryManager.get_current_worker()
                 if not worker_name:
                     raise ValueError("Worker-specific memory requested but no active worker found in execution context.")
             db_key = f"worker:{worker_name}:{key}"
@@ -252,7 +254,7 @@ def fetch_memory(category=None, key=None):
                 _, worker_name = category_orig.split(":", 1)
                 worker_name = worker_name.strip()
             else:
-                worker_name = UnifiedMemory.get_current_worker()
+                worker_name = MemoryManager.get_current_worker()
                 if not worker_name:
                     raise ValueError("Worker-specific memory requested but no active worker found in execution context.")
             category = f"worker:{worker_name}"
@@ -293,7 +295,7 @@ def delete_memory(category, key):
             _, worker_name = category_orig.split(":", 1)
             worker_name = worker_name.strip()
         else:
-            worker_name = UnifiedMemory.get_current_worker()
+            worker_name = MemoryManager.get_current_worker()
             if not worker_name:
                 raise ValueError("Worker-specific memory requested but no active worker found in execution context.")
         db_key = f"worker:{worker_name}:{key}"
@@ -308,7 +310,7 @@ def delete_memory(category, key):
             category = category_str
         db_key = f"{category}:{key}"
 
-    um = UnifiedMemory()
+    um = MemoryManager()
     um.delete_memory(db_key)
     print(f"🗑️ Deleted memory key from database: {db_key}")
     return f"Deleted memory '{key}' from '{category}' memory."

@@ -10,7 +10,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.
 
 base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory
+from src.CoreFunctions.Infrastructure.MemoryLayer import store_memory, fetch_memory
 from src.CoreFunctions.Infrastructure.vector_memory import store_vector, search_vector
 from src.CoreFunctions.StateGraph.state import AgentState
 
@@ -410,10 +410,10 @@ def trigger_feedback_extraction(user_input: str, final_response: str, feedback: 
     def run_extraction():
         try:
             from langchain_ollama import ChatOllama
-            from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
+            from src.CoreFunctions.Infrastructure.MemoryLayer import MemoryManager
             from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry
             
-            um = UnifiedMemory()
+            um = MemoryManager()
             if not um.enabled:
                 return
                 

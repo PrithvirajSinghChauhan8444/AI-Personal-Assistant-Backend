@@ -9,8 +9,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 # Load env variables
 load_dotenv(override=True)
 
-from src.CoreFunctions.unified_memory import UnifiedMemory
-from src.CoreFunctions.vector_memory import store_vector
+from src.CoreFunctions.Infrastructure.MemoryLayer import MemoryManager
+from src.CoreFunctions.Infrastructure.vector_memory import store_vector
 
 BACKUP_DIR = os.path.join(os.path.dirname(__file__), "Memory", "backups")
 
@@ -37,7 +37,7 @@ def restore_backup(backup_file_path=None):
         return
 
     # 1. Restore Structured Memory
-    um = UnifiedMemory()
+    um = MemoryManager()
     structured = backup_data.get("structured", {})
     
     if structured:

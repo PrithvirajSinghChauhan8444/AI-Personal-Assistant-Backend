@@ -3,9 +3,9 @@ import os
 from langchain_core.tools import StructuredTool
 
 # Import all infra helpers that tools might need
-from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory, delete_memory
+from src.CoreFunctions.Infrastructure.MemoryLayer import store_memory, fetch_memory, delete_memory
 from src.CoreFunctions.Infrastructure.vector_memory import store_vector, search_vector, delete_vector_fact, rebuild_skills_vector_store, search_skills_vector
-from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
+from src.CoreFunctions.Infrastructure.MemoryLayer import MemoryManager
 
 
 def list_memory_keys(pattern: str = "*") -> str:
@@ -16,8 +16,8 @@ def list_memory_keys(pattern: str = "*") -> str:
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: list_memory_keys")
     print(f"   Args: pattern={pattern}")
-    from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
-    um = UnifiedMemory()
+    from src.CoreFunctions.Infrastructure.MemoryLayer import MemoryManager
+    um = MemoryManager()
     if not um.enabled:
         return "Unified Memory is disabled."
     keys = um.list_keys(pattern)

@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
-from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory, delete_memory
+from src.CoreFunctions.Infrastructure.MemoryLayer import MemoryManager
+from src.CoreFunctions.Infrastructure.MemoryLayer import store_memory, fetch_memory, delete_memory
 from src.CoreFunctions.Infrastructure.vector_memory import store_vector, search_vector, delete_vector_fact, rebuild_skills_vector_store, search_skills_vector
 from src.CoreFunctions.StateGraph.task_router import task_router_node
 from src.CoreFunctions.StateGraph.executor import _run_ephemeral_agent, _get_worker_feedback_instructions
@@ -23,10 +23,10 @@ class TestArchitectureRefinement(unittest.TestCase):
         self.test_dir = tempfile.mkdtemp()
         self.db_path = os.path.join(self.test_dir, "test_cache.db")
         
-        # Override UnifiedMemory singleton
-        self.original_db_path = UnifiedMemory().db_path
-        UnifiedMemory._instance = None
-        self.um = UnifiedMemory(db_path=self.db_path)
+        # Override MemoryManager singleton
+        self.original_db_path = MemoryManager().db_path
+        MemoryManager._instance = None
+        self.um = MemoryManager(db_path=self.db_path)
         
         # Override Vector Store paths
         import src.CoreFunctions.Infrastructure.vector_memory as vm
@@ -41,7 +41,7 @@ class TestArchitectureRefinement(unittest.TestCase):
         vm.SKILLS_DATA_PATH = os.path.join(self.test_dir, "skills_data.json")
         
     def tearDown(self):
-        UnifiedMemory._instance = None
+        MemoryManager._instance = None
         
         import src.CoreFunctions.Infrastructure.vector_memory as vm
         vm.INDEX_PATH = self.original_vm_index

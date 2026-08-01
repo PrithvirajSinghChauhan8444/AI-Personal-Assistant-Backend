@@ -6,7 +6,7 @@ from datetime import datetime
 from langchain_core.tools import StructuredTool
 
 # Import all integrations and infra helpers that tools might need
-from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory, delete_memory
+from src.CoreFunctions.Infrastructure.MemoryLayer import store_memory, fetch_memory, delete_memory
 from src.CoreFunctions.Infrastructure.vector_memory import store_vector, search_vector, delete_vector_fact, rebuild_skills_vector_store, search_skills_vector
 from src.CoreFunctions.Infrastructure.file_vector_store import index_file, index_directory_recursive, search_files_semantically, rag_qa_file
 from src.CoreFunctions.Infrastructure.auth_utils import verify_password

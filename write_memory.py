@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 # Load .env
 load_dotenv(override=True)
 
-from src.CoreFunctions.memory import store_memory
+from src.CoreFunctions.Infrastructure.MemoryLayer import store_memory
 
 def main():
     print("✍️  Direct Unified Memory Writer Helper")

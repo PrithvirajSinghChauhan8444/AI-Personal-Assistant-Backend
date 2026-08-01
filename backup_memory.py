@@ -10,8 +10,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 # Load env variables
 load_dotenv(override=True)
 
-from src.CoreFunctions.unified_memory import UnifiedMemory
-from src.CoreFunctions.vector_memory import _load_data as _load_vector_data
+from src.CoreFunctions.Infrastructure.MemoryLayer import MemoryManager
+from src.CoreFunctions.Infrastructure.vector_memory import _load_data as _load_vector_data
 
 BACKUP_DIR = os.path.join(os.path.dirname(__file__), "Memory", "backups")
 
@@ -24,7 +24,7 @@ def create_backup():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
     # 1. Backup Structured Memory
-    um = UnifiedMemory()
+    um = MemoryManager()
     structured_backup = {}
     
     if um.enabled:
