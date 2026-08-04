@@ -182,65 +182,7 @@ class SQLiteMemoryEngine(BaseMemoryEngine):
 
 
 # ==========================================
-# 3. REDIS CACHE ENGINE (High Performance)
-# ==========================================
-class RedisMemoryEngine(BaseMemoryEngine):
-    """Redis implementation of the memory engine, using native Redis commands and distributed locks."""
-
-    def __init__(self, redis_client):
-        self.client = redis_client
-        self.prefix = "unified_memory:"
-
-    def _full_key(self, key: str) -> str:
-        return f"{self.prefix}{key}"
-
-    def set(self, key: str, value: Dict[str, Any], ttl_seconds: int = 1800) -> None:
-        full_key = self._full_key(key)
-        val_str = json.dumps(value)
-        self.client.set(full_key, val_str, ex=ttl_seconds)
-
-    def get(self, key: str) -> Optional[Dict[str, Any]]:
-        full_key = self._full_key(key)
-        val = self.client.get(full_key)
-        if val:
-            # Decode if returned as bytes (depends on redis-py configuration)
-            if isinstance(val, bytes):
-                val = val.decode("utf-8")
-            return json.loads(val)
-        return None
-
-    def delete(self, key: str) -> None:
-        full_key = self._full_key(key)
-        self.client.delete(full_key)
-
-    def keys(self, pattern: str) -> List[str]:
-        full_pattern = self._full_key(pattern)
-        found_keys = self.client.keys(full_pattern)
-        results = []
-        for k in found_keys:
-            if isinstance(k, bytes):
-                k = k.decode("utf-8")
-            # Strip the prefix to return clean key names
-            if k.startswith(self.prefix):
-                results.append(k[len(self.prefix) :])
-            else:
-                results.append(k)
-        return results
-
-    def acquire_lock(self, lock_name: str, lease_time: int = 5) -> bool:
-        # SET with NX (Not Exists) and PX (Milliseconds TTL) for distributed locks
-        lock_key = f"lock:{lock_name}"
-        lease_ms = int(lease_time * 1000)
-        result = self.client.set(lock_key, "locked", nx=True, px=lease_ms)
-        return bool(result)
-
-    def release_lock(self, lock_name: str) -> None:
-        lock_key = f"lock:{lock_name}"
-        self.client.delete(lock_key)
-
-
-# ==========================================
-# 4. POSTGRES CACHE ENGINE (Enterprise Production)
+# 3. POSTGRES CACHE ENGINE (Enterprise Production)
 # ==========================================
 class PostgresMemoryEngine(BaseMemoryEngine):
     """Postgres implementation of the memory engine, supporting hybrid/relational storage and thread-safety."""
@@ -414,16 +356,6 @@ class UnifiedMemory:
             except Exception as e:
                 print(f"⚠️ [UnifiedMemory] Postgres connection failed ({e}). Falling back to SQLite.")
 
-        redis_url = os.environ.get("REDIS_URL")
-        if redis_url:
-            try:
-                import redis
-                client = redis.from_url(redis_url)
-                client.ping()
-                print("⚡ [UnifiedMemory] Connected successfully to Redis.")
-                return RedisMemoryEngine(client)
-            except Exception as e:
-                print(f"⚠️ [UnifiedMemory] Redis connection failed ({e}). Falling back to SQLite.")
 
         print(f"📁 [UnifiedMemory] Initialized local SQLite cache backend at '{self.db_path}'")
         return SQLiteMemoryEngine(db_path=self.db_path)
