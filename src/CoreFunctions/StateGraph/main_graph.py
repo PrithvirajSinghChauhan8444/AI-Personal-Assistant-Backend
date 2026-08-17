@@ -640,6 +640,9 @@ def process_request_interactive():
         thread_id = f"session_{uuid.uuid4().hex[:8]}"
         config = {"configurable": {"thread_id": thread_id}}
 
+        # Clear replan_context for a brand new user request
+        working_memory_init.pop("replan_context", None)
+
         initial_state = {
             "primary_goal": user_input,
             "active_subtasks": [],

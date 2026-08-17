@@ -96,7 +96,7 @@ def task_router_node(state: AgentState):
             context_str += f"- {mem}\n"
             
     # Include details of any task failures/roadblocks requesting re-planning
-    replan_context = working_memory.get("replan_context")
+    replan_context = working_memory.pop("replan_context", None)
     if replan_context:
         context_str += f"\n[REPLAN REQUEST CONTEXT - PREVIOUS ATTEMPT WORKFLOW FAILED]\n{replan_context}\n"
             
