@@ -11,8 +11,10 @@ def run_terminal_tool(command: str) -> str:
     Args:
         command (str): The exact shell command string to execute.
     """
-    print(f"\n[DEBUG] 🛠️ Calling Tool: run_terminal_tool")
-    print(f"   Args: command={command}")
+    cmd_preview = command.replace('\n', ' ').strip()
+    if len(cmd_preview) > 80:
+        cmd_preview = cmd_preview[:77] + "..."
+    print(f"\033[90m🛠️  [Tool] run_terminal_tool(command={repr(cmd_preview)})\033[0m", flush=True)
     
     if re.search(r'\bsleep\b', command.lower()):
         return "❌ Error: Synchronous 'sleep' or delay commands are strictly prohibited in run_cmd to prevent terminal freeze. To run tasks at a future time or schedule a reminder, you MUST use `schedule_delayed_task` or `schedule_task_at_time` instead."

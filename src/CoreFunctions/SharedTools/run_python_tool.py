@@ -10,8 +10,7 @@ def run_python_tool(path: str) -> str:
     Args:
         path (str): The path to the Python file (.py) to execute.
     """
-    print(f"\n[DEBUG] 🛠️ Calling Tool: run_python_tool")
-    print(f"   Args: path={path}")
+    print(f"\033[90m🛠️  [Tool] run_python_tool(path={repr(path)})\033[0m", flush=True)
 
     vis = getattr(builtins, "active_cli_visualizer", None)
     if vis and vis.active:

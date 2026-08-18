@@ -7,8 +7,7 @@ def get_weather(location: str = "Agra") -> str:
     Args:
         location (str): The name of the city to get the weather for. Defaults to "Agra".
     """
-    print(f"\n[DEBUG] 🛠️ Calling Tool: get_weather")
-    print(f"   Args: location={location}")
+    print(f"\033[90m🛠️  [Tool] get_weather(location={repr(location)})\033[0m", flush=True)
     try:
         url = f"https://wttr.in/{location}?format=%C+%t"
         response = requests.get(url)

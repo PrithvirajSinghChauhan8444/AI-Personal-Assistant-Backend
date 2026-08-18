@@ -10,6 +10,40 @@ from datetime import datetime
 
 MEMORY_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..', 'Memory'))
 TASKS_FILE = os.path.join(MEMORY_DIR, 'scheduled_tasks.json')
+CONFIG_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../config'))
+SPEECH_CONFIG_FILE = os.path.join(CONFIG_DIR, 'speech_config.json')
+MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../models'))
+
+# Global caches for loaded neural TTS models and synthesis locking
+_piper_voice = None
+_loaded_piper_voice_name = None
+_kokoro_voice = None
+_speech_lock = threading.Lock()
+
+def load_speech_config() -> dict:
+    """Loads speech configuration from speech_config.json, with safe fallbacks."""
+    default_config = {
+        "engine": "piper",
+        "speed_neural": 1.0,
+        "voice_piper": "en_US-lessac-medium.onnx",
+        "voice_kokoro": "am_michael",
+        "rate_spd_say": 0,
+        "pitch_spd_say": 0,
+        "volume_spd_say": 0,
+        "voice_type_spd_say": "female1",
+        "speed_espeak": 175,
+        "pitch_espeak": 50,
+        "amplitude_espeak": 100,
+        "voice_espeak": "en+f1"
+    }
+    try:
+        if os.path.exists(SPEECH_CONFIG_FILE):
+            with open(SPEECH_CONFIG_FILE, 'r') as f:
+                config = json.load(f)
+                return {**default_config, **config}
+    except Exception as e:
+        print(f"Error loading speech configuration: {e}")
+    return default_config
 
 # Lock for thread-safe tasks file access
 _tasks_lock = threading.Lock()
@@ -177,9 +211,232 @@ def cancel_scheduled_task(task_id: str) -> str:
 # --- Active Daemon Thread Execution ---
 
 def play_beep():
-    """Triggers an audible terminal bell/beep sound."""
+    """Triggers an audible terminal bell/beep sound and falls back to system players if available."""
+    # 1. Try playing system notification sound using canberra-gtk-play (standard GNOME/Ubuntu)
+    try:
+        res = subprocess.run(["canberra-gtk-play", "--id", "bell"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        if res.returncode == 0:
+            return
+    except Exception:
+        pass
+
+    # 2. Try playing a common default system sound using standard players
+    sound_files = [
+        "/usr/share/sounds/freedesktop/stereo/complete.oga",
+        "/usr/share/sounds/freedesktop/stereo/bell.oga",
+        "/usr/share/sounds/freedesktop/stereo/message.oga",
+        "/usr/share/sounds/ubuntu/audio/bell.ogg"
+    ]
+    for sound_path in sound_files:
+        if os.path.exists(sound_path):
+            # Try PulseAudio player first
+            try:
+                res = subprocess.run(["paplay", sound_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                if res.returncode == 0:
+                    return
+            except Exception:
+                pass
+            # Try ALSA player fallback
+            try:
+                res = subprocess.run(["aplay", sound_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                if res.returncode == 0:
+                    return
+            except Exception:
+                pass
+
+    # 3. Fallback to standard terminal bell
     sys.stdout.write("\a")
     sys.stdout.flush()
+
+def ensure_models_exist(engine: str) -> bool:
+    """Checks and downloads model files for the specified engine if they are not already present."""
+    import urllib.request
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    
+    downloads = {}
+    if engine == "piper":
+        speech_config = load_speech_config()
+        voice_name = speech_config.get("voice_piper", "en_US-lessac-medium.onnx")
+        model_path = os.path.join(MODELS_DIR, voice_name)
+        config_path = os.path.join(MODELS_DIR, f"{voice_name}.json")
+        
+        # If using the default voice, verify or download it
+        if voice_name == "en_US-lessac-medium.onnx":
+            downloads = {
+                model_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx",
+                config_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",
+            }
+        else:
+            # Verify custom files exist locally
+            if not os.path.exists(model_path) or not os.path.exists(config_path):
+                print(f"[Neural TTS] Custom Piper voice '{voice_name}' or its config file (.json) was not found in {MODELS_DIR}.")
+                return False
+    elif engine == "kokoro":
+        model_path = os.path.join(MODELS_DIR, "kokoro-v0_19.onnx")
+        voices_path = os.path.join(MODELS_DIR, "voices.bin")
+        downloads = {
+            model_path: "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/kokoro-v0_19.onnx",
+            voices_path: "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/voices.bin",
+        }
+    else:
+        return True
+        
+    for dest_path, url in downloads.items():
+        if not os.path.exists(dest_path):
+            print(f"[Neural TTS] Downloading {os.path.basename(dest_path)} (this may take a moment)...")
+            try:
+                def report_hook(block_num, block_size, total_size):
+                    read_so_far = block_num * block_size
+                    if total_size > 0:
+                        percent = min(100, read_so_far * 100 / total_size)
+                        sys.stdout.write(f"\r  Progress: {percent:.1f}% ({read_so_far // (1024*1024)}MB / {total_size // (1024*1024)}MB)")
+                        sys.stdout.flush()
+                urllib.request.urlretrieve(url, dest_path, reporthook=report_hook)
+                print(f"\n[Neural TTS] Successfully downloaded {os.path.basename(dest_path)}.")
+            except Exception as e:
+                print(f"\n[Neural TTS] Error downloading {url}: {e}")
+                return False
+    return True
+
+def play_wav_audio(file_path: str) -> bool:
+    """Plays a WAV file using system tools (paplay, aplay, etc.) and returns True if successful."""
+    for player in ["paplay", "aplay"]:
+        try:
+            res = subprocess.run([player, file_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            if res.returncode == 0:
+                return True
+        except Exception:
+            pass
+    return False
+
+def play_piper_speech(text: str) -> bool:
+    """Generates Piper speech and plays it."""
+    global _piper_voice, _loaded_piper_voice_name
+    import wave
+    from piper.voice import PiperVoice, SynthesisConfig
+    
+    speech_config = load_speech_config()
+    voice_name = speech_config.get("voice_piper", "en_US-lessac-medium.onnx")
+    
+    with _speech_lock:
+        if _piper_voice is None or _loaded_piper_voice_name != voice_name:
+            model_path = os.path.join(MODELS_DIR, voice_name)
+            config_path = os.path.join(MODELS_DIR, f"{voice_name}.json")
+            _piper_voice = PiperVoice.load(model_path, config_path=config_path)
+            _loaded_piper_voice_name = voice_name
+            
+        wav_path = os.path.join(MODELS_DIR, f"temp_piper_{uuid.uuid4().hex[:8]}.wav")
+        with wave.open(wav_path, "wb") as wav_file:
+            initialized = False
+            
+            # Setup synthesis parameters
+            speaker_id = speech_config.get("speaker_id_piper")
+            if speaker_id is not None:
+                speaker_id = int(speaker_id)
+            speed = float(speech_config.get("speed_neural", 1.0))
+            length_scale = 1.0 / speed if speed else 1.0
+            
+            syn_config = SynthesisConfig(
+                speaker_id=speaker_id,
+                length_scale=length_scale
+            )
+            
+            for chunk in _piper_voice.synthesize(text, syn_config=syn_config):
+                if not initialized:
+                    wav_file.setnchannels(chunk.sample_channels)
+                    wav_file.setsampwidth(chunk.sample_width)
+                    wav_file.setframerate(chunk.sample_rate)
+                    initialized = True
+                wav_file.writeframes(chunk.audio_int16_bytes)
+            
+        success = play_wav_audio(wav_path)
+        if os.path.exists(wav_path):
+            try:
+                os.remove(wav_path)
+            except Exception:
+                pass
+        return success
+
+def play_kokoro_speech(text: str, speech_config: dict) -> bool:
+    """Generates Kokoro speech and plays it."""
+    global _kokoro_voice
+    from kokoro_onnx import Kokoro
+    import soundfile as sf
+    
+    with _speech_lock:
+        if _kokoro_voice is None:
+            model_path = os.path.join(MODELS_DIR, "kokoro-v0_19.onnx")
+            voices_path = os.path.join(MODELS_DIR, "voices.bin")
+            _kokoro_voice = Kokoro(model_path, voices_path)
+            
+        voice_name = speech_config.get("voice_kokoro", "am_michael")
+        speed = float(speech_config.get("speed_neural", 1.0))
+        samples, sample_rate = _kokoro_voice.create(text, voice=voice_name, speed=speed)
+        
+        wav_path = os.path.join(MODELS_DIR, f"temp_kokoro_{uuid.uuid4().hex[:8]}.wav")
+        sf.write(wav_path, samples, sample_rate)
+        
+        success = play_wav_audio(wav_path)
+        if os.path.exists(wav_path):
+            try:
+                os.remove(wav_path)
+            except Exception:
+                pass
+        return success
+
+def speak_text(text: str):
+    """Uses a configured text-to-speech engine to announce the text, falling back to play_beep() if none are available."""
+    speech_config = load_speech_config()
+    engine = speech_config.get("engine", "piper").lower()
+    
+    if engine in ["piper", "kokoro"]:
+        try:
+            if ensure_models_exist(engine):
+                if engine == "piper":
+                    if play_piper_speech(text):
+                        return
+                elif engine == "kokoro":
+                    if play_kokoro_speech(text, speech_config):
+                        return
+        except Exception as e:
+            print(f"[Neural TTS] Failed to run neural engine '{engine}': {e}. Falling back to CLI engines...")
+            
+    # 1. Fallback: Try spd-say (Speech Dispatcher, common on GNOME/Ubuntu/Debian)
+    try:
+        cmd = [
+            "spd-say",
+            "-w",
+            "-t", speech_config.get("voice_type_spd_say", "female1"),
+            "-r", str(speech_config.get("rate_spd_say", 0)),
+            "-p", str(speech_config.get("pitch_spd_say", 0)),
+            "-i", str(speech_config.get("volume_spd_say", 0)),
+            text
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        if res.returncode == 0:
+            return
+    except Exception:
+        pass
+
+    # 2. Fallback: Try espeak-ng / espeak
+    for espeak_cmd in ["espeak-ng", "espeak"]:
+        try:
+            cmd = [
+                espeak_cmd,
+                "-s", str(speech_config.get("speed_espeak", 175)),
+                "-p", str(speech_config.get("pitch_espeak", 50)),
+                "-a", str(speech_config.get("amplitude_espeak", 100)),
+                "-v", speech_config.get("voice_espeak", "en+f1"),
+                text
+            ]
+            res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            if res.returncode == 0:
+                return
+        except Exception:
+            pass
+
+    # 3. Fallback to playing a beep if no TTS engine is successful
+    play_beep()
 
 def trigger_desktop_notification(title: str, message: str):
     """Triggers a desktop notification using notify-send on Linux if available."""
@@ -260,8 +517,8 @@ def polling_loop():
                     recurrence = t.get("recurrence")
                     
                     if task_type == "reminder":
-                        # Play audible beep on reminder trigger
-                        play_beep()
+                        # Play voice message (or beep fallback) on reminder trigger
+                        speak_text(f"Reminder: {t['description']}")
                         
                         # Trigger desktop notification
                         trigger_desktop_notification("Hermes Reminder", t["description"])

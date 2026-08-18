@@ -14,3 +14,7 @@ Skills/
 not_comit
 # CodeLens Graph local index
 .codelens/
+
+# TTS models and temporary generated audio
+models/
+*.wav

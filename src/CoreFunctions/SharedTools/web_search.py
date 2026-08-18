@@ -8,15 +8,14 @@ def web_search(query: str, max_results: int = 5) -> str:
         query (str): The search term or question to query.
         max_results (int, optional): The maximum number of results to fetch. Defaults to 5.
     """
-    print(f"\n[DEBUG] 🛠️ Calling Tool: web_search")
-    print(f"   Args: query={query}")
+    print(f"\033[90m🛠️  [Tool] web_search(query={repr(query)})\033[0m", flush=True)
     
     # 1. Try Parallel Search MCP via subprocess
     try:
         import subprocess
         import uuid
         
-        print("   Using Parallel Search MCP...")
+        print("\033[90m   Using Parallel Search MCP...\033[0m", flush=True)
         proc = subprocess.Popen(
             ["npx", "-y", "mcp-remote", "https://search.parallel.ai/mcp"],
             stdin=subprocess.PIPE,
@@ -114,7 +113,7 @@ def web_search(query: str, max_results: int = 5) -> str:
             except subprocess.TimeoutExpired:
                 proc.kill()
     except Exception as e:
-        print(f"   ⚠️ Parallel Search MCP failed: {e}. Falling back to DuckDuckGo...")
+        print(f"\033[90m   ⚠️ Parallel Search MCP failed: {e}. Falling back to DuckDuckGo...\033[0m", flush=True)
 
     # 2. Fallback to DuckDuckGo search
     try:

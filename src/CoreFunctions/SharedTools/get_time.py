@@ -8,7 +8,7 @@ def get_time() -> str:
     Returns:
         str: The formatted current system time string.
     """
-    print(f"\n[DEBUG] 🛠️ Calling Tool: get_time")
+    print(f"\033[90m🛠️  [Tool] get_time()\033[0m", flush=True)
     return datetime.now().strftime("%I:%M %p, %A %d %B %Y")
 
 get_time_tool = StructuredTool.from_function(

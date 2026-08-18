@@ -246,6 +246,8 @@ def get_stdin_prompt_banner(action_type: str, reason: str) -> str:
     action_type can be 'PASSWORD' or 'INTERVENTION'
     """
     import inspect
+    import textwrap
+    import re
     
     agent_name = "System"
     active_task = "User query execution"
@@ -274,17 +276,6 @@ def get_stdin_prompt_banner(action_type: str, reason: str) -> str:
             elif func_name == "run_python_tool":
                 current_step = "Executing python code execution"
 
-    # Truncate strings to prevent UI wrapping issues
-    def clean_str(s, length=55):
-        s = str(s).replace("\n", " ").strip()
-        if len(s) > length:
-            return s[:length-3] + "..."
-        return s
-        
-    c_agent = clean_str(agent_name, 55)
-    c_task = clean_str(active_task, 55)
-    c_step = clean_str(current_step, 55)
-    
     if action_type == "PASSWORD":
         title = "🔒 PASSWORD AUTHORIZATION REQUIRED"
         color = "\033[1;31m" # Red
@@ -296,17 +287,63 @@ def get_stdin_prompt_banner(action_type: str, reason: str) -> str:
     cyan = "\033[1;36m"
     white = "\033[1;37m"
     
-    banner = f"""
-{color}┌──────────────────────────────────────────────────────────────┐{reset}
-{color}│ {title:<60} │{reset}
-{color}├──────────────────────────────────────────────────────────────┤{reset}
-{color}│{reset} {cyan}🤖 Agent Asking:{reset}  {white}{c_agent:<41}{reset} {color}│{reset}
-{color}│{reset} {cyan}📋 Active Task:{reset}   {white}{c_task:<41}{reset} {color}│{reset}
-{color}│{reset} {cyan}❓ Current Step:{reset}  {white}{c_step:<41}{reset} {color}│{reset}
-{color}│{reset} {cyan}💡 Reason:{reset}        {white}{clean_str(reason, 41):<41}{reset} {color}│{reset}
-{color}└──────────────────────────────────────────────────────────────┘{reset}
-"""
-    return banner
+    inner_width = 76
+    
+    def visual_len(text):
+        # Strip ANSI escape sequences
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        clean_text = ansi_escape.sub('', text)
+        # Double-width characters in terminal (emojis used)
+        double_width_chars = ["🤖", "📋", "❓", "💡", "🔒", "🚨"]
+        extra = sum(1 for char in clean_text if char in double_width_chars)
+        return len(clean_text) + extra
+
+    def make_content_line(label, value_line):
+        v_len_label = visual_len(label)
+        v_len_val = visual_len(value_line)
+        padding_len = inner_width - v_len_label - v_len_val
+        if padding_len < 0:
+            padding_len = 0
+        return f"{label}{value_line}{' ' * padding_len}"
+
+    # Labels have a visual length of exactly 19.
+    label_agent = f" {cyan}🤖 Agent Asking:{reset}  "  # Space + emoji + " Agent Asking:  " (1 + 2 + 16 = 19)
+    label_task =  f" {cyan}📋 Active Task:{reset}    "  # Space + emoji + " Active Task:    " (1 + 2 + 16 = 19)
+    label_step =  f" {cyan}❓ Current Step:{reset}   "  # Space + emoji + " Current Step:   " (1 + 2 + 16 = 19)
+    label_reason = f" {cyan}💡 Reason:{reset}         "  # Space + emoji + " Reason:         " (1 + 2 + 16 = 19)
+    indent_spaces = " " * 19
+
+    lines = []
+    
+    # 1. Title line
+    v_len_title = visual_len(title) + 1  # 1 space prefix
+    title_padding = inner_width - v_len_title
+    title_line = f" {title}{' ' * title_padding}"
+    lines.append(f"{color}│{reset}{title_line}{color}│{reset}")
+    lines.append(f"{color}├{'─' * inner_width}┤{reset}")
+
+    # Helper to wrap and build lines for a field
+    def add_field(label, val):
+        val_str = str(val).replace("\n", " ").strip()
+        wrapped_vals = textwrap.wrap(val_str, width=57)  # 76 - 19 = 57
+        if not wrapped_vals:
+            wrapped_vals = [""]
+        for i, line in enumerate(wrapped_vals):
+            lbl = label if i == 0 else indent_spaces
+            content = make_content_line(lbl, f"{white}{line}{reset}")
+            lines.append(f"{color}│{reset}{content}{color}│{reset}")
+
+    add_field(label_agent, agent_name)
+    add_field(label_task, active_task)
+    add_field(label_step, current_step)
+    add_field(label_reason, reason)
+
+    banner_lines = [
+        f"{color}┌{'─' * inner_width}┐{reset}"
+    ] + lines + [
+        f"{color}└{'─' * inner_width}┘{reset}"
+    ]
+    return "\n" + "\n".join(banner_lines) + "\n"
 
 
 def verify_password():

@@ -47,7 +47,7 @@ def migrate_json_to_sqlite():
                     migrated_count += 1
                 
                 if migrated_count > 0:
-                    print(f"📦 [Database Memory Migration] Migrated {migrated_count} keys from '{category}' file to database cache.")
+                    print(f"\033[90m📦 [Database Memory Migration] Migrated {migrated_count} keys from '{category}' file to database cache.\033[0m")
                 
                 # Backup the file to avoid re-migrating
                 backup_path = path + ".bak"
@@ -57,9 +57,9 @@ def migrate_json_to_sqlite():
                     except Exception:
                         pass
                 os.rename(path, backup_path)
-                print(f"📦 [Database Memory Migration] Backed up legacy file '{path}' to '{backup_path}'.")
+                print(f"\033[90m📦 [Database Memory Migration] Backed up legacy file '{path}' to '{backup_path}'.\033[0m")
             except Exception as e:
-                print(f"⚠️ [Database Memory Migration] Error migrating '{path}': {e}")
+                print(f"\033[90m⚠️ [Database Memory Migration] Error migrating '{path}': {e}\033[0m")
 
 # Run automatic migration on load
 migrate_json_to_sqlite()
@@ -127,7 +127,7 @@ def store_memory(category, key, value):
                 if payload:
                     val = payload.get("value")
                     if str(val).strip().lower() == normalized_val:
-                        print(f"ℹ️ [Structured Memory] Fact already exists in [{cat}] under '{orig_k}': \"{val}\". Skipping store.")
+                        print(f"\033[90mℹ️ [Structured Memory] Fact already exists in [{cat}] under '{orig_k}': \"{val}\". Skipping store.\033[0m")
                         return f"Stored {key} in {category} memory (already exists)."
 
     # Save to SQLite/Redis via UnifiedMemory
@@ -137,17 +137,17 @@ def store_memory(category, key, value):
         if old_payload:
             old_val = old_payload.get("value")
             if old_val and str(old_val).strip() != str(sanitized_value).strip():
-                print(f"🗑️ [Vector Tombstoning] Old value for '{db_key}' was: \"{old_val}\". Deleting from vector memory...")
+                print(f"\033[90m🗑️ [Vector Tombstoning] Old value for '{db_key}' was: \"{old_val}\". Deleting from vector memory...\033[0m")
                 from .vector_memory import delete_vector_fact
                 delete_vector_fact(str(old_val))
     except Exception as tomb_err:
-        print(f"  ⚠️ [Vector Tombstoning] Warning: Could not execute vector tombstone clean-up: {tomb_err}")
+        print(f"\033[90m  ⚠️ [Vector Tombstoning] Warning: Could not execute vector tombstone clean-up: {tomb_err}\033[0m")
 
     um.store_memory(db_key, {
         "value": sanitized_value,
         "timestamp": datetime.now().isoformat()
     }, persistent=True)
-    print(f"📁 Writing memory to database: {db_key}")
+    print(f"\033[90m📁 Writing memory to database: {db_key}\033[0m")
 
     return f"Stored {key} in {category} memory."
 
@@ -177,21 +177,21 @@ def fetch_memory(category=None, key=None):
         user_val = um.retrieve_memory(f"user:{key}")
         if user_val is not None:
             value = user_val.get("value")
-            print(f"🔁 recalled [user] → {key} = {value}")
+            print(f"\033[90m🔁 recalled [user] → {key} = {value}\033[0m")
             return value
 
         # Check current
         current_val = um.retrieve_memory(f"current:{key}")
         if current_val is not None:
             value = current_val.get("value")
-            print(f"🔁 recalled [current] → {key} = {value}")
+            print(f"\033[90m🔁 recalled [current] → {key} = {value}\033[0m")
             return value
 
         # Check past
         past_val = um.retrieve_memory(f"past:{key}")
         if past_val is not None:
             value = past_val.get("value")
-            print(f"🔁 recalled [past] → {key} = {value}")
+            print(f"\033[90m🔁 recalled [past] → {key} = {value}\033[0m")
             return value
 
         # Check worker (if executing under worker context and enable_worker_memory is True)
@@ -202,10 +202,10 @@ def fetch_memory(category=None, key=None):
                 worker_val = um.retrieve_memory(f"worker:{worker_name}:{key}")
                 if worker_val is not None:
                     value = worker_val.get("value")
-                    print(f"🔁 recalled [worker:{worker_name}] → {key} = {value}")
+                    print(f"\033[90m🔁 recalled [worker:{worker_name}] → {key} = {value}\033[0m")
                     return value
 
-        print(f"⚠️ recall miss → {key}")
+        print(f"\033[90m⚠️ recall miss → {key}\033[0m")
         return None
 
     # -----------------------------
@@ -237,7 +237,7 @@ def fetch_memory(category=None, key=None):
         val_obj = um.retrieve_memory(db_key)
         if val_obj is not None:
             value = val_obj.get("value")
-            print(f"🔁 recalled [{category}] → {key} = {value}")
+            print(f"\033[90m🔁 recalled [{category}] → {key} = {value}\033[0m")
             return value
         return None
 
@@ -310,5 +310,5 @@ def delete_memory(category, key):
 
     um = UnifiedMemory()
     um.delete_memory(db_key)
-    print(f"🗑️ Deleted memory key from database: {db_key}")
+    print(f"\033[90m🗑️ Deleted memory key from database: {db_key}\033[0m")
     return f"Deleted memory '{key}' from '{category}' memory."
