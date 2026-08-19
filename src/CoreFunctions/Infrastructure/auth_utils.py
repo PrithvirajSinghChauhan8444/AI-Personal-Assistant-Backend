@@ -149,28 +149,105 @@ def save_encrypted_json(filepath, data):
         print(f"❌ Failed to save encrypted JSON to {filepath}: {e}")
         raise e
 
+def load_google_accounts():
+    """Loads Google account alias-to-email mapping from google_accounts.json."""
+    config_dir = get_config_dir()
+    filepath = os.path.join(config_dir, 'google_accounts.json')
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"⚠️ Error loading google_accounts.json: {e}")
+    # Default mappings if file not found or failed to load
+    return {
+        "personal": "",
+        "college": "",
+        "default": ""
+    }
+
+def save_google_accounts(accounts_data):
+    """Saves Google account mappings to google_accounts.json."""
+    config_dir = get_config_dir()
+    filepath = os.path.join(config_dir, 'google_accounts.json')
+    try:
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(accounts_data, f, indent=2)
+    except Exception as e:
+        print(f"❌ Failed to save google_accounts.json: {e}")
+
+def resolve_expected_email(account: str) -> str:
+    """
+    Resolves expected email address for a given account alias or raw email address.
+    If alias is not mapped, prompts user and saves to google_accounts.json.
+    """
+    if "@" in account:
+        return account.strip().lower()
+        
+    accounts = load_google_accounts()
+    account_key = account.strip().lower()
+    
+    if account_key in accounts and accounts[account_key].strip():
+        return accounts[account_key].strip().lower()
+        
+    # Alias not mapped. Prompt user dynamically
+    print(f"\n⚠️ Google account alias '{account}' is not mapped to any email in google_accounts.json.")
+    while True:
+        try:
+            email_input = input(f"📧 Enter the expected Google email address for account alias '{account}': ").strip()
+            if "@" in email_input:
+                accounts[account_key] = email_input.lower()
+                save_google_accounts(accounts)
+                print(f"💾 Saved '{account}' -> '{email_input.lower()}' to google_accounts.json")
+                return email_input.lower()
+            else:
+                print("❌ Invalid email format. Please enter a valid email containing '@'.")
+        except (KeyboardInterrupt, EOFError):
+            print("\n❌ Input aborted. Proceeding without email verification.")
+            return ""
+
+def get_authenticated_email(creds) -> str:
+    """Queries the Google API to retrieve the email address associated with the credentials."""
+    from googleapiclient.discovery import build
+    try:
+        service = build('gmail', 'v1', credentials=creds)
+        profile = service.users().getProfile(userId='me').execute()
+        return profile.get('emailAddress', '').strip().lower()
+    except Exception as e:
+        print(f"⚠️ Gmail Profile API check failed: {e}")
+        # Try a fallback tokeninfo endpoint
+        import requests
+        try:
+            r = requests.get(f"https://oauth2.googleapis.com/tokeninfo?access_token={creds.token}")
+            if r.status_code == 200:
+                return r.json().get('email', '').strip().lower()
+        except Exception as re:
+            print(f"⚠️ Fallback tokeninfo verification also failed: {re}")
+        return ""
+
 def get_valid_credentials(account: str = "personal"):
     """
     The Master Auth Function.
     1. Checks if token exists and is valid.
     2. Auto-refreshes if expired.
     3. Auto-launches Browser Login if token is missing/dead.
+    4. Verifies the authenticated email address matches the expected email before saving.
     """
     config_dir = get_config_dir()
     
-    # Ensure config dir exists (sanity check)
+    # Ensure config dir exists
     if not os.path.exists(config_dir):
         print(f"❌ Error: Config folder not found at: {config_dir}")
         return None
 
-    # Load from account specific token file (e.g. token_personal.json or token_college.json)
+    # Load from account specific token file
     token_path = os.path.join(config_dir, f'token_{account}.json')
     # Backward compatibility fallback
     if account == "personal" and not os.path.exists(token_path) and os.path.exists(os.path.join(config_dir, 'token.json')):
         token_path = os.path.join(config_dir, 'token.json')
 
     credentials_path = os.path.join(config_dir, 'credentials.json')
-
+    expected_email = resolve_expected_email(account)
     creds = None
 
     # --- STEP 1: LOAD EXISTING TOKEN ---
@@ -189,23 +266,36 @@ def get_valid_credentials(account: str = "personal"):
             else:
                 creds = None
         except Exception as e:
-            print(f"❌ REAL ERROR LOADING TOKEN: {type(e).__name__}: {e}") # <--- This reveals the truth
+            print(f"❌ REAL ERROR LOADING TOKEN: {type(e).__name__}: {e}")
             creds = None
 
     # --- STEP 2: CHECK VALIDITY & REFRESH ---
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
+    if creds and not creds.valid:
+        if creds.expired and creds.refresh_token:
             print("🔄 Token expired. Refreshing automatically...")
             try:
                 creds.refresh(Request())
-            except Exception:
-                print("❌ Refresh failed. Starting fresh login...")
+                
+                # Verify that it refreshed to the expected email address
+                if expected_email:
+                    actual_email = get_authenticated_email(creds)
+                    if actual_email and actual_email != expected_email:
+                        print(f"❌ Refreshed token email mismatch (Expected: {expected_email}, Got: {actual_email}). Forcing fresh login...")
+                        creds = None
+            except Exception as e:
+                print(f"❌ Refresh failed: {e}. Starting fresh login...")
                 creds = None # Token is too broken, force re-login
 
-        # --- STEP 3: RE-AUTHORIZE (The 'generate_token' replacement) ---
-        if not creds:
-            print("🚀 Initiating New Login... (Check your browser)")
-            
+    # --- STEP 3: RE-AUTHORIZE & VERIFY LOOP (IF NEEDED) ---
+    if not creds:
+        attempts = 0
+        while True:
+            attempts += 1
+            if expected_email:
+                print(f"🔑 Authentication required for '{account}' (Expected Email: {expected_email})")
+            else:
+                print(f"🔑 Authentication required for '{account}'")
+                
             if not os.path.exists(credentials_path):
                 print(f"❌ CRITICAL ERROR: credentials.json not found at {credentials_path}")
                 print("You cannot login without this file. Please download it from Google Cloud Console.")
@@ -213,27 +303,53 @@ def get_valid_credentials(account: str = "personal"):
 
             try:
                 flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
-                # Tries port 8080 first (standard), then falls back to a random port
+                # Force account selection page in Google OAuth consent page on attempts > 1
+                prompt_option = 'select_account' if attempts > 1 else 'consent'
+                
                 try:
                     creds = flow.run_local_server(
                         port=9915,
-                        access_type='offline', # Ask for offline access (refresh token)
-                        prompt='consent'       # Force the consent screen to ensure we get it
+                        access_type='offline',
+                        prompt=prompt_option
                     )
                 except Exception:
-                    print("⚠️ Port 8080 blocked. Trying random port (Check console for Redirect Mismatch)...")
-                    creds = flow.run_local_server(port=9260)
+                    print("⚠️ Port 9915 blocked. Trying port 9260...")
+                    creds = flow.run_local_server(port=9260, prompt=prompt_option)
             except Exception as e:
                 print(f"❌ Login Flow Failed: {e}")
                 return None
 
-        # --- STEP 4: SAVE THE NEW/REFRESHED TOKEN ---
-        try:
-            token_data = json.loads(creds.to_json())
-            save_encrypted_json(token_path, token_data)
-            print(f"✅ Credentials saved securely (encrypted) to: {token_path}")
-        except Exception as e:
-            print(f"⚠️ Could not save token: {e}")
+            # Verify credentials before saving
+            if creds:
+                actual_email = get_authenticated_email(creds)
+                if not expected_email or actual_email == expected_email:
+                    # Successful match! Save the token
+                    try:
+                        token_data = json.loads(creds.to_json())
+                        save_encrypted_json(token_path, token_data)
+                        print(f"✅ Credentials verified and saved securely (encrypted) to: {token_path}")
+                    except Exception as e:
+                        print(f"⚠️ Could not save token: {e}")
+                    break
+                else:
+                    # Email mismatch! Force re-auth
+                    banner = get_stdin_prompt_banner(
+                        "INTERVENTION", 
+                        f"OAUTH LOGIN EMAIL MISMATCH!\n\n"
+                        f"Expected Account: {expected_email}\n"
+                        f"Logged-in Account: {actual_email}\n\n"
+                        f"Please sign in with the correct account."
+                    )
+                    print(banner, flush=True)
+                    try:
+                        choice = input("🔄 Would you like to retry Google Authentication? (y/n): ").strip().lower()
+                        if choice != 'y':
+                            print("❌ Authentication aborted by user.")
+                            return None
+                    except (KeyboardInterrupt, EOFError):
+                        print("\n❌ Authentication aborted.")
+                        return None
+                    creds = None
 
     return creds
 

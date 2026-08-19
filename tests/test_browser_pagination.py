@@ -24,7 +24,7 @@ async def run_test():
     print("\n--- Navigation Result (Default Offset 0, Limit 30) ---")
     print("\n".join(result_nav.split("\n")[:10])) # print first 10 lines of elements
     
-    assert "Showing elements 0 to 29 of" in result_nav or "Showing elements 0 to" in result_nav, "Pagination header missing or incorrect on navigate"
+    assert "DOM map — showing 0" in result_nav or "showing 0–29" in result_nav, "Pagination header missing or incorrect on navigate"
     print("✅ Navigation pagination header verified!")
 
     # 2. Test reading page with different offset
@@ -33,7 +33,7 @@ async def run_test():
     print("\n--- Read Page Result (Offset 30, Limit 15) ---")
     print("\n".join(result_read.split("\n")[:10])) # print first 10 lines
     
-    assert "Showing elements 30 to 44 of" in result_read or "Showing elements 30 to" in result_read, "Pagination header missing or incorrect on read"
+    assert "DOM map — showing 30" in result_read or "showing 30–44" in result_read, "Pagination header missing or incorrect on read"
     print("✅ Read page pagination header and slicing verified!")
     
     print("\n🎉 All browser pagination tests passed successfully!")

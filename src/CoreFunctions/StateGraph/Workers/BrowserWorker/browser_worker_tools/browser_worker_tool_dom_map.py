@@ -6,7 +6,8 @@ from .browser_manager import _get_browser_page, DOM_MAP_SCRIPT
 async def browser_get_dom_map(
     offset: int = 0,
     limit: int = 30,
-    filter_role: Optional[str] = None
+    filter_role: Optional[str] = None,
+    only_in_viewport: bool = True
 ) -> str:
     """Returns a spatial layout map of all interactive elements on the current page.
 
@@ -31,7 +32,7 @@ async def browser_get_dom_map(
 
     try:
         page = await _get_browser_page()
-        elements = await page.evaluate(DOM_MAP_SCRIPT)
+        elements = await page.evaluate(DOM_MAP_SCRIPT, only_in_viewport)
 
         if not elements:
             return "No interactive elements found on this page."
@@ -70,7 +71,8 @@ async def browser_get_dom_map(
 
 async def browser_query_elements(
     query_text: str,
-    max_results: int = 10
+    max_results: int = 10,
+    only_in_viewport: bool = True
 ) -> str:
     """Fuzzy-searches the current page's DOM map for elements whose label contains query_text.
 
@@ -89,7 +91,7 @@ async def browser_query_elements(
 
     try:
         page = await _get_browser_page()
-        elements = await page.evaluate(DOM_MAP_SCRIPT)
+        elements = await page.evaluate(DOM_MAP_SCRIPT, only_in_viewport)
 
         if not elements:
             return "No interactive elements found on this page."

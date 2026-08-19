@@ -131,6 +131,24 @@ async def _human_scroll(page, direction="down", distance=300):
 
 async def _get_browser_page():
     global _playwright_ctx, _browser, _browser_context, _page
+    if _page is not None:
+        try:
+            # Perform a lightweight connectivity check/ping with a strict timeout to prevent hangs
+            await asyncio.wait_for(_page.evaluate("1"), timeout=2.0)
+        except Exception as e:
+            print(f"🌐 [Browser] Stale page/connection check failed ({e}). Cleaning up and reconnecting...", flush=True)
+            try:
+                await _browser_context.close()
+            except Exception:
+                pass
+            try:
+                await _browser.close()
+            except Exception:
+                pass
+            _page = None
+            _browser_context = None
+            _browser = None
+
     if _page is None or _page.is_closed():
         from playwright.async_api import async_playwright
         
@@ -212,7 +230,7 @@ async def _get_browser_page():
     return _page
 
 DOM_MAP_SCRIPT = """
-() => {
+(onlyInViewport) => {
     // Resolve the semantic role of an element
     function getRole(el) {
         const ariaRole = el.getAttribute('role');
@@ -257,8 +275,19 @@ DOM_MAP_SCRIPT = """
         const el = allElements[i];
         const rect = el.getBoundingClientRect();
 
-        // Skip zero-size or off-screen
+        // Skip zero-size
         if (rect.width <= 0 || rect.height <= 0) continue;
+
+        // Skip off-screen elements if filtering by viewport
+        if (onlyInViewport !== false) {
+            const inViewport = (
+                rect.left < window.innerWidth &&
+                rect.right > 0 &&
+                rect.top < window.innerHeight &&
+                rect.bottom > 0
+            );
+            if (!inViewport) continue;
+        }
 
         const style = window.getComputedStyle(el);
         if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) continue;
@@ -319,11 +348,11 @@ DOM_MAP_SCRIPT = """
 }
 """
 
-async def _get_dom_map(offset: int = 0, limit: int = 30, filter_role: str = None) -> str:
+async def _get_dom_map(offset: int = 0, limit: int = 30, filter_role: str = None, only_in_viewport: bool = True) -> str:
     """Internal helper: run DOM_MAP_SCRIPT on the current page and return a compact formatted string."""
     page = await _get_browser_page()
     try:
-        elements = await page.evaluate(DOM_MAP_SCRIPT)
+        elements = await page.evaluate(DOM_MAP_SCRIPT, only_in_viewport)
         if not elements:
             return "No interactive elements found on this page."
 

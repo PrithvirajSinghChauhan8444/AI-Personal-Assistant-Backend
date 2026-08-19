@@ -11,7 +11,6 @@ load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..', 
 
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-
 from src.CoreFunctions.StateGraph.state import AgentState
 from src.CoreFunctions.StateGraph.task_router import task_router_node
 from src.CoreFunctions.StateGraph.system_state import system_state_node
@@ -454,6 +453,22 @@ def process_request_interactive():
 
     print("🤖 \033[1;32mAgent Manager (Dynamic State-Graph)\033[0m - Type 'exit' to quit.")
     
+    print("\nSession Startup:")
+    print("1 - Start a new session (no previous memory from the last session)")
+    print("2 - Continue the old session (continue last session context)")
+    
+    session_choice = "2"
+    while True:
+        try:
+            choice_input = input("Choose option [1/2]: ").strip()
+            if choice_input in ("1", "2"):
+                session_choice = choice_input
+                break
+            print("Invalid choice. Please enter 1 or 2.")
+        except (KeyboardInterrupt, EOFError):
+            print("\n👋 Goodbye!")
+            sys.exit(0)
+
     # Initialize the Unified Memory cache singleton and clean transient current-session keys on startup
     um = UnifiedMemory()
     try:
@@ -470,38 +485,51 @@ def process_request_interactive():
     chat_history = []
     working_memory_init = {}
     completed_tasks_init = {}
-    if os.path.exists(SESSION_CONTEXT_PATH):
-        try:
-            with open(SESSION_CONTEXT_PATH, "r", encoding="utf-8") as f:
-                context = json.load(f)
-                chat_history = context.get("chat_history", [])
-                working_memory_init = context.get("working_memory", {})
-                completed_tasks_init = context.get("completed_tasks", {})
-                previous_summary = context.get("session_summary", "")
-                
-                print(f"📖 Loaded {len(chat_history)} previous conversation exchanges.")
-                if previous_summary:
-                    working_memory_init["previous_session_summary"] = previous_summary
-                    print(f"📝 Previous Session Summary: {previous_summary}")
+    if session_choice == "1":
+        print("🧹 Starting a brand new session. Clearing previous memory context...")
+        if os.path.exists(SESSION_CONTEXT_PATH):
+            try:
+                os.remove(SESSION_CONTEXT_PATH)
+            except Exception as e:
+                print(f"⚠️ Failed to remove old session context file: {e}")
+        if os.path.exists(INTERRUPTED_TASK_PATH):
+            try:
+                os.remove(INTERRUPTED_TASK_PATH)
+            except Exception as e:
+                print(f"⚠️ Failed to remove interrupted task checkpoint: {e}")
+    else:
+        if os.path.exists(SESSION_CONTEXT_PATH):
+            try:
+                with open(SESSION_CONTEXT_PATH, "r", encoding="utf-8") as f:
+                    context = json.load(f)
+                    chat_history = context.get("chat_history", [])
+                    working_memory_init = context.get("working_memory", {})
+                    completed_tasks_init = context.get("completed_tasks", {})
+                    previous_summary = context.get("session_summary", "")
                     
-                # Restore UnifiedMemory persistent cache keys on startup
-                um_persistent = context.get("unified_memory_persistent", {})
-                if um_persistent:
-                    try:
-                        um = UnifiedMemory()
-                        if um.enabled:
-                            for k, mem in um_persistent.items():
-                                um.store_memory(
-                                    k, 
-                                    mem, 
-                                    sharable=(mem.get("sharable") == "yes"), 
-                                    persistent=True
-                                )
-                            print(f"⚡ [UnifiedMemory] Restored {len(um_persistent)} persistent keys from session context.")
-                    except Exception as um_err:
-                        print(f"⚠️ [UnifiedMemory] startup restore failed: {um_err}")
-        except Exception as e:
-            print(f"⚠️ Failed to load previous session context: {e}")
+                    print(f"📖 Loaded {len(chat_history)} previous conversation exchanges.")
+                    if previous_summary:
+                        working_memory_init["previous_session_summary"] = previous_summary
+                        print(f"📝 Previous Session Summary: {previous_summary}")
+                        
+                    # Restore UnifiedMemory persistent cache keys on startup
+                    um_persistent = context.get("unified_memory_persistent", {})
+                    if um_persistent:
+                        try:
+                            um = UnifiedMemory()
+                            if um.enabled:
+                                for k, mem in um_persistent.items():
+                                    um.store_memory(
+                                        k, 
+                                        mem, 
+                                        sharable=(mem.get("sharable") == "yes"), 
+                                        persistent=True
+                                    )
+                                print(f"⚡ [UnifiedMemory] Restored {len(um_persistent)} persistent keys from session context.")
+                        except Exception as um_err:
+                            print(f"⚠️ [UnifiedMemory] startup restore failed: {um_err}")
+            except Exception as e:
+                print(f"⚠️ Failed to load previous session context: {e}")
             
     # Check for recovery of an interrupted task on startup
     if os.path.exists(INTERRUPTED_TASK_PATH):
