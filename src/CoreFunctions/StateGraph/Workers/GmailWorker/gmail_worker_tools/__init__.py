@@ -1,5 +1,4 @@
-# Order matters: most frequently used tools first, destructive tools last.
-from src.CoreFunctions.SharedTools import human_intervention_tool
+from src.CoreFunctions.SharedTools import human_intervention_tool, interactive_notification_tool
 from .gmail_worker_tool_count_emails import gmail_worker_tool_count_emails
 from .gmail_worker_tool_fetch_email_ids import gmail_worker_tool_fetch_email_ids
 from .gmail_worker_tool_search_emails_metadata import gmail_worker_tool_search_emails_metadata
@@ -42,5 +41,6 @@ gmail_tools = [
     gmail_worker_tool_delete_label,
     gmail_worker_tool_delete_emails_permanently,
     gmail_worker_tool_download_attachment,
-    human_intervention_tool
+    human_intervention_tool,
+    interactive_notification_tool
 ]

@@ -10,6 +10,10 @@ from .get_weather import get_weather_tool, get_weather
 from .web_search import web_search_tool, web_search
 from .run_terminal_tool import run_terminal_tool_wrapped, run_terminal_tool
 from .run_python_tool import run_python_tool_wrapped, run_python_tool
+from .interactive_notification import (
+    interactive_notification_tool,
+    trigger_interactive_notification_sync
+)
 
 __all__ = [
     "human_intervention_tool",
@@ -26,5 +30,7 @@ __all__ = [
     "run_terminal_tool_wrapped",
     "run_terminal_tool",
     "run_python_tool_wrapped",
-    "run_python_tool"
+    "run_python_tool",
+    "interactive_notification_tool",
+    "trigger_interactive_notification_sync"
 ]

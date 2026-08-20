@@ -1,4 +1,4 @@
-from src.CoreFunctions.SharedTools import human_intervention_tool, run_terminal_tool_wrapped, run_python_tool_wrapped, get_time_tool, get_weather_tool
+from src.CoreFunctions.SharedTools import human_intervention_tool, run_terminal_tool_wrapped, run_python_tool_wrapped, get_time_tool, get_weather_tool, interactive_notification_tool
 from src.CoreFunctions.StateGraph.Workers.MemoryWorker.memory_worker_tools import memory_worker_tool_list_active_workers
 from .system_worker_tool_launch_app import launch_app_tool
 from .system_worker_tool_get_volume import get_audio_volume
@@ -63,5 +63,6 @@ system_tools = [
     get_weather_tool,
     get_time_tool,
     memory_worker_tool_list_active_workers,
-    human_intervention_tool
+    human_intervention_tool,
+    interactive_notification_tool
 ]

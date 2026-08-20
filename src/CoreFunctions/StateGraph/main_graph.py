@@ -618,6 +618,15 @@ def process_request_interactive():
             print(f"⚠️ Failed to process recovery of interrupted task: {e}")
             clear_interrupted_task_checkpoint()
 
+    # Start the proactive Gmail IMAP IDLE daemon manager
+    daemon_manager = None
+    try:
+        from src.CoreFunctions.Integrations.Gmail.gmail_idle_daemon import GmailIdleDaemonManager
+        daemon_manager = GmailIdleDaemonManager()
+        daemon_manager.start_all()
+    except Exception as daemon_err:
+        print(f"⚠️ Failed to start Gmail proactive daemon: {daemon_err}")
+
     while True:
         # Reload/sync configuration and registry dynamically
         scan_and_register_workers(force_reload=True)
@@ -630,10 +639,14 @@ def process_request_interactive():
             user_input = input("\nYou: ").strip()
         except (KeyboardInterrupt, EOFError):
             print("\n👋 Goodbye!")
+            if daemon_manager:
+                daemon_manager.stop_all()
             break
             
         if user_input.lower() in ["exit", "quit"]:
             print("👋 Goodbye!")
+            if daemon_manager:
+                daemon_manager.stop_all()
             break
 
         if not user_input:

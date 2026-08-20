@@ -39,6 +39,7 @@ if not getattr(sys.stderr, "_is_locked_writer", False):
 
 # The permissions your app needs
 SCOPES = [
+    'https://mail.google.com/',
     'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/gmail.modify',
@@ -332,24 +333,47 @@ def get_valid_credentials(account: str = "personal"):
                         print(f"⚠️ Could not save token: {e}")
                     break
                 else:
-                    # Email mismatch! Force re-auth
-                    banner = get_stdin_prompt_banner(
-                        "INTERVENTION", 
-                        f"OAUTH LOGIN EMAIL MISMATCH!\n\n"
-                        f"Expected Account: {expected_email}\n"
-                        f"Logged-in Account: {actual_email}\n\n"
-                        f"Please sign in with the correct account."
-                    )
-                    print(banner, flush=True)
-                    try:
-                        choice = input("🔄 Would you like to retry Google Authentication? (y/n): ").strip().lower()
-                        if choice != 'y':
-                            print("❌ Authentication aborted by user.")
+                    # Check if the logged-in email belongs to any other configured account in google_accounts.json
+                    accounts = load_google_accounts()
+                    matched_alias = None
+                    for alias, email in accounts.items():
+                        if email and email.strip().lower() == actual_email.lower():
+                            matched_alias = alias
+                            break
+                    
+                    if matched_alias:
+                        # Save the token to the matched alias's path
+                        target_token_path = os.path.join(config_dir, f'token_{matched_alias}.json')
+                        try:
+                            token_data = json.loads(creds.to_json())
+                            save_encrypted_json(target_token_path, token_data)
+                            print(f"\n✅ Logged-in email matched configured alias '{matched_alias}'!")
+                            print(f"💾 Token saved securely to matching path: {target_token_path}")
+                        except Exception as e:
+                            print(f"⚠️ Could not save token for '{matched_alias}': {e}")
+                        
+                        # Retrying for the originally requested account
+                        print(f"🔄 Retrying authentication for the originally expected account '{account}'...")
+                        creds = None
+                    else:
+                        # Email mismatch! Force re-auth
+                        banner = get_stdin_prompt_banner(
+                            "INTERVENTION", 
+                            f"OAUTH LOGIN EMAIL MISMATCH!\n\n"
+                            f"Expected Account: {expected_email}\n"
+                            f"Logged-in Account: {actual_email}\n\n"
+                            f"Please sign in with the correct account."
+                        )
+                        print(banner, flush=True)
+                        try:
+                            choice = input("🔄 Would you like to retry Google Authentication? (y/n): ").strip().lower()
+                            if choice != 'y':
+                                print("❌ Authentication aborted by user.")
+                                return None
+                        except (KeyboardInterrupt, EOFError):
+                            print("\n❌ Authentication aborted.")
                             return None
-                    except (KeyboardInterrupt, EOFError):
-                        print("\n❌ Authentication aborted.")
-                        return None
-                    creds = None
+                        creds = None
 
     return creds
 

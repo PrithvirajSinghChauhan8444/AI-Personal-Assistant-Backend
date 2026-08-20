@@ -248,23 +248,30 @@ def play_beep():
     sys.stdout.write("\a")
     sys.stdout.flush()
 
-def ensure_models_exist(engine: str) -> bool:
+def ensure_models_exist(engine: str, voice_name: str = None) -> bool:
     """Checks and downloads model files for the specified engine if they are not already present."""
     import urllib.request
     os.makedirs(MODELS_DIR, exist_ok=True)
     
     downloads = {}
     if engine == "piper":
-        speech_config = load_speech_config()
-        voice_name = speech_config.get("voice_piper", "en_US-lessac-medium.onnx")
+        if not voice_name:
+            speech_config = load_speech_config()
+            voice_name = speech_config.get("voice_piper", "en_US-lessac-medium.onnx")
+        
         model_path = os.path.join(MODELS_DIR, voice_name)
         config_path = os.path.join(MODELS_DIR, f"{voice_name}.json")
         
-        # If using the default voice, verify or download it
+        # If using standard English or Hindi voices, define their Hugging Face download paths
         if voice_name == "en_US-lessac-medium.onnx":
             downloads = {
                 model_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx",
                 config_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",
+            }
+        elif voice_name == "hi_IN-pratham-medium.onnx":
+            downloads = {
+                model_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/hi/hi_IN/pratham/medium/hi_IN-pratham-medium.onnx",
+                config_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/hi/hi_IN/pratham/medium/hi_IN-pratham-medium.onnx.json",
             }
         else:
             # Verify custom files exist locally
@@ -309,14 +316,15 @@ def play_wav_audio(file_path: str) -> bool:
             pass
     return False
 
-def play_piper_speech(text: str) -> bool:
+def play_piper_speech(text: str, voice_name: str = None) -> bool:
     """Generates Piper speech and plays it."""
     global _piper_voice, _loaded_piper_voice_name
     import wave
     from piper.voice import PiperVoice, SynthesisConfig
     
-    speech_config = load_speech_config()
-    voice_name = speech_config.get("voice_piper", "en_US-lessac-medium.onnx")
+    if not voice_name:
+        speech_config = load_speech_config()
+        voice_name = speech_config.get("voice_piper", "en_US-lessac-medium.onnx")
     
     with _speech_lock:
         if _piper_voice is None or _loaded_piper_voice_name != voice_name:
@@ -385,27 +393,42 @@ def play_kokoro_speech(text: str, speech_config: dict) -> bool:
         return success
 
 def speak_text(text: str):
-    """Uses a configured text-to-speech engine to announce the text, falling back to play_beep() if none are available."""
+    """Uses a configured text-to-speech engine to announce the text, falling back to play_beep() if none are available.
+    Automatically detects language (Hindi vs English) and routes appropriate phonetic voices.
+    """
+    import re
     speech_config = load_speech_config()
     engine = speech_config.get("engine", "piper").lower()
     
+    # Simple Devanagari Unicode range detection for Hindi characters
+    is_hindi = bool(re.search(r'[\u0900-\u097F]', text))
+    
     if engine in ["piper", "kokoro"]:
         try:
-            if ensure_models_exist(engine):
-                if engine == "piper":
-                    if play_piper_speech(text):
+            if engine == "piper":
+                # Determine voice name dynamically based on detected language
+                if is_hindi:
+                    voice_name = speech_config.get("voice_piper_hi") or speech_config.get("voice_piper") or "hi_IN-pratham-medium.onnx"
+                else:
+                    voice_name = "en_US-lessac-medium.onnx"
+                    
+                if ensure_models_exist(engine, voice_name):
+                    if play_piper_speech(text, voice_name):
                         return
-                elif engine == "kokoro":
+            elif engine == "kokoro":
+                if ensure_models_exist(engine):
                     if play_kokoro_speech(text, speech_config):
                         return
         except Exception as e:
             print(f"[Neural TTS] Failed to run neural engine '{engine}': {e}. Falling back to CLI engines...")
             
-    # 1. Fallback: Try spd-say (Speech Dispatcher, common on GNOME/Ubuntu/Debian)
+    # 1. Fallback: Try spd-say (Speech Dispatcher) with detected language
     try:
+        lang = "hi" if is_hindi else "en"
         cmd = [
             "spd-say",
             "-w",
+            "-l", lang,
             "-t", speech_config.get("voice_type_spd_say", "female1"),
             "-r", str(speech_config.get("rate_spd_say", 0)),
             "-p", str(speech_config.get("pitch_spd_say", 0)),
@@ -418,15 +441,16 @@ def speak_text(text: str):
     except Exception:
         pass
 
-    # 2. Fallback: Try espeak-ng / espeak
+    # 2. Fallback: Try espeak-ng / espeak with detected language
     for espeak_cmd in ["espeak-ng", "espeak"]:
         try:
+            voice = "hi" if is_hindi else speech_config.get("voice_espeak", "en+f1")
             cmd = [
                 espeak_cmd,
                 "-s", str(speech_config.get("speed_espeak", 175)),
                 "-p", str(speech_config.get("pitch_espeak", 50)),
                 "-a", str(speech_config.get("amplitude_espeak", 100)),
-                "-v", speech_config.get("voice_espeak", "en+f1"),
+                "-v", voice,
                 text
             ]
             res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
