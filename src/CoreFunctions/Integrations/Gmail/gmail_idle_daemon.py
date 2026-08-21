@@ -116,12 +116,25 @@ class GmailAccountIdleWorker:
             latest_email = res["emails"][0]
             sender = latest_email["sender"]
             subject = latest_email["subject"]
-            body_preview = latest_email.get("body", "")[:200]
+            body_preview = latest_email.get("body", "")
             email_id = latest_email["id"]
             
+            # Clean outer XML tags from gmail_reader if present to avoid nested/malformed slicing
+            if subject.startswith("<email_subject>") and subject.endswith("</email_subject>"):
+                subject = subject[len("<email_subject>"):-len("</email_subject>")]
+            if body_preview.startswith("<email_body>") and body_preview.endswith("</email_body>"):
+                body_preview = body_preview[len("<email_body>"):-len("</email_body>")]
+
             goal = (
-                f"An email was received in your {self.account_alias} account from {sender} regarding '{subject}'. "
-                f"Preview: {body_preview}. Assess if urgent action or a draft response is required."
+                f"An email was received in your {self.account_alias} account.\n"
+                f"<email_metadata>\n"
+                f"Sender: {sender}\n"
+                f"Subject: {subject}\n"
+                f"</email_metadata>\n"
+                f"<email_body_preview>\n"
+                f"{body_preview[:200].strip()}\n"
+                f"</email_body_preview>\n"
+                "Assess if urgent action or a draft response is required."
             )
             
             print(f"🤖 [Gmail IDLE - {self.account_alias}] Dispatching LangGraph Agent for mail ID: {email_id}...")

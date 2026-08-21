@@ -22,3 +22,6 @@ langchain-google-genai
 playwright
 youtube-transcript-api
 yt-dlp
+piper-tts
+kokoro-onnx
+soundfile

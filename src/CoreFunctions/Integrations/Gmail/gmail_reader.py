@@ -91,9 +91,9 @@ def search_gmail_emails(query: str, max_results: int = 10, page_token: str = Non
             email_list.append({
                 "id": msg_data['id'],
                 "sender": sender,
-                "subject": subject,
+                "subject": f"<email_subject>{subject}</email_subject>",
                 "date": date_raw,
-                "snippet": msg_data.get('snippet', '')
+                "snippet": f"<email_snippet>{msg_data.get('snippet', '')}</email_snippet>"
             })
 
         return {
@@ -170,9 +170,9 @@ def read_gmail_email(email_id: str, account: str = "personal") -> dict:
             "id": email_id,
             "sender": clean_sender(sender),
             "to": to,
-            "subject": subject,
+            "subject": f"<email_subject>{subject}</email_subject>",
             "date": date,
-            "body": body,
+            "body": f"<email_body>{body}</email_body>",
             "threadId": msg_data.get('threadId', ''),
             "attachments": attachments
         }

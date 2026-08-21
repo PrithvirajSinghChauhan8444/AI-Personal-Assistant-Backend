@@ -26,6 +26,8 @@ def load_speech_config() -> dict:
         "engine": "piper",
         "speed_neural": 1.0,
         "voice_piper": "en_US-lessac-medium.onnx",
+        "voice_piper_hi": "hi_IN-pratham-medium.onnx",
+        "voice_piper_en": "en_US-lessac-medium.onnx",
         "voice_kokoro": "am_michael",
         "rate_spd_say": 0,
         "pitch_spd_say": 0,
@@ -262,16 +264,31 @@ def ensure_models_exist(engine: str, voice_name: str = None) -> bool:
         model_path = os.path.join(MODELS_DIR, voice_name)
         config_path = os.path.join(MODELS_DIR, f"{voice_name}.json")
         
-        # If using standard English or Hindi voices, define their Hugging Face download paths
+        # Hugging Face download paths for standard voices
         if voice_name == "en_US-lessac-medium.onnx":
             downloads = {
                 model_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx",
                 config_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",
             }
+        elif voice_name == "en_US-lessac-high.onnx":
+            downloads = {
+                model_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/high/en_US-lessac-high.onnx",
+                config_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/high/en_US-lessac-high.onnx.json",
+            }
+        elif voice_name == "en_US-libritts-high.onnx":
+            downloads = {
+                model_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/libritts/high/en_US-libritts-high.onnx",
+                config_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/libritts/high/en_US-libritts-high.onnx.json",
+            }
         elif voice_name == "hi_IN-pratham-medium.onnx":
             downloads = {
                 model_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/hi/hi_IN/pratham/medium/hi_IN-pratham-medium.onnx",
                 config_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/hi/hi_IN/pratham/medium/hi_IN-pratham-medium.onnx.json",
+            }
+        elif voice_name == "hi_IN-rohan-medium.onnx":
+            downloads = {
+                model_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/hi/hi_IN/rohan/medium/hi_IN-rohan-medium.onnx",
+                config_path: "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/hi/hi_IN/rohan/medium/hi_IN-rohan-medium.onnx.json",
             }
         else:
             # Verify custom files exist locally
@@ -320,10 +337,10 @@ def play_piper_speech(text: str, voice_name: str = None) -> bool:
     """Generates Piper speech and plays it."""
     global _piper_voice, _loaded_piper_voice_name
     import wave
-    from piper.voice import PiperVoice, SynthesisConfig
+    from piper.voice import PiperVoice
     
+    speech_config = load_speech_config()
     if not voice_name:
-        speech_config = load_speech_config()
         voice_name = speech_config.get("voice_piper", "en_US-lessac-medium.onnx")
     
     with _speech_lock:
@@ -333,29 +350,45 @@ def play_piper_speech(text: str, voice_name: str = None) -> bool:
             _piper_voice = PiperVoice.load(model_path, config_path=config_path)
             _loaded_piper_voice_name = voice_name
             
+        # Setup synthesis parameters
+        from piper.config import SynthesisConfig
+        
+        speaker_id = speech_config.get("speaker_id_piper")
+        if speaker_id is not None:
+            speaker_id = int(speaker_id)
+        speed = float(speech_config.get("speed_neural", 1.0))
+        length_scale = 1.0 / speed if speed else 1.0
+        
+        syn_config = SynthesisConfig(speaker_id=speaker_id, length_scale=length_scale)
+        
+        # Evaluate synthesis generator outside wave context to prevent exception masking by wave module
+        try:
+            chunks = list(_piper_voice.synthesize(text, syn_config=syn_config))
+        except Exception as e:
+            print(f"[Neural TTS] Piper synthesis failed to generate audio: {e}")
+            return False
+            
+        if not chunks:
+            print("[Neural TTS] Piper synthesis returned no audio chunks.")
+            return False
+            
         wav_path = os.path.join(MODELS_DIR, f"temp_piper_{uuid.uuid4().hex[:8]}.wav")
-        with wave.open(wav_path, "wb") as wav_file:
-            initialized = False
-            
-            # Setup synthesis parameters
-            speaker_id = speech_config.get("speaker_id_piper")
-            if speaker_id is not None:
-                speaker_id = int(speaker_id)
-            speed = float(speech_config.get("speed_neural", 1.0))
-            length_scale = 1.0 / speed if speed else 1.0
-            
-            syn_config = SynthesisConfig(
-                speaker_id=speaker_id,
-                length_scale=length_scale
-            )
-            
-            for chunk in _piper_voice.synthesize(text, syn_config=syn_config):
-                if not initialized:
-                    wav_file.setnchannels(chunk.sample_channels)
-                    wav_file.setsampwidth(chunk.sample_width)
-                    wav_file.setframerate(chunk.sample_rate)
-                    initialized = True
-                wav_file.writeframes(chunk.audio_int16_bytes)
+        try:
+            with wave.open(wav_path, "wb") as wav_file:
+                first_chunk = chunks[0]
+                wav_file.setnchannels(first_chunk.sample_channels)
+                wav_file.setsampwidth(first_chunk.sample_width)
+                wav_file.setframerate(first_chunk.sample_rate)
+                for chunk in chunks:
+                    wav_file.writeframes(chunk.audio_int16_bytes)
+        except Exception as e:
+            print(f"[Neural TTS] Error writing WAV file: {e}")
+            if os.path.exists(wav_path):
+                try:
+                    os.remove(wav_path)
+                except Exception:
+                    pass
+            return False
             
         success = play_wav_audio(wav_path)
         if os.path.exists(wav_path):
@@ -405,14 +438,26 @@ def speak_text(text: str):
     
     if engine in ["piper", "kokoro"]:
         try:
-            if engine == "piper":
+            if engine == "piper" or (engine == "kokoro" and is_hindi):
                 # Determine voice name dynamically based on detected language
                 if is_hindi:
-                    voice_name = speech_config.get("voice_piper_hi") or speech_config.get("voice_piper") or "hi_IN-pratham-medium.onnx"
+                    voice_name = speech_config.get("voice_piper_hi")
+                    if not voice_name:
+                        config_voice = speech_config.get("voice_piper")
+                        if config_voice and "hi_" in config_voice:
+                            voice_name = config_voice
+                        else:
+                            voice_name = "hi_IN-pratham-medium.onnx"
                 else:
-                    voice_name = "en_US-lessac-medium.onnx"
+                    voice_name = speech_config.get("voice_piper_en")
+                    if not voice_name:
+                        config_voice = speech_config.get("voice_piper")
+                        if config_voice and "en_" in config_voice:
+                            voice_name = config_voice
+                        else:
+                            voice_name = "en_US-lessac-medium.onnx"
                     
-                if ensure_models_exist(engine, voice_name):
+                if ensure_models_exist("piper", voice_name):
                     if play_piper_speech(text, voice_name):
                         return
             elif engine == "kokoro":
