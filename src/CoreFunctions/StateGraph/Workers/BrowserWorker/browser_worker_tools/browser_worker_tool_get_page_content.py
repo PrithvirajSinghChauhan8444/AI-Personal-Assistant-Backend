@@ -4,11 +4,8 @@ import os
 
 def _get_local_llm():
     try:
-        from langchain_ollama import ChatOllama
-        return ChatOllama(
-            model=os.getenv("OLLAMA_MODEL", "gemma4:e4b"),
-            temperature=0
-        )
+        from src.CoreFunctions.StateGraph.executor import llm
+        return llm
     except Exception:
         return None
 

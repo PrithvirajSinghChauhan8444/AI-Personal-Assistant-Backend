@@ -162,7 +162,7 @@ def caption_image_gemini(image_path: str, img_hash: str, kind: str = "diagram") 
         return fallback_msg
 
     try:
-        from langchain_google_genai import ChatGoogleGenerativeAI
+        from src.CoreFunctions.Infrastructure.llm_factory import get_llm
         from langchain_core.messages import HumanMessage
         
         with open(image_path, "rb") as f:
@@ -177,7 +177,8 @@ def caption_image_gemini(image_path: str, img_hash: str, kind: str = "diagram") 
             "Describe what this image shows in detail to help answer future questions about it."
         )
 
-        llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0.1, google_api_key=api_key)
+        model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+        llm = get_llm(model_name, temperature=0.1)
         message = HumanMessage(
             content=[
                 {"type": "text", "text": prompt},

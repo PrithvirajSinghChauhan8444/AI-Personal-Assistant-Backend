@@ -9,22 +9,15 @@ from langchain_core.messages import HumanMessage
 from langgraph.prebuilt import create_react_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
+from src.CoreFunctions.Infrastructure.llm_factory import get_llm
 
 from src.CoreFunctions.StateGraph.state import AgentState
 from src.CoreFunctions.SharedTools import HumanInterventionAbortError, HumanInterventionReplanError
 from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry
 
-# LLM for workers. Using Gemini/Gemma cloud models.
+# LLM for workers. Using cloud models.
 gemini_model_name = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
-llm_kwargs = {}
-if "gemini" in gemini_model_name.lower():
-    llm_kwargs["extra_body"] = {"thinking_config": {"thinking_budget": 2048}}
-
-llm = ChatGoogleGenerativeAI(
-    model=gemini_model_name, 
-    temperature=0,
-    model_kwargs=llm_kwargs
-)
+llm = get_llm(gemini_model_name, temperature=0)
 
 # Local LLM for Memory and lightweight workers with Ollama thinking options enabled.
 local_llm = ChatOllama(
@@ -44,6 +37,20 @@ You have access to the `request_human_intervention` tool. You MUST call this too
 4. **Roadblocks & Ambiguities**: If tools fail repeatedly, if you get stuck, or if the task instructions are ambiguous.
 5. **User Manual Control**: If the user requests to perform an action manually or asks you to pause and wait.
 Always explain the exact reason for pausing when calling the tool.
+"""
+
+STABLE_GUIDELINE = """
+### 📋 STABLE OPERATIONAL GUIDELINES:
+1. **Data Sharing & Task Memory**:
+   - Any output or structured data you return at the end of your execution is automatically saved into the global `Working Memory`.
+   - All subsequent worker agents and tasks in this plan can see this `Working Memory`.
+   - **CRITICAL**: You MUST NOT call file creation or writing tools (like `create_file_tool`) to save temporary state, notes, intermediate variables, or transient logs. Instead, simply return this information in your final output/response. It will automatically be made available to subsequent tasks in `Working Memory`.
+2. **File System Operations**:
+   - Do NOT create, write, or modify files on the local filesystem unless the user's request/task explicitly requests saving/writing a file to a specific path.
+   - Creating files unnecessarily clutters the workspace, and triggers password challenges (since file write actions are protected).
+   - If you do write or update a file, always output the exact absolute or relative path clearly in your final response so other workers/subtasks know exactly where it is.
+3. **Large Data References (`__file_reference__`)**:
+   - If any entry in the Working Memory contains a `\"__file_reference__\"`, the actual large data has been saved to that local file path to avoid context bloat. You can directly read the content of that file using your file-reading tools (like `read_file_tool` or running python/terminal commands), copy/move the file, or use the file path as an attachment/input for other tools.
 """
 
 AGENT_MAP = {}
@@ -172,21 +179,8 @@ def get_model_for_worker(worker_name: str):
         use_local = worker.use_local_llm if worker else False
         model_name = os.environ.get("OLLAMA_MODEL", "gemma4:e4b") if use_local else os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
         
-    # Assigning model to the worker
-    if "gemini" in model_name.lower():
-        llm_kwargs = {}
-        llm_kwargs["extra_body"] = {"thinking_config": {"thinking_budget": 2048}}
-        model = ChatGoogleGenerativeAI(
-            model=model_name,
-            temperature=0,
-            model_kwargs=llm_kwargs
-        )
-    else:
-        model = ChatOllama(
-            model=model_name,
-            temperature=0,
-            options={"thinking": True}
-        )
+    # Assigning model to the worker using the LLM factory
+    model = get_llm(model_name, temperature=0)
         
     _model_cache[worker_name] = model
     return model
@@ -232,13 +226,7 @@ def compile_worker_agents():
         
         cache_manager = None
         if isinstance(model, ChatGoogleGenerativeAI) and getattr(worker, "enable_prompt_caching", True):
-            stable_guideline = (
-                "IMPORTANT NOTE ON LARGE DATA:\n"
-                "If any entry in the Working Memory contains a `\"__file_reference__\"`, the actual large data has "
-                "been saved to that local file path to avoid context bloat. You can directly read the content of "
-                "that file using your file-reading tools (like `read_file_tool` or running python/terminal commands), "
-                "copy/move the file, or use the file path as an attachment/input for other tools."
-            )
+            stable_guideline = STABLE_GUIDELINE
             
             skills_str = _load_worker_skills(name)
             skills_section = ""
@@ -435,13 +423,7 @@ def _run_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict,
     cleaned_memory = _clean_working_memory_for_worker(working_memory, depends_on)
     memory_str = json.dumps(cleaned_memory, indent=2)
     
-    stable_guideline = (
-        "IMPORTANT NOTE ON LARGE DATA:\n"
-        "If any entry in the Working Memory contains a `\"__file_reference__\"`, the actual large data has "
-        "been saved to that local file path to avoid context bloat. You can directly read the content of "
-        "that file using your file-reading tools (like `read_file_tool` or running python/terminal commands), "
-        "copy/move the file, or use the file path as an attachment/input for other tools."
-    )
+    stable_guideline = STABLE_GUIDELINE
     
     skills_str = _load_worker_skills(worker_name)
     skills_section = ""
@@ -593,13 +575,7 @@ async def _run_async_ephemeral_agent(worker_name: str, task_desc: str, working_m
     cleaned_memory = _clean_working_memory_for_worker(working_memory, depends_on)
     memory_str = json.dumps(cleaned_memory, indent=2)
     
-    stable_guideline = (
-        "IMPORTANT NOTE ON LARGE DATA:\n"
-        "If any entry in the Working Memory contains a `\"__file_reference__\"`, the actual large data has "
-        "been saved to that local file path to avoid context bloat. You can directly read the content of "
-        "that file using your file-reading tools (like `read_file_tool` or running python/terminal commands), "
-        "copy/move the file, or use the file path as an attachment/input for other tools."
-    )
+    stable_guideline = STABLE_GUIDELINE
     
     skills_str = _load_worker_skills(worker_name)
     skills_section = ""

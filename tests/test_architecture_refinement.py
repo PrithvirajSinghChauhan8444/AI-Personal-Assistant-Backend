@@ -40,6 +40,14 @@ class TestArchitectureRefinement(unittest.TestCase):
         vm.SKILLS_INDEX_PATH = os.path.join(self.test_dir, "skills_index.faiss")
         vm.SKILLS_DATA_PATH = os.path.join(self.test_dir, "skills_data.json")
         
+        # Backup and force MODEL_PROVIDER to google for test isolation
+        self.old_provider = os.environ.get("MODEL_PROVIDER")
+        os.environ["MODEL_PROVIDER"] = "google"
+        
+        # Patch load_environment to prevent env overrides
+        self.load_env_patcher = patch('src.CoreFunctions.Infrastructure.llm_factory.load_environment')
+        self.load_env_patcher.start()
+        
     def tearDown(self):
         UnifiedMemory._instance = None
         
@@ -49,6 +57,15 @@ class TestArchitectureRefinement(unittest.TestCase):
         vm.SKILLS_INDEX_PATH = self.original_skills_index
         vm.SKILLS_DATA_PATH = self.original_skills_data
         
+        # Stop patcher
+        self.load_env_patcher.stop()
+        
+        # Restore old provider env
+        if self.old_provider is not None:
+            os.environ["MODEL_PROVIDER"] = self.old_provider
+        else:
+            os.environ.pop("MODEL_PROVIDER", None)
+            
         shutil.rmtree(self.test_dir)
 
     @patch("langchain_google_genai.ChatGoogleGenerativeAI.invoke")

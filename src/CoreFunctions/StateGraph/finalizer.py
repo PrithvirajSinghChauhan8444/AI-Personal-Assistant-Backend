@@ -1,6 +1,7 @@
 import json
 from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+import os
+from src.CoreFunctions.Infrastructure.llm_factory import get_llm
 from src.CoreFunctions.StateGraph.state import AgentState
 
 FINALIZER_PROMPT = """
@@ -58,9 +59,9 @@ def output_finalizer_node(state: AgentState):
     active_workers_str = ", ".join(active_workers) if active_workers else "None"
     
     # Use high-speed cloud LLM for instant response synthesis and reliable execution
-    model_name = "gemini-3.1-flash-lite"
+    model_name = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
     log_message(f"OutputFinalizer: Invoking model {model_name} for response synthesis.")
-    llm = ChatGoogleGenerativeAI(model=model_name, temperature=0.7)
+    llm = get_llm(model_name, temperature=0.7)
     
     # 1. Format conversational history
     history_str = ""

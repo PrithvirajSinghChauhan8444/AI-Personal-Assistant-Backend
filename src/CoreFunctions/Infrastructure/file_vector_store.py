@@ -293,7 +293,7 @@ def rag_qa_file(query, filepath):
     
     # Run the query through our LLM
     try:
-        from langchain_google_genai import ChatGoogleGenerativeAI
+        from .llm_factory import get_llm
         from langchain_core.messages import HumanMessage
         
         # Load API keys from root .env or config/.env fallback
@@ -302,8 +302,9 @@ def rag_qa_file(query, filepath):
         from dotenv import load_dotenv
         load_dotenv(config_env_path)
         
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-3.1-flash-lite", 
+        model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+        llm = get_llm(
+            model_name=model_name, 
             temperature=0
         )
         
@@ -365,7 +366,7 @@ def rag_qa_workspace_documents(query: str, k: int = 5) -> str:
     context = "\n\n---\n\n".join(context_chunks)
 
     try:
-        from langchain_google_genai import ChatGoogleGenerativeAI
+        from .llm_factory import get_llm
         from langchain_core.messages import HumanMessage
         
         root_env_path = os.path.join(BASE_DIR, ".env")
@@ -373,8 +374,9 @@ def rag_qa_workspace_documents(query: str, k: int = 5) -> str:
         from dotenv import load_dotenv
         load_dotenv(config_env_path)
 
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-3.1-flash-lite", 
+        model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+        llm = get_llm(
+            model_name=model_name, 
             temperature=0
         )
 

@@ -19,6 +19,7 @@ psutil
 langchain-ollama
 langchain-groq
 langchain-google-genai
+langchain-openai
 playwright
 youtube-transcript-api
 yt-dlp

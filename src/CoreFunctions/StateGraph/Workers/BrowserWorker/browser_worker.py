@@ -57,7 +57,7 @@ Create a detailed sequential sub-plan to execute this goal.
 """
         try:
             log_message("BrowserWorker: Invoking model for structured subtask plan decomposition.")
-            structured_llm = local_llm.with_structured_output(BrowserSubPlan)
+            structured_llm = llm.with_structured_output(BrowserSubPlan)
             plan: BrowserSubPlan = structured_llm.invoke(manager_prompt)
             print(f"  🤔 [Browser Manager Thought]: {plan.reasoning}")
             print(f"  📋 Generated subtasks for Browser team:")

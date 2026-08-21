@@ -108,11 +108,11 @@ def task_router_node(state: AgentState):
         input_content = history_str + "\n" + input_content
     
     # Use a robust model for structured JSON parsing
-    from langchain_google_genai import ChatGoogleGenerativeAI
-    model_name = "gemini-3.1-flash-lite"
+    from src.CoreFunctions.Infrastructure.llm_factory import get_llm
+    model_name = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
     log_message(f"TaskRouter: Invoking model {model_name} for structured task planning.")
     
-    llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
+    llm = get_llm(model_name, temperature=0)
     structured_llm = llm.with_structured_output(TaskPlan)
     
     try:

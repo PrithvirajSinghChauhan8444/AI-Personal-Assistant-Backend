@@ -253,10 +253,11 @@ def save_session_context_async(chat_history, working_memory, completed_tasks):
                 
             # 3. Generate a quick summary of the conversation using Gemini
             if chat_history:
-                from langchain_google_genai import ChatGoogleGenerativeAI
+                from src.CoreFunctions.Infrastructure.llm_factory import get_llm
                 from langchain_core.messages import SystemMessage, HumanMessage
                 
-                llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0)
+                model_name = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
+                llm = get_llm(model_name, temperature=0)
                 summary_prompt = """reflection_node
                 You are a context saver. Summarize the user's goals and what actions the assistant completed in this session in 2-3 concise sentences.
                 Focus on outcomes: what files were created, what decisions were made, and what data was retrieved.
@@ -656,9 +657,10 @@ def process_request_interactive():
         GREETINGS = {"hi", "hello", "hey", "howdy", "hola", "yo", "greetings", "good morning", "good afternoon", "good evening"}
         clean_input = "".join(c for c in user_input.lower() if c.isalnum() or c.isspace()).strip()
         if clean_input in GREETINGS:
-            from langchain_google_genai import ChatGoogleGenerativeAI
+            from src.CoreFunctions.Infrastructure.llm_factory import get_llm
             print("\n\033[1;35m🤖 Assistant:\033[0m ", end="", flush=True)
-            fast_llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0.7)
+            model_name = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
+            fast_llm = get_llm(model_name, temperature=0.7)
             try:
                 for chunk in fast_llm.stream(f"The user said '{user_input}'. Respond with a friendly, short greeting and ask how you can help today."):
                     if chunk.content:

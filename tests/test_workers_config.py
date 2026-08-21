@@ -24,6 +24,9 @@ class TestWorkersConfig(unittest.TestCase):
         # Clear executor's model cache
         import src.CoreFunctions.StateGraph.executor as executor
         executor._model_cache.clear()
+        # Backup and force MODEL_PROVIDER to google for test isolation
+        self.old_provider = os.environ.get("MODEL_PROVIDER")
+        os.environ["MODEL_PROVIDER"] = "google"
 
     def tearDown(self):
         # Restore backup config
@@ -34,6 +37,12 @@ class TestWorkersConfig(unittest.TestCase):
             
         # Reset WorkerRegistry configuration
         WorkerRegistry._config = {}
+        
+        # Restore old provider env
+        if self.old_provider is not None:
+            os.environ["MODEL_PROVIDER"] = self.old_provider
+        else:
+            os.environ.pop("MODEL_PROVIDER", None)
 
     def test_active_inactive_filtering(self):
         # Create a test config where GmailWorker is inactive
@@ -85,8 +94,9 @@ class TestWorkersConfig(unittest.TestCase):
         WorkerRegistry.load_and_sync_config()
         
         # Retrieve the cached model (we mock the LLM initializers to avoid external API calls)
-        with patch('src.CoreFunctions.StateGraph.executor.ChatGoogleGenerativeAI') as mock_gemini, \
-             patch('src.CoreFunctions.StateGraph.executor.ChatOllama') as mock_ollama:
+        with patch('src.CoreFunctions.Infrastructure.llm_factory.load_environment'), \
+             patch('src.CoreFunctions.Infrastructure.llm_factory.ChatGoogleGenerativeAI') as mock_gemini, \
+             patch('src.CoreFunctions.Infrastructure.llm_factory.ChatOllama') as mock_ollama:
              
             # Test getting OLLAMA model (non-gemini contains no gemini string)
             get_model_for_worker("SystemWorker")
@@ -95,6 +105,33 @@ class TestWorkersConfig(unittest.TestCase):
                 temperature=0,
                 options={"thinking": True}
             )
+
+    def test_llm_factory_routing(self):
+        from src.CoreFunctions.Infrastructure.llm_factory import get_llm
+        
+        with patch('src.CoreFunctions.Infrastructure.llm_factory.ChatGoogleGenerativeAI') as mock_gemini, \
+             patch('src.CoreFunctions.Infrastructure.llm_factory.ChatOpenAI') as mock_openai, \
+             patch('src.CoreFunctions.Infrastructure.llm_factory.ChatGroq') as mock_groq, \
+             patch('src.CoreFunctions.Infrastructure.llm_factory.ChatOllama') as mock_ollama:
+             
+            # Test 1: Explicit google prefix
+            get_llm("google:gemini-3.5-flash", temperature=0.5)
+            mock_gemini.assert_called_once()
+            self.assertEqual(mock_gemini.call_args[1]["model"], "gemini-3.5-flash")
+            self.assertEqual(mock_gemini.call_args[1]["temperature"], 0.5)
+            
+            # Test 2: Explicit openrouter prefix
+            get_llm("openrouter:google/gemini-2.5-flash", temperature=0.7)
+            mock_openai.assert_called_once()
+            self.assertEqual(mock_openai.call_args[1]["model"], "google/gemini-2.5-flash")
+            self.assertEqual(mock_openai.call_args[1]["openai_api_base"], "https://openrouter.ai/api/v1")
+            self.assertEqual(mock_openai.call_args[1]["temperature"], 0.7)
+            
+            # Test 3: Explicit groq prefix
+            get_llm("groq:llama-3-8b", temperature=0.2)
+            mock_groq.assert_called_once()
+            self.assertEqual(mock_groq.call_args[1]["model"], "llama-3-8b")
+            self.assertEqual(mock_groq.call_args[1]["temperature"], 0.2)
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,7 +9,7 @@ from .browser_manager import _get_browser_page
 def _get_vision_model():
     """Return a Gemini Flash model capable of vision (multimodal) inference."""
     try:
-        from langchain_google_genai import ChatGoogleGenerativeAI
+        from src.CoreFunctions.Infrastructure.llm_factory import get_llm
         from dotenv import load_dotenv
 
         # Load .env from project root
@@ -27,9 +27,8 @@ def _get_vision_model():
 
         # Prefer a fast flash model; fall back to whatever GEMINI_MODEL is set to
         model_name = os.getenv("GEMINI_VISION_MODEL", "gemini-2.0-flash")
-        return ChatGoogleGenerativeAI(
-            model=model_name,
-            google_api_key=api_key,
+        return get_llm(
+            model_name=model_name,
             temperature=0,
         )
     except Exception:

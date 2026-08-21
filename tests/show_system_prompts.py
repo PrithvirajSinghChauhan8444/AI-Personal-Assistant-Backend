@@ -7,7 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src'
 
 from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry, scan_and_register_workers
 from src.CoreFunctions.StateGraph.task_router import get_router_prompt
-from src.CoreFunctions.StateGraph.executor import THINKING_INSTRUCTION, HUMAN_INTERVENTION_INSTRUCTION, _load_worker_skills
+from src.CoreFunctions.StateGraph.executor import THINKING_INSTRUCTION, HUMAN_INTERVENTION_INSTRUCTION, STABLE_GUIDELINE, _load_worker_skills
 
 def main():
     print("==================================================")
@@ -40,13 +40,7 @@ def main():
         print("--------------------------------------------------")
         
         # Runtime Prompt Layout (template) used during execution
-        stable_guideline = (
-            "IMPORTANT NOTE ON LARGE DATA:\n"
-            "If any entry in the Working Memory contains a `\"__file_reference__\"`, the actual large data has "
-            "been saved to that local file path to avoid context bloat. You can directly read the content of "
-            "that file using your file-reading tools (like `read_file_tool` or running python/terminal commands), "
-            "copy/move the file, or use the file path as an attachment/input for other tools."
-        )
+        stable_guideline = STABLE_GUIDELINE
         
         skills_str = _load_worker_skills(name)
         skills_section = ""

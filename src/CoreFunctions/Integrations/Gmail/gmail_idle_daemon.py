@@ -125,6 +125,15 @@ class GmailAccountIdleWorker:
             if body_preview.startswith("<email_body>") and body_preview.endswith("</email_body>"):
                 body_preview = body_preview[len("<email_body>"):-len("</email_body>")]
 
+            # Cache the last received email metadata in UnifiedMemory under the 'current' category
+            try:
+                from src.CoreFunctions.Infrastructure.memory import store_memory
+                email_metadata_str = f"Sender: {sender} | Subject: {subject} | Account: {self.account_alias} | MessageID: {email_id}"
+                store_memory("current", "last_received_email", email_metadata_str)
+                print(f"💾 [Gmail IDLE - {self.account_alias}] Cached last received email in current:last_received_email")
+            except Exception as cache_err:
+                print(f"⚠️ [Gmail IDLE - {self.account_alias}] Failed to cache last received email: {cache_err}")
+
             goal = (
                 f"An email was received in your {self.account_alias} account.\n"
                 f"<email_metadata>\n"
@@ -158,6 +167,14 @@ class GmailAccountIdleWorker:
             final_response = res_state.get("final_response", "")
             if final_response:
                 print(f"✅ [Gmail IDLE - {self.account_alias}] Agent executed successfully.")
+                
+                # Cache the proactive analysis in UnifiedMemory under the 'current' category
+                try:
+                    from src.CoreFunctions.Infrastructure.memory import store_memory
+                    store_memory("current", "last_proactive_analysis", final_response)
+                    print(f"💾 [Gmail IDLE - {self.account_alias}] Cached last proactive analysis in current:last_proactive_analysis")
+                except Exception as cache_err:
+                    print(f"⚠️ [Gmail IDLE - {self.account_alias}] Failed to cache proactive analysis: {cache_err}")
                 
                 # Desktop notifications and alert beep
                 play_beep()
