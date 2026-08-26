@@ -301,10 +301,23 @@ def reflection_node(state: AgentState):
         return {}
         
     try:
-        from langchain_ollama import ChatOllama
-        model_name = "gemma4:e4b"
-        log_message(f"Reflection: Invoking model {model_name} for self-reflection & skill extraction.")
-        llm = ChatOllama(model=model_name, temperature=0)
+        from src.CoreFunctions.Infrastructure.llm_factory import get_llm
+        llm = None
+        local_model = os.environ.get("OLLAMA_MODEL")
+        if local_model:
+            try:
+                from langchain_ollama import ChatOllama
+                test_llm = ChatOllama(model=local_model, temperature=0)
+                test_llm.invoke("ping")
+                llm = test_llm
+                print(f"  Using local model '{local_model}' for reflection.")
+            except Exception:
+                pass
+        
+        if llm is None:
+            llm = get_llm()
+            print("  Using default workspace model for reflection.")
+            
         structured_llm = llm.with_structured_output(MemoryReflection)
         
         completed_tasks_str = json.dumps(completed_tasks, indent=2)
@@ -409,16 +422,19 @@ def trigger_feedback_extraction(user_input: str, final_response: str, feedback: 
     """Spawns a background thread to analyze and extract worker tuning preference without blocking CLI."""
     def run_extraction():
         try:
-            from langchain_ollama import ChatOllama
-            from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
-            from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry
-            
-            um = UnifiedMemory()
-            if not um.enabled:
-                return
-                
-            model_name = "gemma4:e4b"
-            llm = ChatOllama(model=model_name, temperature=0)
+            from src.CoreFunctions.Infrastructure.llm_factory import get_llm
+            llm = None
+            local_model = os.environ.get("OLLAMA_MODEL")
+            if local_model:
+                try:
+                    from langchain_ollama import ChatOllama
+                    test_llm = ChatOllama(model=local_model, temperature=0)
+                    test_llm.invoke("ping")
+                    llm = test_llm
+                except Exception:
+                    pass
+            if llm is None:
+                llm = get_llm()
             structured_llm = llm.with_structured_output(FeedbackPreference)
             
             prompt = f"""You are the Behavior Tuning Preference Extractor.

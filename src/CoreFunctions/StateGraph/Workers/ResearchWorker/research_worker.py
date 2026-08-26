@@ -1,7 +1,7 @@
 from typing import List
 from src.CoreFunctions.StateGraph.worker_framework import BaseWorker, WorkerRegistry
 from src.CoreFunctions.StateGraph.Workers.ResearchWorker.research_prompt import SYSTEM_PROMPT
-from src.CoreFunctions.SharedTools import human_intervention_tool, web_search_tool
+from src.CoreFunctions.SharedTools import human_intervention_tool, web_search_tool, deep_research_tool
 from src.CoreFunctions.StateGraph.Workers.BrowserWorker.browser_worker_tools.browser_worker_tool_navigate import browser_navigate_tool
 from src.CoreFunctions.StateGraph.Workers.BrowserWorker.browser_worker_tools.browser_worker_tool_get_page_content import (
     browser_read_page_content_tool,
@@ -11,6 +11,7 @@ from src.CoreFunctions.StateGraph.Workers.BrowserWorker.browser_worker_tools.bro
 from src.CoreFunctions.StateGraph.Workers.BrowserWorker.browser_worker_tools.browser_worker_tool_scroll import browser_scroll_tool
 
 research_tools = [
+    deep_research_tool,
     web_search_tool,
     browser_navigate_tool,
     browser_read_page_content_tool,
