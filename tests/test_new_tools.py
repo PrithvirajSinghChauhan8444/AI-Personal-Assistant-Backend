@@ -200,6 +200,26 @@ def test_update_skill():
             if os.path.exists(skill_folder):
                 shutil.rmtree(skill_folder)
 
+def test_check_calendar_events():
+    print("\n📅 Testing check_calendar_events tool...")
+    from unittest.mock import patch
+    from src.CoreFunctions.StateGraph.Workers.ProductivityWorker.productivity_worker_tools.productivity_worker_tool_check_events import check_calendar_events
+
+    mock_events = [
+        {
+            'summary': 'NPTEL Assignment Submission: Mental Health and Wellbeing (Week 6)',
+            'start': '2026-09-02T23:59:00Z',
+            'link': 'https://www.google.com/calendar/event?eid=bXZwcG5vNzA2NzBzaWllN29yY3Q3Njhkbm8gcHJpdGh2aTI0MTAxQGlpaXRuci5lZHUuaW4'
+        }
+    ]
+
+    with patch('src.CoreFunctions.StateGraph.Workers.ProductivityWorker.productivity_worker_tools.productivity_worker_tool_check_events.list_upcoming_events', return_value=mock_events):
+        res = check_calendar_events(max_results=5, account="college")
+        print("  Result:\n", res)
+        assert "Mental Health and Wellbeing" in res
+        assert "2026-09-02T23:59:00Z" in res
+        print("  ✅ check_calendar_events test passed.")
+
 if __name__ == "__main__":
     print("=== Starting Integration Tests ===")
     test_clipboard()
@@ -207,4 +227,5 @@ if __name__ == "__main__":
     test_scheduler()
     test_token_encryption()
     test_update_skill()
+    test_check_calendar_events()
     print("\n=== All Integration Tests Completed successfully ===")

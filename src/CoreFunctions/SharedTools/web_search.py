@@ -1,12 +1,13 @@
 import json
 from langchain_core.tools import StructuredTool
 
-def web_search(query: str, max_results: int = 5) -> str:
+def web_search(query: str, max_results: int = 5, max_length: int = 3000) -> str:
     """Search the web for real-time information or questions.
 
     Args:
         query (str): The search term or question to query.
         max_results (int, optional): The maximum number of results to fetch. Defaults to 5.
+        max_length (int, optional): The maximum characters of search results to return. Defaults to 3000. Increase for deep research.
     """
     print(f"\033[90m🛠️  [Tool] web_search(query={repr(query)})\033[0m", flush=True)
     
@@ -98,11 +99,11 @@ def web_search(query: str, max_results: int = 5) -> str:
                     snippet = "\n".join(excerpts) if isinstance(excerpts, list) else str(excerpts)
                     formatted.append(f"Title: {title}\nURL: {url}\nSnippet: {snippet}\n")
                 if formatted:
-                    return "\n".join(formatted)[:3000]
+                    return "\n".join(formatted)[:max_length]
             except Exception:
                 # If not JSON, return raw text
                 if text_val:
-                    return text_val[:3000]
+                    return text_val[:max_length]
             
             raise Exception("No formatted results found in Parallel Search output")
             
@@ -131,7 +132,7 @@ def web_search(query: str, max_results: int = 5) -> str:
                     results.append(f"Title: {r['title']}\nURL: {r['href']}\nSnippet: {r['body']}\n")
         if not results:
             return "No search results found."
-        return "\n".join(results)[:3000]
+        return "\n".join(results)[:max_length]
     except Exception as e:
         return f"Error executing web search: {e}"
 

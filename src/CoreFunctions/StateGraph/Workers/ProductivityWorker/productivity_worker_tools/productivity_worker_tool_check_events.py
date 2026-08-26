@@ -53,8 +53,8 @@ def check_calendar_events(max_results: int = 5, account: str = "personal") -> st
         # Format list into a readable string for the AI
         event_str = f"Upcoming Events ({account} account):\n"
         for e in events:
-            # Safe .get() calls
-            start = e.get('start', {}).get('dateTime', 'Unknown Time')
+            # Safe retrieval (start is already a string in clean_events)
+            start = e.get('start', 'Unknown Time')
             summary = e.get('summary', 'No Title')
             event_str += f"- {summary} at {start}\n"
         return event_str

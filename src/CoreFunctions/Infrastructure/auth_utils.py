@@ -283,6 +283,15 @@ def get_valid_credentials(account: str = "personal"):
                     if actual_email and actual_email != expected_email:
                         print(f"❌ Refreshed token email mismatch (Expected: {expected_email}, Got: {actual_email}). Forcing fresh login...")
                         creds = None
+                
+                # Save the refreshed credentials back to disk
+                if creds:
+                    try:
+                        token_data = json.loads(creds.to_json())
+                        save_encrypted_json(token_path, token_data)
+                        print(f"✅ Refreshed credentials saved securely to: {token_path}")
+                    except Exception as e:
+                        print(f"⚠️ Could not save refreshed token: {e}")
             except Exception as e:
                 print(f"❌ Refresh failed: {e}. Starting fresh login...")
                 creds = None # Token is too broken, force re-login
