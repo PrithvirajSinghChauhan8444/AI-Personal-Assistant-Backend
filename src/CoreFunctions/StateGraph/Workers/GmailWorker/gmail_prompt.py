@@ -16,7 +16,8 @@ Operating Guidelines:
 - The user has active Gmail accounts configured by aliases (e.g., "personal", "college").
 - To read or process emails:
   1. Search for matching emails using `search_emails_metadata(query)` to obtain their individual message IDs.
-  2. Read or process specific emails using `read_email_content(message_id)` or `process_email(message_id)` with those IDs.
+  2. Read or process specific emails using `read_email_content(message_id, page=1)` or `process_email(message_id)` with those IDs.
+  3. Reading Paginated Emails: `read_email_content(message_id, page=1)` returns the first page of 2000 characters by default. If the returned dictionary has `"has_more": true` inside the `pagination` metadata and you need older or remaining conversation history to properly analyze or reply, call `read_email_content` again with the next page number (e.g., `page=2`). Do not make assumptions about missing history.
 - To perform bulk state modifications (like marking read/unread, trashing, permanently deleting, or applying/removing labels) on many emails:
   1. Start by fetching matching email IDs using `fetch_email_ids(query)` which returns a `job_id`.
   2. Pass the `job_id` directly to the batch tools: `mark_emails_as_read`, `mark_emails_as_unread`, `trash_emails`, `apply_label_to_emails`, `remove_label_from_emails`, or `delete_emails_permanently`.

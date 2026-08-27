@@ -20,11 +20,11 @@ def strip_tags(html):
     s.feed(html)
     return s.get_data()
 
-def clean_body_content(raw_body: str) -> str:
+def clean_body_content(raw_body: str, truncate: bool = True, max_length: int = 2000) -> str:
     """Cleans an email body or snippet.
     
     Removes base64 images, style sheets, inline styles, script blocks, tracking pixels,
-    converts HTML structure to plain text, normalizes newlines/whitespace, and truncates to 2,000 characters.
+    converts HTML structure to plain text, normalizes newlines/whitespace, and optionally truncates.
     """
     if not raw_body:
         return ""
@@ -53,8 +53,8 @@ def clean_body_content(raw_body: str) -> str:
     cleaned_text = re.sub(r'[ \t]+', ' ', cleaned_text)
     cleaned_text = cleaned_text.strip()
     
-    # 7. Truncate to 2000 chars with "... [truncated]" marker
-    if len(cleaned_text) > 2000:
-        cleaned_text = cleaned_text[:2000] + "\n... [truncated]"
+    # 7. Truncate if requested
+    if truncate and len(cleaned_text) > max_length:
+        cleaned_text = cleaned_text[:max_length] + "\n... [truncated]"
         
     return cleaned_text

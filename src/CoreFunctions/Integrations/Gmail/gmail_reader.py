@@ -4,6 +4,7 @@ import base64
 from .gmail_service import get_gmail_service
 from .email_cleaner import clean_body_content
 from .job_store import create_email_job
+from .email_cache import get_cached_email, cache_email
 
 def clean_sender(sender_str):
     if not sender_str:
@@ -140,41 +141,83 @@ def fetch_email_ids(query: str, account: str = "personal") -> dict:
         print(f"Error fetching email IDs for {account}: {e}")
         return {"error": str(e)}
 
-def read_gmail_email(email_id: str, account: str = "personal") -> dict:
+def read_gmail_email(email_id: str, account: str = "personal", page: int = 1, page_size: int = 2000) -> dict:
     """
-    Retrieve the full detailed contents of a specific email, including the complete body.
+    Retrieve the detailed contents of a specific email, including a paginated body slice.
+    Stores the full cleaned text in a local SQLite cache on the first read.
     
     Args:
         email_id (str): The unique ID of the Gmail message.
         account (str): The specific account ('personal' or 'college').
+        page (int): The page number to fetch (1-indexed).
+        page_size (int): The number of characters per page.
     """
     try:
-        service = get_gmail_service(account)
-        msg_data = service.users().messages().get(userId='me', id=email_id, format='full').execute()
-        
-        headers = msg_data.get('payload', {}).get('headers', [])
-        subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), "(No Subject)")
-        sender = next((h['value'] for h in headers if h['name'].lower() == 'from'), "(Unknown Sender)")
-        date = next((h['value'] for h in headers if h['name'].lower() == 'date'), "(No Date)")
-        to = next((h['value'] for h in headers if h['name'].lower() == 'to'), "(Unknown Recipient)")
-        
-        body = extract_body(msg_data.get('payload', {}))
-        if body:
-            body = clean_body_content(body)
+        # Check SQLite cache first
+        cached = get_cached_email(email_id, account)
+        if cached:
+            email_info = cached
         else:
-            body = clean_body_content(msg_data.get('snippet', '(No Body Content)'))
+            service = get_gmail_service(account)
+            msg_data = service.users().messages().get(userId='me', id=email_id, format='full').execute()
+            
+            headers = msg_data.get('payload', {}).get('headers', [])
+            subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), "(No Subject)")
+            sender = next((h['value'] for h in headers if h['name'].lower() == 'from'), "(Unknown Sender)")
+            date = next((h['value'] for h in headers if h['name'].lower() == 'date'), "(No Date)")
+            to = next((h['value'] for h in headers if h['name'].lower() == 'to'), "(Unknown Recipient)")
+            
+            body = extract_body(msg_data.get('payload', {}))
+            if body:
+                # Clean full body without truncation for caching
+                body = clean_body_content(body, truncate=False)
+            else:
+                body = clean_body_content(msg_data.get('snippet', '(No Body Content)'), truncate=False)
 
-        attachments = get_attachments_meta(msg_data.get('payload', {}))
+            attachments = get_attachments_meta(msg_data.get('payload', {}))
+            
+            email_info = {
+                "id": email_id,
+                "sender": clean_sender(sender),
+                "to": to,
+                "subject": subject,
+                "date": date,
+                "body": body,
+                "threadId": msg_data.get('threadId', ''),
+                "attachments": attachments
+            }
+            # Cache the full content
+            cache_email(email_id, account, email_info)
+
+        # Slice the body based on the requested page and page_size
+        full_body = email_info.get("body", "")
+        total_len = len(full_body)
+        
+        # Ensure page is at least 1
+        page = max(1, page)
+        start_idx = (page - 1) * page_size
+        end_idx = page * page_size
+        
+        paginated_body = full_body[start_idx:end_idx]
+        has_more = end_idx < total_len
+        total_pages = (total_len + page_size - 1) // page_size if total_len > 0 else 1
 
         return {
             "id": email_id,
-            "sender": clean_sender(sender),
-            "to": to,
-            "subject": f"<email_subject>{subject}</email_subject>",
-            "date": date,
-            "body": f"<email_body>{body}</email_body>",
-            "threadId": msg_data.get('threadId', ''),
-            "attachments": attachments
+            "sender": email_info["sender"],
+            "to": email_info["to"],
+            "subject": f"<email_subject>{email_info['subject']}</email_subject>",
+            "date": email_info["date"],
+            "body": f"<email_body>{paginated_body}</email_body>",
+            "threadId": email_info["threadId"],
+            "attachments": email_info["attachments"],
+            "pagination": {
+                "current_page": page,
+                "total_pages": total_pages,
+                "has_more": has_more,
+                "page_size": page_size,
+                "total_characters": total_len
+            }
         }
     except Exception as e:
         print(f"Error reading email {email_id} for {account}: {e}")
