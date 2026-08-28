@@ -234,6 +234,56 @@ def save_session_context_async(chat_history, working_memory, completed_tasks):
                 "session_summary": working_memory.get("previous_session_summary", "")
             }
             
+            # 2.5 Archive conversational turns to FTS5 SQLite database
+            try:
+                import sqlite3
+                from datetime import datetime
+                from src.CoreFunctions.Infrastructure.logger import get_current_session_id
+                
+                db_path = os.path.join(BASE_DIR, "Memory", "chat_archive.db")
+                os.makedirs(os.path.dirname(db_path), exist_ok=True)
+                archive_conn = sqlite3.connect(db_path)
+                archive_conn.execute(
+                    """
+                    CREATE VIRTUAL TABLE IF NOT EXISTS chat_history_fts USING fts5(
+                        session_id,
+                        timestamp,
+                        role,
+                        content
+                    )
+                    """
+                )
+                archive_conn.commit()
+                
+                session_id = get_current_session_id() or "default"
+                now_str = datetime.now().isoformat()
+                
+                if chat_history and len(chat_history) >= 2:
+                    last_user_msg = chat_history[-2]
+                    last_assistant_msg = chat_history[-1]
+                    if last_user_msg["role"] == "user" and last_assistant_msg["role"] == "assistant":
+                        # Check duplicate
+                        cursor = archive_conn.execute(
+                            "SELECT count(*) FROM chat_history_fts WHERE session_id = ? AND role = 'user' AND content = ?",
+                            (session_id, last_user_msg["content"])
+                        )
+                        exists = cursor.fetchone()[0] > 0
+                        if not exists:
+                            archive_conn.execute(
+                                "INSERT INTO chat_history_fts (session_id, timestamp, role, content) VALUES (?, ?, ?, ?)",
+                                (session_id, now_str, "user", last_user_msg["content"])
+                            )
+                            archive_conn.execute(
+                                "INSERT INTO chat_history_fts (session_id, timestamp, role, content) VALUES (?, ?, ?, ?)",
+                                (session_id, now_str, "assistant", last_assistant_msg["content"])
+                            )
+                            archive_conn.commit()
+            except Exception as fts_err:
+                print(f"⚠️ [FTS Archive] Error: {fts_err}")
+            finally:
+                if 'archive_conn' in locals():
+                    archive_conn.close()
+
             # Integrate UnifiedMemory persistent keys archiving
             try:
                 um = UnifiedMemory()
@@ -423,6 +473,19 @@ def run_graph_execution(initial_state, config, thread_id, chat_history_list):
         
         # Trigger Asynchronous Background Context Saver
         save_session_context_async(chat_history_list, working_memory_latest, completed_tasks_latest)
+        
+        # Trigger Asynchronous SQLite database maintenance (VACUUM) and memory consolidation
+        def run_bg_maintenance():
+            try:
+                UnifiedMemory().run_maintenance()
+            except Exception:
+                pass
+            try:
+                from src.CoreFunctions.Infrastructure.vector_memory import consolidate_facts
+                consolidate_facts()
+            except Exception:
+                pass
+        threading.Thread(target=run_bg_maintenance, daemon=True).start()
         
         # Clear recovery file since the execution succeeded!
         clear_interrupted_task_checkpoint()

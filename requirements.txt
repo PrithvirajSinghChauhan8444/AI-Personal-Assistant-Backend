@@ -26,3 +26,4 @@ yt-dlp
 piper-tts
 kokoro-onnx
 soundfile
+redis

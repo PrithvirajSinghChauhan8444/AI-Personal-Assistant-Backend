@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import time
 from typing import List, Dict, Any
 
 # Global placeholders for lazy-loaded dependencies
@@ -29,14 +30,15 @@ def _get_model():
         logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
         logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
         
+        local_model_path = os.path.join(BASE_DIR, "models", "embedding", "bge-small-en-v1.5")
+        model_name_or_path = local_model_path if os.path.exists(local_model_path) else "BAAI/bge-small-en-v1.5"
+        
         with open(os.devnull, "w") as f:
             with contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
                 from sentence_transformers import SentenceTransformer
                 try:
-                    # Attempt instant offline load first to prevent remote network checks and hangs
-                    MODEL = SentenceTransformer("BAAI/bge-small-en-v1.5", local_files_only=True)
+                    MODEL = SentenceTransformer(model_name_or_path, local_files_only=os.path.exists(local_model_path))
                 except Exception:
-                    # Fallback to online download/check only if not cached locally
                     MODEL = SentenceTransformer("BAAI/bge-small-en-v1.5")
     return MODEL
 
@@ -64,18 +66,56 @@ import threading
 # Thread lock to prevent race conditions during concurrent FAISS/JSON vector accesses
 _vector_lock = threading.RLock()
 
+METADATA_PATH = os.path.join(BASE_DIR, "Memory", "vector_store", "metadata.json")
+COLD_ARCHIVE_PATH = os.path.join(BASE_DIR, "Memory", "vector_store", "cold_archive.json")
+
+def _load_metadata():
+    if os.path.exists(METADATA_PATH):
+        try:
+            with open(METADATA_PATH, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+def _save_metadata(metadata):
+    try:
+        with open(METADATA_PATH, "w") as f:
+            json.dump(metadata, f, indent=2)
+    except Exception as e:
+        print(f"⚠️ Failed to save metadata: {e}")
+
+def _calculate_score(item_metadata: dict) -> float:
+    ts = item_metadata.get("timestamp", time.time())
+    access_count = item_metadata.get("access_count", 1)
+    
+    elapsed_seconds = time.time() - ts
+    decay_factor = 0.95
+    elapsed_days = elapsed_seconds / 86400.0
+    
+    return access_count * (decay_factor ** elapsed_days)
+
 def store_vector(text):
     with _vector_lock:
         index = _load_index()
         data = _load_data()
+        metadata = _load_metadata()
+        
+        # Ensure metadata matches data length
+        if len(metadata) != len(data):
+            metadata = [{"timestamp": time.time(), "access_count": 1} for _ in range(len(data))]
+            _save_metadata(metadata)
 
         # Normalize the incoming text
         normalized_text = text.strip().lower()
         
         # 1. Exact string checking loop to prevent duplicated text entries
-        for item in data:
+        for i, item in enumerate(data):
             if item.strip().lower() == normalized_text:
-                print(f"ℹ️ [Vector Store] Fact already exists: \"{text}\". Skipping store to avoid duplication.")
+                print(f"ℹ️ [Vector Store] Fact already exists: \"{text}\". Updating access count and timestamp.")
+                metadata[i]["access_count"] = metadata[i].get("access_count", 1) + 1
+                metadata[i]["timestamp"] = time.time()
+                _save_metadata(metadata)
                 return
 
         # 2. Semantic duplication check (if index has entries)
@@ -85,13 +125,16 @@ def store_vector(text):
             D, idx = index.search(q, 1)  # Find the single closest vector match
             if len(D) > 0 and len(D[0]) > 0:
                 distance = D[0][0]
-                # In FAISS IndexFlatL2, a distance < 0.1 represents almost identical embedding semantic meaning
                 if distance < 0.1:
-                    matched_text = data[idx[0][0]]
+                    matched_idx = idx[0][0]
+                    matched_text = data[matched_idx]
                     print(f"ℹ️ [Vector Store] Highly similar fact already exists (distance={distance:.4f}):\n"
                           f"   New: \"{text}\"\n"
                           f"   Existing: \"{matched_text}\"\n"
-                          f"   Skipping store to avoid duplication.")
+                          f"   Updating access count and timestamp of existing fact.")
+                    metadata[matched_idx]["access_count"] = metadata[matched_idx].get("access_count", 1) + 1
+                    metadata[matched_idx]["timestamp"] = time.time()
+                    _save_metadata(metadata)
                     return
 
         import numpy as np
@@ -99,25 +142,85 @@ def store_vector(text):
         vec = model.encode([text])
         index.add(np.array(vec, dtype=np.float32))
         data.append(text)
+        metadata.append({"timestamp": time.time(), "access_count": 1})
 
+        # Impose CAP of 50 facts (Problem 5)
+        MAX_FACTS = 50
+        if len(data) > MAX_FACTS:
+            # Calculate scores for all facts
+            scores = [_calculate_score(meta) for meta in metadata]
+            lowest_idx = scores.index(min(scores))
+            
+            demoted_text = data[lowest_idx]
+            demoted_meta = metadata[lowest_idx]
+            print(f"📉 [Relevance-Decay] demoting fact with lowest score ({scores[lowest_idx]:.4f}) to cold store:\n"
+                  f"   \"{demoted_text}\"")
+            
+            cold_archive = []
+            if os.path.exists(COLD_ARCHIVE_PATH):
+                try:
+                    with open(COLD_ARCHIVE_PATH, "r") as f:
+                        cold_archive = json.load(f)
+                except Exception:
+                    pass
+            cold_archive.append({
+                "text": demoted_text,
+                "metadata": demoted_meta,
+                "archived_at": time.time()
+            })
+            try:
+                with open(COLD_ARCHIVE_PATH, "w") as f:
+                    json.dump(cold_archive, f, indent=2)
+            except Exception as e:
+                print(f"⚠️ Failed to write cold archive: {e}")
+                
+            data.pop(lowest_idx)
+            metadata.pop(lowest_idx)
+            
+            # Rebuild index from remaining data
+            import faiss
+            index = faiss.IndexFlatL2(DIM)
+            if data:
+                vecs = model.encode(data)
+                index.add(np.array(vecs, dtype=np.float32))
+                
         _save(index, data)
+        _save_metadata(metadata)
 
 def search_vector(query, k=3, threshold=None):
     with _vector_lock:
         index = _load_index()
         data = _load_data()
+        metadata = _load_metadata()
+        
+        # Ensure metadata matches data length
+        if len(metadata) != len(data):
+            metadata = [{"timestamp": time.time(), "access_count": 1} for _ in range(len(data))]
+            _save_metadata(metadata)
+            
         if index.ntotal == 0:
             return []
 
+        import numpy as np
         model = _get_model()
         q = model.encode([query])
-        D, idx = index.search(q, k)
+        D, idx = index.search(np.array(q, dtype=np.float32), min(k, index.ntotal))
         
         results = []
+        updated = False
         for i, dist in zip(idx[0], D[0]):
-            if i < len(data):
+            if i < len(data) and i != -1:
                 if threshold is None or dist <= threshold:
                     results.append(data[i])
+                    
+                    # Update metadata on retrieval/access
+                    metadata[i]["access_count"] = metadata[i].get("access_count", 0) + 1
+                    metadata[i]["timestamp"] = time.time()
+                    updated = True
+                    
+        if updated:
+            _save_metadata(metadata)
+            
         return results
 
 
@@ -372,4 +475,94 @@ def check_and_migrate_embeddings():
 
 # Run automatic migration validation on import
 check_and_migrate_embeddings()
+
+
+def consolidate_facts() -> None:
+    """
+    Scans the general facts vector store. If capacity exceeds 80% (40/50 facts),
+    runs pairwise semantic similarity check and uses Gemini to merge near-duplicates.
+    """
+    with _vector_lock:
+        data = _load_data()
+        metadata = _load_metadata()
+        index = _load_index()
+        
+        if len(data) < 40 or index.ntotal == 0:
+            return
+            
+        print("🔄 [Memory Consolidation] Active facts count exceeds 80% capacity. Scanning for near-duplicates...")
+        
+        model = _get_model()
+        merged_indices = set()
+        to_add = []
+        
+        import numpy as np
+        for i in range(len(data)):
+            if i in merged_indices:
+                continue
+                
+            fact1 = data[i]
+            vec = model.encode([fact1])
+            D, idx = index.search(np.array(vec, dtype=np.float32), 2)
+            
+            if len(D) > 0 and len(D[0]) > 1:
+                other_idx = idx[0][1]
+                distance = D[0][1]
+                
+                if other_idx != -1 and other_idx != i and other_idx not in merged_indices:
+                    # Threshold for near-duplicates is distance < 0.35 in IndexFlatL2
+                    if distance < 0.35:
+                        fact2 = data[other_idx]
+                        print(f"   ↳ Found near-duplicates (distance={distance:.4f}):\n"
+                              f"     1: \"{fact1}\"\n"
+                              f"     2: \"{fact2}\"\n"
+                              f"     Consolidating using Gemini...")
+                              
+                        merged_indices.add(i)
+                        merged_indices.add(other_idx)
+                        
+                        try:
+                            from src.CoreFunctions.Infrastructure.llm_factory import get_llm
+                            from langchain_core.messages import SystemMessage, HumanMessage
+                            
+                            model_name = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
+                            llm = get_llm(model_name, temperature=0)
+                            
+                            prompt = (
+                                "You are a memory consolidation optimizer. Combine the following two semantically similar statements "
+                                "into a single, cohesive, fact-based sentence. Do not lose any key information. Keep the output extremely "
+                                "concise and under 150 characters.\n\n"
+                                f"Statement 1: {fact1}\n"
+                                f"Statement 2: {fact2}\n\n"
+                                "Merged Statement:"
+                            )
+                            resp = llm.invoke([
+                                SystemMessage(content="You are a precise backend memory consolidation engine."),
+                                HumanMessage(content=prompt)
+                            ])
+                            merged_text = str(resp.content).strip().strip('"').strip("'")
+                            print(f"     🎉 Result: \"{merged_text}\"")
+                            to_add.append(merged_text)
+                        except Exception as e:
+                            print(f"     ⚠️ Consolidation failed: {e}. Keeping both statements.")
+                            merged_indices.remove(i)
+                            merged_indices.remove(other_idx)
+                            
+        if merged_indices:
+            new_data = [data[i] for i in range(len(data)) if i not in merged_indices]
+            new_metadata = [metadata[i] for i in range(len(metadata)) if i not in merged_indices]
+            
+            for item in to_add:
+                new_data.append(item)
+                new_metadata.append({"timestamp": time.time(), "access_count": 2})
+                
+            import faiss
+            index = faiss.IndexFlatL2(DIM)
+            if new_data:
+                vecs = model.encode(new_data)
+                index.add(np.array(vecs, dtype=np.float32))
+                
+            _save(index, new_data)
+            _save_metadata(new_metadata)
+            print(f"✨ [Memory Consolidation] Completed. Reduced active facts from {len(data)} to {len(new_data)}.")
 

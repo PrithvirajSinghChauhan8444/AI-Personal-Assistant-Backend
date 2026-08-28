@@ -6,6 +6,9 @@ class SubTask(TypedDict):
     assigned_worker: str # "SystemWorker", "GmailWorker", "ProductivityWorker", "MemoryWorker"
     status: str # "pending", "in_progress", "completed", "failed"
     depends_on: List[str]
+    confidence_score: float
+    confidence_reason: str
+    entity_reference: Optional[str]
 
 def merge_subtasks(left: List[SubTask], right: List[SubTask]) -> List[SubTask]:
     """Reducer to merge active subtasks by ID, preserving modifications from concurrent executions."""

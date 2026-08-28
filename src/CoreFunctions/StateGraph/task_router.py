@@ -1,7 +1,7 @@
 import os
 import sys
 import json
-from typing import List
+from typing import List, Optional
 from enum import Enum
 from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -22,6 +22,16 @@ class SubTaskModel(BaseModel):
     depends_on: List[str] = Field(
         default_factory=list,
         description="List of subtask IDs that must complete before this task can execute. If completely independent, leave empty."
+    )
+    confidence_score: float = Field(
+        description="Confidence score from 0.0 to 1.0 that this task targets the correct person, file, or context."
+    )
+    confidence_reason: str = Field(
+        description="Brief reason explaining why this score was given, highlighting any ambiguities or clear anchors."
+    )
+    entity_reference: Optional[str] = Field(
+        default=None,
+        description="Specific entity key or database fact referenced (e.g., 'user:brother_name', 'vector_memory:fact_5')"
     )
 
 class TaskPlan(BaseModel):
@@ -66,6 +76,15 @@ Available workers:
 
 RULES & WORKFLOW FOR SPECIALIZED TASKS:
 {rules_str}
+
+CONFIDENCE SCORING RULES:
+For each task, assign a 'confidence_score' (from 0.0 to 1.0) and a 'confidence_reason' explaining your rating:
+- 1.0 (Absolute Certainty): The target entity (name, email, folder, path) is explicitly named in the current user prompt or user profile.
+- 0.85 (High Confidence): The entity is referenced clearly via recent conversation history, and no competing entities exist.
+- 0.70 (Moderate Confidence/Ambiguity): The entity must be inferred, or there are multiple potential matches in memory (e.g. multiple people named Rohan, or multiple files that match the description).
+- 0.50 or below (Low Confidence): The target is ambiguous, unnamed, or lacks record matches.
+
+When scoring below 0.80, detail the ambiguity clearly in the 'confidence_reason' field. Specify any database or memory facts referenced in 'entity_reference' (e.g., 'user:brother_name', 'vector_memory:fact_5').
 """
 
 def task_router_node(state: AgentState):
@@ -165,7 +184,10 @@ Please correct the JSON formatting, ensure all worker assignments are strictly f
             "description": st.description,
             "assigned_worker": worker_name_str,
             "status": status,
-            "depends_on": st.depends_on or []
+            "depends_on": st.depends_on or [],
+            "confidence_score": st.confidence_score,
+            "confidence_reason": st.confidence_reason,
+            "entity_reference": st.entity_reference
         })
         print(f"  -> Created Subtask: {st.id} ({worker_name_str}) | Depends on: {st.depends_on or []} | Status: {status}")
         

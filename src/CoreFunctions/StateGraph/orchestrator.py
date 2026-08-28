@@ -99,6 +99,31 @@ def orchestrator_node(state: AgentState) -> Dict[str, Any]:
     # 1. Gather all tasks whose dependencies are met
     executable_tasks = _get_pending_tasks_with_satisfied_deps(active_subtasks, completed_task_ids)
 
+    # NEW CONFIDENCE INTERCEPTION GUARDRAIL:
+    CONFIDENCE_THRESHOLD = 0.80
+    for task in executable_tasks:
+        score = task.get("confidence_score", 1.0)
+        if score < CONFIDENCE_THRESHOLD:
+            reason = task.get("confidence_reason", "Low confidence target context.")
+            ref = task.get("entity_reference", "")
+            print(f"\n  🛑 [Confidence Guardrail] Intercepted low-confidence task {task['id']} (Score: {score:.2f})!")
+            print(f"     Reason: {reason} | Reference: {ref}")
+            
+            # Abort all remaining non-completed tasks
+            for t in active_subtasks:
+                if t["status"] in ["pending", "in_progress"]:
+                    t["status"] = "failed"
+            
+            clarification_msg = (
+                f"I stopped executing your request because I am not sure about the context: {reason}.\n"
+                f"Could you please clarify who or what you are referring to?"
+            )
+            return {
+                "active_subtasks": active_subtasks,
+                "final_response": clarification_msg,
+                "next_node": "OutputFinalizer"
+            }
+
     # 2. Filter tasks to avoid duplicate/overlapping worker executions
     if executable_tasks:
         executable_tasks = _filter_by_worker_availability(executable_tasks, active_subtasks)

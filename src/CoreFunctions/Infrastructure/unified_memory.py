@@ -49,28 +49,39 @@ class BaseMemoryEngine:
     def release_lock(self, lock_name: str) -> None:
         raise NotImplementedError
 
+    def add_relation(self, source: str, relation: str, target: str, context: str = "") -> None:
+        raise NotImplementedError
+
+    def query_relations(self, source: str = None, relation: str = None, target: str = None) -> List[Dict[str, Any]]:
+        raise NotImplementedError
+
+    def delete_relation(self, source: str, relation: str, target: str) -> None:
+        raise NotImplementedError
+
 
 # ==========================================
 # 2. SQLITE CACHE ENGINE (Zero Setup fallback)
 # ==========================================
 class SQLiteMemoryEngine(BaseMemoryEngine):
-    """SQLite implementation of the memory engine, supporting thread-safe operation and lazy TTL."""
+    """SQLite implementation of the memory engine, sharded by worker/domain with isolated locks."""
 
     def __init__(self, db_path: str = "Memory/workspace_cache.db"):
         self.db_path = os.path.abspath(db_path)
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-        self._lock = threading.Lock()
-        self._init_db()
+        self.shards_dir = os.path.join(os.path.dirname(self.db_path), "shards")
+        os.makedirs(self.shards_dir, exist_ok=True)
+        self._locks = {}
+        self._locks_mutex = threading.Lock()
+        
+        # Initialize default database
+        default_lock = threading.Lock()
+        self._locks[self.db_path] = default_lock
+        self._init_db_path(self.db_path, default_lock)
 
-    def _get_connection(self) -> sqlite3.Connection:
-        # Enable write-ahead logging (WAL) for better concurrent performance
-        conn = sqlite3.connect(self.db_path, timeout=10.0)
-        conn.execute("PRAGMA journal_mode=WAL")
-        return conn
-
-    def _init_db(self) -> None:
-        with self._lock:
-            conn = self._get_connection()
+    def _init_db_path(self, db_path: str, lock: threading.Lock) -> None:
+        with lock:
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
             try:
                 # Main cache table
                 conn.execute(
@@ -91,15 +102,47 @@ class SQLiteMemoryEngine(BaseMemoryEngine):
                     )
                 """
                 )
+                # Graph relations table (stored in the main shard workspace_cache.db)
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS relations (
+                        source_entity TEXT,
+                        relation TEXT,
+                        target_entity TEXT,
+                        timestamp REAL,
+                        context TEXT,
+                        PRIMARY KEY (source_entity, relation, target_entity)
+                    )
+                """
+                )
                 conn.commit()
             finally:
                 conn.close()
 
+    def _get_shard_path_and_lock(self, key_or_pattern: str) -> tuple:
+        db_path = self.db_path
+        # Parse worker name if it follows the format worker:worker_name:...
+        match = re.match(r"^worker:([^:*?%]+)", key_or_pattern)
+        if match:
+            worker_name = match.group(1)
+            db_path = os.path.join(self.shards_dir, f"worker_{worker_name}.db")
+        
+        with self._locks_mutex:
+            if db_path not in self._locks:
+                lock = threading.Lock()
+                self._locks[db_path] = lock
+                self._init_db_path(db_path, lock)
+            else:
+                lock = self._locks[db_path]
+        return db_path, lock
+
     def set(self, key: str, value: Dict[str, Any], ttl_seconds: int = 1800) -> None:
+        db_path, lock = self._get_shard_path_and_lock(key)
         expires_at = time.time() + ttl_seconds
         val_str = json.dumps(value)
-        with self._lock:
-            conn = self._get_connection()
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
             try:
                 conn.execute(
                     "INSERT OR REPLACE INTO cache (key, value, expires_at) VALUES (?, ?, ?)",
@@ -110,9 +153,11 @@ class SQLiteMemoryEngine(BaseMemoryEngine):
                 conn.close()
 
     def get(self, key: str) -> Optional[Dict[str, Any]]:
+        db_path, lock = self._get_shard_path_and_lock(key)
         now = time.time()
-        with self._lock:
-            conn = self._get_connection()
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
             try:
                 # Lazy TTL clean-up on read
                 conn.execute("DELETE FROM cache WHERE key = ? AND expires_at < ?", (key, now))
@@ -127,22 +172,26 @@ class SQLiteMemoryEngine(BaseMemoryEngine):
         return None
 
     def delete(self, key: str) -> None:
-        with self._lock:
-            conn = self._get_connection()
+        db_path, lock = self._get_shard_path_and_lock(key)
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
             try:
                 conn.execute("DELETE FROM cache WHERE key = ?", (key,))
                 conn.commit()
             finally:
                 conn.close()
 
-    def keys(self, pattern: str) -> List[str]:
-        # Simple SQL translation for keys search
+    def _keys_in_db(self, db_path: str, lock: threading.Lock, pattern: str) -> List[str]:
         sql_pattern = pattern.replace("*", "%").replace("?", "_")
         now = time.time()
-        with self._lock:
-            conn = self._get_connection()
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
             try:
-                # Filter expired keys out
+                conn.execute("DELETE FROM cache WHERE key LIKE ? AND expires_at < ?", (sql_pattern, now))
+                conn.commit()
+
                 cursor = conn.execute(
                     "SELECT key FROM cache WHERE key LIKE ? AND expires_at >= ?",
                     (sql_pattern, now),
@@ -151,11 +200,36 @@ class SQLiteMemoryEngine(BaseMemoryEngine):
             finally:
                 conn.close()
 
+    def keys(self, pattern: str) -> List[str]:
+        # If pattern is specific to a worker name, only search that shard
+        match = re.match(r"^worker:([^:*?%]+)", pattern)
+        if match:
+            db_path, lock = self._get_shard_path_and_lock(pattern)
+            return self._keys_in_db(db_path, lock, pattern)
+
+        # Broad search across all active shards
+        all_keys = []
+        shards = [self.db_path]
+        if os.path.exists(self.shards_dir):
+            for f in os.listdir(self.shards_dir):
+                if f.endswith(".db"):
+                    shards.append(os.path.join(self.shards_dir, f))
+
+        for db_path in shards:
+            with self._locks_mutex:
+                if db_path not in self._locks:
+                    self._locks[db_path] = threading.Lock()
+                lock = self._locks[db_path]
+            all_keys.extend(self._keys_in_db(db_path, lock, pattern))
+        return all_keys
+
     def acquire_lock(self, lock_name: str, lease_time: int = 5) -> bool:
+        db_path, lock = self._get_shard_path_and_lock(lock_name)
         now = time.time()
         expires_at = now + lease_time
-        with self._lock:
-            conn = self._get_connection()
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
             try:
                 # 1. Delete expired lock if any
                 conn.execute("DELETE FROM locks WHERE lock_name = ? AND expires_at < ?", (lock_name, now))
@@ -172,14 +246,76 @@ class SQLiteMemoryEngine(BaseMemoryEngine):
                 conn.close()
 
     def release_lock(self, lock_name: str) -> None:
-        with self._lock:
-            conn = self._get_connection()
+        db_path, lock = self._get_shard_path_and_lock(lock_name)
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
             try:
                 conn.execute("DELETE FROM locks WHERE lock_name = ?", (lock_name,))
                 conn.commit()
             finally:
                 conn.close()
 
+    def add_relation(self, source: str, relation: str, target: str, context: str = "") -> None:
+        db_path, lock = self._get_shard_path_and_lock("relations")
+        now = time.time()
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO relations (source_entity, relation, target_entity, timestamp, context) VALUES (?, ?, ?, ?, ?)",
+                    (source.strip().lower(), relation.strip().lower(), target.strip().lower(), now, context),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def query_relations(self, source: str = None, relation: str = None, target: str = None) -> List[Dict[str, Any]]:
+        db_path, lock = self._get_shard_path_and_lock("relations")
+        query = "SELECT source_entity, relation, target_entity, timestamp, context FROM relations WHERE 1=1"
+        params = []
+        if source:
+            query += " AND source_entity = ?"
+            params.append(source.strip().lower())
+        if relation:
+            query += " AND relation = ?"
+            params.append(relation.strip().lower())
+        if target:
+            query += " AND target_entity = ?"
+            params.append(target.strip().lower())
+            
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                cursor = conn.execute(query, params)
+                results = []
+                for row in cursor.fetchall():
+                    results.append({
+                        "source": row[0],
+                        "relation": row[1],
+                        "target": row[2],
+                        "timestamp": row[3],
+                        "context": row[4]
+                    })
+                return results
+            finally:
+                conn.close()
+
+    def delete_relation(self, source: str, relation: str, target: str) -> None:
+        db_path, lock = self._get_shard_path_and_lock("relations")
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                conn.execute(
+                    "DELETE FROM relations WHERE source_entity = ? AND relation = ? AND target_entity = ?",
+                    (source.strip().lower(), relation.strip().lower(), target.strip().lower()),
+                )
+                conn.commit()
+            finally:
+                conn.close()
 
 # ==========================================
 # 3. POSTGRES CACHE ENGINE (Enterprise Production)
@@ -215,6 +351,19 @@ class PostgresMemoryEngine(BaseMemoryEngine):
                     CREATE TABLE IF NOT EXISTS locks (
                         lock_name TEXT PRIMARY KEY,
                         expires_at DOUBLE PRECISION
+                    )
+                    """
+                )
+                # Relations table
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS relations (
+                        source_entity TEXT,
+                        relation TEXT,
+                        target_entity TEXT,
+                        timestamp DOUBLE PRECISION,
+                        context TEXT,
+                        PRIMARY KEY (source_entity, relation, target_entity)
                     )
                     """
                 )
@@ -312,6 +461,138 @@ class PostgresMemoryEngine(BaseMemoryEngine):
         finally:
             conn.close()
 
+    def add_relation(self, source: str, relation: str, target: str, context: str = "") -> None:
+        now = time.time()
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO relations (source_entity, relation, target_entity, timestamp, context) VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (source_entity, relation, target_entity) DO UPDATE SET timestamp = EXCLUDED.timestamp, context = EXCLUDED.context
+                    """,
+                    (source.strip().lower(), relation.strip().lower(), target.strip().lower(), now, context),
+                )
+                conn.commit()
+        finally:
+            conn.close()
+
+    def query_relations(self, source: str = None, relation: str = None, target: str = None) -> List[Dict[str, Any]]:
+        query = "SELECT source_entity, relation, target_entity, timestamp, context FROM relations WHERE 1=1"
+        params = []
+        if source:
+            query += " AND source_entity = %s"
+            params.append(source.strip().lower())
+        if relation:
+            query += " AND relation = %s"
+            params.append(relation.strip().lower())
+        if target:
+            query += " AND target_entity = %s"
+            params.append(target.strip().lower())
+            
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                results = []
+                for row in cur.fetchall():
+                    results.append({
+                        "source": row[0],
+                        "relation": row[1],
+                        "target": row[2],
+                        "timestamp": row[3],
+                        "context": row[4]
+                    })
+                return results
+        finally:
+            conn.close()
+
+    def delete_relation(self, source: str, relation: str, target: str) -> None:
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM relations WHERE source_entity = %s AND relation = %s AND target_entity = %s",
+                    (source.strip().lower(), relation.strip().lower(), target.strip().lower()),
+                )
+                conn.commit()
+        finally:
+            conn.close()
+
+
+# ==========================================
+# 4. REDIS CACHE ENGINE (High Performance Caching)
+# ==========================================
+class RedisMemoryEngine(BaseMemoryEngine):
+    """Redis implementation of the memory engine using redis key TTL and distributed lock patterns."""
+
+    def __init__(self, redis_url: str):
+        import redis
+        self.redis_url = redis_url
+        self.client = redis.from_url(redis_url, decode_responses=True)
+        # Ping connection to fail early if Redis is offline
+        self.client.ping()
+
+    def set(self, key: str, value: Dict[str, Any], ttl_seconds: int = 1800) -> None:
+        val_str = json.dumps(value)
+        self.client.set(key, val_str, ex=ttl_seconds)
+
+    def get(self, key: str) -> Optional[Dict[str, Any]]:
+        val_str = self.client.get(key)
+        if val_str:
+            return json.loads(val_str)
+        return None
+
+    def delete(self, key: str) -> None:
+        self.client.delete(key)
+
+    def keys(self, pattern: str) -> List[str]:
+        return self.client.keys(pattern)
+
+    def acquire_lock(self, lock_name: str, lease_time: int = 5) -> bool:
+        lock_key = f"lock:{lock_name}"
+        success = self.client.set(lock_key, "1", nx=True, px=int(lease_time * 1000))
+        return bool(success)
+
+    def release_lock(self, lock_name: str) -> None:
+        lock_key = f"lock:{lock_name}"
+        self.client.delete(lock_key)
+
+    def add_relation(self, source: str, relation: str, target: str, context: str = "") -> None:
+        key = f"relation:{source.strip().lower()}:{relation.strip().lower()}:{target.strip().lower()}"
+        payload = {
+            "timestamp": time.time(),
+            "context": context
+        }
+        self.client.set(key, json.dumps(payload))
+
+    def query_relations(self, source: str = None, relation: str = None, target: str = None) -> List[Dict[str, Any]]:
+        s_part = source.strip().lower() if source else "*"
+        r_part = relation.strip().lower() if relation else "*"
+        t_part = target.strip().lower() if target else "*"
+        pattern = f"relation:{s_part}:{r_part}:{t_part}"
+        keys = self.client.keys(pattern)
+        
+        results = []
+        for key in keys:
+            parts = key.split(":")
+            if len(parts) == 4:
+                val_str = self.client.get(key)
+                if val_str:
+                    payload = json.loads(val_str)
+                    results.append({
+                        "source": parts[1],
+                        "relation": parts[2],
+                        "target": parts[3],
+                        "timestamp": payload.get("timestamp"),
+                        "context": payload.get("context", "")
+                    })
+        return results
+
+    def delete_relation(self, source: str, relation: str, target: str) -> None:
+        key = f"relation:{source.strip().lower()}:{relation.strip().lower()}:{target.strip().lower()}"
+        self.client.delete(key)
+
 
 # ==========================================
 # 5. UNIFIED MEMORY WRAPPER
@@ -347,7 +628,18 @@ class UnifiedMemory:
     def _initialize_engine(self) -> BaseMemoryEngine:
         db_provider = os.environ.get("DATABASE_PROVIDER", "").lower()
         db_url = os.environ.get("DATABASE_URL")
+        redis_url = os.environ.get("REDIS_URL")
         
+        if db_provider == "redis" or (not db_provider and redis_url):
+            try:
+                url_to_use = redis_url or db_url
+                if url_to_use:
+                    engine = RedisMemoryEngine(url_to_use)
+                    print("⚡ [UnifiedMemory] Connected successfully to Redis server.")
+                    return engine
+            except Exception as e:
+                print(f"⚠️ [UnifiedMemory] Redis connection failed ({e}). Falling back to SQLite.")
+
         if db_provider == "postgres" and db_url:
             try:
                 engine = PostgresMemoryEngine(db_url)
@@ -355,7 +647,6 @@ class UnifiedMemory:
                 return engine
             except Exception as e:
                 print(f"⚠️ [UnifiedMemory] Postgres connection failed ({e}). Falling back to SQLite.")
-
 
         print(f"📁 [UnifiedMemory] Initialized local SQLite cache backend at '{self.db_path}'")
         return SQLiteMemoryEngine(db_path=self.db_path)
@@ -416,11 +707,41 @@ class UnifiedMemory:
 
     @staticmethod
     def reset_current_worker(token) -> None:
-        """Resets the active worker name in the execution context using the token."""
+        """Resets the active worker context using the provided token."""
         try:
             _current_worker.reset(token)
         except Exception:
             pass
+
+    def run_maintenance(self) -> None:
+        """Executes maintenance jobs, such as running VACUUM on SQLite shard databases."""
+        if not self.enabled:
+            return
+        
+        if isinstance(self.engine, SQLiteMemoryEngine):
+            print("🔧 [UnifiedMemory] Running SQLite database maintenance (VACUUM)...")
+            db_paths = [self.engine.db_path]
+            if os.path.exists(self.engine.shards_dir):
+                for f in os.listdir(self.engine.shards_dir):
+                    if f.endswith(".db"):
+                        db_paths.append(os.path.join(self.engine.shards_dir, f))
+            
+            for path in db_paths:
+                with self.engine._locks_mutex:
+                    if path not in self.engine._locks:
+                        self.engine._locks[path] = threading.Lock()
+                    lock = self.engine._locks[path]
+                
+                with lock:
+                    try:
+                        conn = sqlite3.connect(path, timeout=10.0)
+                        conn.execute("VACUUM")
+                        conn.commit()
+                        print(f"   ✓ Vacuumed database: {os.path.basename(path)}")
+                    except Exception as e:
+                        print(f"   ⚠️ Vacuum failed for {os.path.basename(path)}: {e}")
+                    finally:
+                        conn.close()
 
     # --- CORE APIs ---
     def init_transaction(self, txn_id: str) -> None:
@@ -589,3 +910,21 @@ class UnifiedMemory:
         if not self.enabled:
             return
         self.engine.release_lock(lock_name)
+
+    def add_relation(self, source: str, relation: str, target: str, context: str = "") -> None:
+        """Adds a graph-shaped relation."""
+        if not self.enabled:
+            return
+        self.engine.add_relation(source, relation, target, context)
+
+    def query_relations(self, source: str = None, relation: str = None, target: str = None) -> List[Dict[str, Any]]:
+        """Queries graph-shaped relations."""
+        if not self.enabled:
+            return []
+        return self.engine.query_relations(source, relation, target)
+
+    def delete_relation(self, source: str, relation: str, target: str) -> None:
+        """Deletes a graph-shaped relation."""
+        if not self.enabled:
+            return
+        self.engine.delete_relation(source, relation, target)

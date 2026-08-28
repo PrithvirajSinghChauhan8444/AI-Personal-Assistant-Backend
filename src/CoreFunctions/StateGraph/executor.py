@@ -195,7 +195,8 @@ def compile_worker_agents():
         memory_worker_tool_update_unified_memory,
         memory_worker_tool_forget_memory,
         memory_worker_tool_delete_fact,
-        memory_worker_tool_list_keys
+        memory_worker_tool_list_keys,
+        memory_worker_tool_search_chat_history
     )
     
     # Inject core memory tools directly into all workers
@@ -205,7 +206,8 @@ def compile_worker_agents():
         memory_worker_tool_update_unified_memory,
         memory_worker_tool_forget_memory,
         memory_worker_tool_delete_fact,
-        memory_worker_tool_list_keys
+        memory_worker_tool_list_keys,
+        memory_worker_tool_search_chat_history
     ]
 
 

@@ -33,11 +33,14 @@ def _get_model():
         logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
         logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
         
+        local_model_path = os.path.join(BASE_DIR, "models", "embedding", "all-MiniLM-L6-v2")
+        model_name_or_path = local_model_path if os.path.exists(local_model_path) else "all-MiniLM-L6-v2"
+        
         with open(os.devnull, "w") as f:
             with contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
                 from sentence_transformers import SentenceTransformer
                 try:
-                    MODEL = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=True)
+                    MODEL = SentenceTransformer(model_name_or_path, local_files_only=os.path.exists(local_model_path))
                 except Exception:
                     MODEL = SentenceTransformer("all-MiniLM-L6-v2")
     return MODEL

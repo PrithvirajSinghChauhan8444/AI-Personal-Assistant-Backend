@@ -312,3 +312,56 @@ def delete_memory(category, key):
     um.delete_memory(db_key)
     print(f"\033[90m🗑️ Deleted memory key from database: {db_key}\033[0m")
     return f"Deleted memory '{key}' from '{category}' memory."
+
+
+def route_fact(key: str, value: str, category: str = "past") -> str:
+    """
+    Central gateway router to analyze the incoming fact (key + value)
+    and route it to the optimal store(s) to prevent memory bloating.
+    """
+    um = UnifiedMemory()
+    if not um.enabled:
+        return "Memory is disabled."
+
+    val_str = str(value).strip()
+    
+    # 1. Check for Relation Graph Routing (entity - relation - entity)
+    rel_patterns = [
+        r"^(?P<subj>[a-zA-Z0-9_\-\s]+)\s+(?P<rel>is married to|works at|is contact of|is colleague of|is partner of|is friend of|is child of|is parent of|lives in|knows|is the parent of|is related to)\s+(?P<obj>[a-zA-Z0-9_\-\s\.\@]+)$",
+        r"^(?P<subj>[a-zA-Z0-9_\-\s]+)'s\s+(?P<rel>phone number|email|address|contact|manager|colleague|friend|relation)\s+is\s+(?P<obj>.+)$"
+    ]
+    
+    routed_relation = False
+    for pat in rel_patterns:
+        match = re.match(pat, val_str, re.IGNORECASE)
+        if match:
+            subj = match.group("subj").strip()
+            rel = match.group("rel").strip()
+            obj = match.group("obj").strip()
+            um.add_relation(subj, rel, obj, context=val_str)
+            print(f"🕸️ [Memory Router] Routed to Relations Graph: {subj} -> {rel} -> {obj}")
+            routed_relation = True
+            break
+            
+    if routed_relation:
+        return "Routed fact to Relations Graph."
+
+    # 2. Check for Structured KV config/state Routing
+    is_kv = False
+    if len(val_str) < 30:
+        is_kv = True
+    elif category in ["user", "current"]:
+        is_kv = True
+    elif re.match(r"^(favorite_|user_|config_|pref_|last_|current_)", key.lower()):
+        is_kv = True
+        
+    if is_kv:
+        store_memory(category, key, value)
+        print(f"🔑 [Memory Router] Routed to Structured KV cache: {category}:{key} = {value}")
+        return "Routed fact to Structured KV store."
+
+    # 3. Fallback: Unstructured general semantic fact -> Vector Store
+    from .vector_memory import store_vector
+    store_vector(val_str)
+    print(f"🧠 [Memory Router] Routed to General FAISS vector store: \"{val_str}\"")
+    return "Routed fact to General FAISS vector store."
