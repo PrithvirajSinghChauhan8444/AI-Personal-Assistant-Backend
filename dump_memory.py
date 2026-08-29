@@ -9,8 +9,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 # Load .env
 load_dotenv(override=True)
 
-from src.CoreFunctions.unified_memory import UnifiedMemory
-from src.CoreFunctions.vector_memory import _load_data as _load_vector_data
+from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
+from src.CoreFunctions.Infrastructure.vector_memory import _load_data as _load_vector_data
 
 def dump_memory():
     print("=" * 60)

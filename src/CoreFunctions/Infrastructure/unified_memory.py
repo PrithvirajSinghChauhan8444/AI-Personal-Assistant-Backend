@@ -58,6 +58,42 @@ class BaseMemoryEngine:
     def delete_relation(self, source: str, relation: str, target: str) -> None:
         raise NotImplementedError
 
+    def upsert_person(self, name: str, relation: str = "", email: str = "", phone: str = "", notes: str = "") -> None:
+        pass
+
+    def query_people(self, name: str = None, relation: str = None) -> List[Dict[str, Any]]:
+        return []
+
+    def upsert_profile(self, key: str, value: str, source: str) -> None:
+        pass
+
+    def query_profile(self, key: str = None) -> List[Dict[str, Any]]:
+        return []
+
+    def add_to_profile_review(self, key: str, value: str, source: str) -> None:
+        pass
+
+    def query_profile_review(self) -> List[Dict[str, Any]]:
+        return []
+
+    def delete_from_profile_review(self, review_id: int) -> None:
+        pass
+
+    def log_event(self, event_type: str, summary: str, ref_id: str = "", timestamp: float = None) -> None:
+        pass
+
+    def query_events(self, event_type: str = None, limit: int = 10) -> List[Dict[str, Any]]:
+        return []
+
+    def upsert_vector_fact(self, fact: str, source: str, timestamp: float = None, access_count: int = 1) -> None:
+        pass
+
+    def delete_vector_fact(self, fact: str) -> None:
+        pass
+
+    def list_vector_facts(self) -> List[Dict[str, Any]]:
+        return []
+
 
 # ==========================================
 # 2. SQLITE CACHE ENGINE (Zero Setup fallback)
@@ -112,6 +148,65 @@ class SQLiteMemoryEngine(BaseMemoryEngine):
                         timestamp REAL,
                         context TEXT,
                         PRIMARY KEY (source_entity, relation, target_entity)
+                    )
+                """
+                )
+                # People table (CRM)
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS people (
+                        name TEXT PRIMARY KEY,
+                        relation TEXT,
+                        email TEXT,
+                        phone TEXT,
+                        notes TEXT
+                    )
+                """
+                )
+                # Profile table (structured canonical profile)
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS profile (
+                        key TEXT PRIMARY KEY,
+                        value TEXT,
+                        source TEXT,
+                        timestamp REAL
+                    )
+                """
+                )
+                # Review queue table for unrecognized fields
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS profile_review_queue (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        key TEXT,
+                        value TEXT,
+                        source TEXT,
+                        timestamp REAL
+                    )
+                """
+                )
+                # Events table (timeline logs)
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp REAL,
+                        event_type TEXT,
+                        summary TEXT,
+                        ref_id TEXT
+                    )
+                """
+                )
+                # Vector facts table (SQL Source of Truth for FAISS)
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS vector_facts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        fact TEXT UNIQUE,
+                        source TEXT,
+                        timestamp REAL,
+                        access_count INTEGER DEFAULT 1
                     )
                 """
                 )
@@ -314,6 +409,259 @@ class SQLiteMemoryEngine(BaseMemoryEngine):
                     (source.strip().lower(), relation.strip().lower(), target.strip().lower()),
                 )
                 conn.commit()
+            finally:
+                conn.close()
+
+    def upsert_person(self, name: str, relation: str = "", email: str = "", phone: str = "", notes: str = "") -> None:
+        db_path, lock = self._get_shard_path_and_lock(self.db_path)
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO people (name, relation, email, phone, notes)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        name.strip() if name else "", 
+                        relation.strip() if relation else "", 
+                        email.strip() if email else "", 
+                        phone.strip() if phone else "", 
+                        notes.strip() if notes else ""
+                    )
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def query_people(self, name: str = None, relation: str = None) -> List[Dict[str, Any]]:
+        db_path, lock = self._get_shard_path_and_lock(self.db_path)
+        query = "SELECT name, relation, email, phone, notes FROM people WHERE 1=1"
+        params = []
+        if name:
+            query += " AND name = ?"
+            params.append(name.strip())
+        if relation:
+            query += " AND relation = ?"
+            params.append(relation.strip())
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                cursor = conn.execute(query, params)
+                results = []
+                for row in cursor.fetchall():
+                    results.append({
+                        "name": row[0],
+                        "relation": row[1],
+                        "email": row[2],
+                        "phone": row[3],
+                        "notes": row[4]
+                    })
+                return results
+            finally:
+                conn.close()
+
+    def upsert_profile(self, key: str, value: str, source: str) -> None:
+        db_path, lock = self._get_shard_path_and_lock(self.db_path)
+        now = time.time()
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO profile (key, value, source, timestamp)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        key.strip().lower() if key else "", 
+                        value.strip() if value else "", 
+                        source.strip() if source else "", 
+                        now
+                    )
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def query_profile(self, key: str = None) -> List[Dict[str, Any]]:
+        db_path, lock = self._get_shard_path_and_lock(self.db_path)
+        query = "SELECT key, value, source, timestamp FROM profile"
+        params = []
+        if key:
+            query += " WHERE key = ?"
+            params.append(key.strip().lower())
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                cursor = conn.execute(query, params)
+                results = []
+                for row in cursor.fetchall():
+                    results.append({
+                        "key": row[0],
+                        "value": row[1],
+                        "source": row[2],
+                        "timestamp": row[3]
+                    })
+                return results
+            finally:
+                conn.close()
+
+    def add_to_profile_review(self, key: str, value: str, source: str) -> None:
+        db_path, lock = self._get_shard_path_and_lock(self.db_path)
+        now = time.time()
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO profile_review_queue (key, value, source, timestamp)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        key.strip() if key else "", 
+                        value.strip() if value else "", 
+                        source.strip() if source else "", 
+                        now
+                    )
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def query_profile_review(self) -> List[Dict[str, Any]]:
+        db_path, lock = self._get_shard_path_and_lock(self.db_path)
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                cursor = conn.execute("SELECT id, key, value, source, timestamp FROM profile_review_queue ORDER BY timestamp ASC")
+                results = []
+                for row in cursor.fetchall():
+                    results.append({
+                        "id": row[0],
+                        "key": row[1],
+                        "value": row[2],
+                        "source": row[3],
+                        "timestamp": row[4]
+                    })
+                return results
+            finally:
+                conn.close()
+
+    def delete_from_profile_review(self, review_id: int) -> None:
+        db_path, lock = self._get_shard_path_and_lock(self.db_path)
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                conn.execute("DELETE FROM profile_review_queue WHERE id = ?", (review_id,))
+                conn.commit()
+            finally:
+                conn.close()
+
+    def log_event(self, event_type: str, summary: str, ref_id: str = "", timestamp: float = None) -> None:
+        db_path, lock = self._get_shard_path_and_lock(self.db_path)
+        now = timestamp if timestamp is not None else time.time()
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                conn.execute(
+                    "INSERT INTO events (timestamp, event_type, summary, ref_id) VALUES (?, ?, ?, ?)",
+                    (
+                        now, 
+                        event_type.strip() if event_type else "", 
+                        summary.strip() if summary else "", 
+                        ref_id.strip() if ref_id else ""
+                    )
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def query_events(self, event_type: str = None, limit: int = 10) -> List[Dict[str, Any]]:
+        db_path, lock = self._get_shard_path_and_lock(self.db_path)
+        query = "SELECT id, timestamp, event_type, summary, ref_id FROM events"
+        params = []
+        if event_type:
+            query += " WHERE event_type = ?"
+            params.append(event_type.strip())
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                cursor = conn.execute(query, params)
+                results = []
+                for row in cursor.fetchall():
+                    results.append({
+                        "id": row[0],
+                        "timestamp": row[1],
+                        "event_type": row[2],
+                        "summary": row[3],
+                        "ref_id": row[4]
+                    })
+                return results
+            finally:
+                conn.close()
+
+    def upsert_vector_fact(self, fact: str, source: str, timestamp: float = None, access_count: int = 1) -> None:
+        db_path, lock = self._get_shard_path_and_lock(self.db_path)
+        now = timestamp if timestamp is not None else time.time()
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO vector_facts (fact, source, timestamp, access_count)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        fact.strip() if fact else "", 
+                        source.strip() if source else "", 
+                        now, 
+                        access_count
+                    )
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def delete_vector_fact(self, fact: str) -> None:
+        db_path, lock = self._get_shard_path_and_lock(self.db_path)
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                conn.execute("DELETE FROM vector_facts WHERE fact = ?", (fact.strip() if fact else "",))
+                conn.commit()
+            finally:
+                conn.close()
+
+    def list_vector_facts(self) -> List[Dict[str, Any]]:
+        db_path, lock = self._get_shard_path_and_lock(self.db_path)
+        with lock:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                cursor = conn.execute("SELECT id, fact, source, timestamp, access_count FROM vector_facts")
+                results = []
+                for row in cursor.fetchall():
+                    results.append({
+                        "id": row[0],
+                        "fact": row[1],
+                        "source": row[2],
+                        "timestamp": row[3],
+                        "access_count": row[4]
+                    })
+                return results
             finally:
                 conn.close()
 
@@ -928,3 +1276,56 @@ class UnifiedMemory:
         if not self.enabled:
             return
         self.engine.delete_relation(source, relation, target)
+
+    def upsert_person(self, name: str, relation: str = "", email: str = "", phone: str = "", notes: str = "") -> None:
+        if self.enabled:
+            self.engine.upsert_person(name, relation, email, phone, notes)
+
+    def query_people(self, name: str = None, relation: str = None) -> List[Dict[str, Any]]:
+        if self.enabled:
+            return self.engine.query_people(name, relation)
+        return []
+
+    def upsert_profile(self, key: str, value: str, source: str) -> None:
+        if self.enabled:
+            self.engine.upsert_profile(key, value, source)
+
+    def query_profile(self, key: str = None) -> List[Dict[str, Any]]:
+        if self.enabled:
+            return self.engine.query_profile(key)
+        return []
+
+    def add_to_profile_review(self, key: str, value: str, source: str) -> None:
+        if self.enabled:
+            self.engine.add_to_profile_review(key, value, source)
+
+    def query_profile_review(self) -> List[Dict[str, Any]]:
+        if self.enabled:
+            return self.engine.query_profile_review()
+        return []
+
+    def delete_from_profile_review(self, review_id: int) -> None:
+        if self.enabled:
+            self.engine.delete_from_profile_review(review_id)
+
+    def log_event(self, event_type: str, summary: str, ref_id: str = "", timestamp: float = None) -> None:
+        if self.enabled:
+            self.engine.log_event(event_type, summary, ref_id, timestamp)
+
+    def query_events(self, event_type: str = None, limit: int = 10) -> List[Dict[str, Any]]:
+        if self.enabled:
+            return self.engine.query_events(event_type, limit)
+        return []
+
+    def upsert_vector_fact(self, fact: str, source: str, timestamp: float = None, access_count: int = 1) -> None:
+        if self.enabled:
+            self.engine.upsert_vector_fact(fact, source, timestamp, access_count)
+
+    def delete_vector_fact(self, fact: str) -> None:
+        if self.enabled:
+            self.engine.delete_vector_fact(fact)
+
+    def list_vector_facts(self) -> List[Dict[str, Any]]:
+        if self.enabled:
+            return self.engine.list_vector_facts()
+        return []

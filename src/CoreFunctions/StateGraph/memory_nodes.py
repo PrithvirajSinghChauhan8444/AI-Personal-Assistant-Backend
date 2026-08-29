@@ -12,6 +12,7 @@ base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.pa
 
 from src.CoreFunctions.Infrastructure.memory import store_memory, fetch_memory
 from src.CoreFunctions.Infrastructure.vector_memory import store_vector, search_vector
+from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
 from src.CoreFunctions.StateGraph.state import AgentState
 
 # Pydantic Model for Hermes Skills
@@ -42,14 +43,50 @@ class SkillDocument(BaseModel):
     )
 
 # Pydantic Model for Structured Reflection
-class MemoryReflection(BaseModel):
-    profile_updates: Dict[str, str] = Field(
-        default_factory=dict,
-        description="Key-value updates representing permanent user details, e.g., name, mail, favorite_city, brother_name."
+from typing import Literal
+
+class ProfileFact(BaseModel):
+    value: str = Field(description="The value of the profile fact.")
+    source: Literal["stated", "inferred", "derived"] = Field(
+        description="Source of the fact: 'stated' if explicitly said by user, 'inferred' if analyzed/guessed from user behavior/conversation, 'derived' if computed or looked up."
     )
-    vector_memories: List[str] = Field(
+
+class PersonUpdate(BaseModel):
+    name: str = Field(description="Name of the person.")
+    relation: Optional[str] = Field("", description="Relationship type (e.g. brother, friend, colleague).")
+    email: Optional[str] = Field("", description="Email address.")
+    phone: Optional[str] = Field("", description="Phone number.")
+    notes: Optional[str] = Field("", description="Free-text notes about this person (like school, job, details).")
+
+class EventLogged(BaseModel):
+    event_type: str = Field(description="Type of the event (e.g., 'task_completion', 'preference_change', 'meeting', 'error_resolution').")
+    summary: str = Field(description="Concise description/summary of what happened.")
+    ref_id: Optional[str] = Field("", description="Optional reference ID, e.g. commit hash, task ID, or email thread ID.")
+
+class MemoryReflection(BaseModel):
+    canonical_updates: Dict[str, ProfileFact] = Field(
+        default_factory=dict,
+        description="Profile updates for canonical fields: name, email, hometown, favorite_city. The values MUST be ProfileFact objects."
+    )
+    unrecognized_updates: Dict[str, ProfileFact] = Field(
+        default_factory=dict,
+        description="Profile updates that do not match the canonical fields (name, email, hometown, favorite_city). These will be routed to a review queue."
+    )
+    people_updates: List[PersonUpdate] = Field(
+        default_factory=list,
+        description="Updates to the user's social connections / contacts (people they know: friends, family, colleagues, etc.)."
+    )
+    events: List[EventLogged] = Field(
+        default_factory=list,
+        description="List of meaningful real-world events or milestones completed during this run to log in the timeline."
+    )
+    vector_memories: List[ProfileFact] = Field(
         default_factory=list,
         description="List of raw statements/facts to add to the long-term semantic vector database."
+    )
+    superseded_facts: List[str] = Field(
+        default_factory=list,
+        description="List of exact existing facts or profile values that are now contradicted/superseded by the new facts (e.g., if the user moved to Bangalore, the old fact 'lives in Pune' is superseded and should be listed here)."
     )
     new_skills: List[SkillDocument] = Field(
         default_factory=list,
@@ -59,47 +96,31 @@ class MemoryReflection(BaseModel):
 # Prompt definition
 REFLECTION_PROMPT = """
 You are the Hermes Self-Learning Reflection & Skill Extraction Engine.
-Your job is to analyze the conversation history and successfully executed tasks to:
+Your job is to analyze the conversation history, successfully executed tasks, and existing memory state to:
 1. Extract any new, permanent facts or preferences about the user.
-2. Extract and compile reusable procedural **"Skills"** ONLY if a novel, complex, and highly reusable workflow or multi-step task was successfully accomplished (e.g., configuring multi-account authorization, checking specialized coursework, complex terminal pipelines, advanced browser automation).
-
-Input details:
-User Prompt: {primary_goal}
-Completed Tasks: {completed_tasks}
-Final Response: {final_response}
+2. Route facts logically:
+   - Profile details matching 'name', 'email', 'hometown', or 'favorite_city' go to `canonical_updates`.
+   - Other permanent user attributes (e.g. education, career, minor details) go to `unrecognized_updates`.
+   - Social contacts/connections (friends, family, brother, colleagues) go to `people_updates`.
+   - Meaningful milestones, tasks completed, or real-world events completed in this session go to `events` (timeline events).
+   - General semantic facts (e.g. preferences, habits, facts) go to `vector_memories`.
+3. Provide a provenance `source` attribute ('stated', 'inferred', or 'derived') for every extracted fact or profile detail.
+4. Clean up contradictions and handle deletions/denials:
+   - Compare new updates against the "Existing Memory State" provided. If any new fact contradicts an existing fact, put the exact text/value of the stale existing fact in `superseded_facts` so it can be purged.
+   - **CRITICAL - Handling Deletions & Denials**: If the user explicitly denies a fact, requests deletion of a fact/association, or states that certain info is wrong/incorrect (e.g., "I don't use eprithvi22", "remove my github handle", "I am not related to eprithvi22"):
+     1. Do **NOT** extract or add a new fact recording this request (e.g., do NOT add "User requested removal of eprithvi22" or "User is not related to eprithvi22" to `vector_memories` or profiles).
+     2. Identify any and all matching/related facts in the "Existing Memory State" (e.g., "Prithviraj's GitHub handle is eprithvi22", "User's GitHub username is eprithvi22...") and put their **exact text** in `superseded_facts` to remove them from the database immediately.
+   - **CRITICAL - Topic-based Stale Fact Purging**: When a key attribute or entity identifier (such as a GitHub handle, email address, phone number, location, or full name) is verified, corrected, or resolved:
+     1. Identify **ALL** old, conflicting, or outdated facts, guesses, and previous denial records (e.g. "User is not associated with GitHub username 'eprithvi22'", "Prithviraj's GitHub handle is eprithvi22") related to that specific topic in the "Existing Memory State".
+     2. Put the **exact text** of all those stale/conflicting facts and denials in `superseded_facts` to purge them completely. Only the single, verified, current correct fact should remain in active memory.
+5. Extract and compile reusable procedural **"Skills"** ONLY if a novel, complex, and highly reusable workflow or multi-step task was successfully accomplished (e.g., configuring multi-account authorization, checking specialized coursework, complex terminal pipelines, advanced browser automation).
 
 Instructions for Skill Extraction:
-- **CRITICAL RESTRICTION**: Do NOT create a skill for every task. Keep `new_skills` EMPTY for standard/simple tasks, or for one-off tasks that are highly specific (e.g., classifying a specific agent, looking up a specific github user, writing a single one-off python script, retrieving user profile details).
-- **GENERALIZATION REQUIREMENT**: A skill MUST represent a generalized capability that makes the system faster and more efficient at handling FUTURE, broader classes of queries. It should not be a log/recap of the specific task that was run.
-- **AUTOMATION SCRIPT BYPASS**: Whenever possible, if the workflow/procedure can be automated using a helper Python script or Bash script (e.g., to query APIs, manipulate local files, scan directories, perform structured lookups) to bypass long multi-agent planning/tool calls, write the full script in `script_code` and name it in `script_filename`. Ensure the markdown `procedure` in the `SKILL.md` file explicitly describes how the agent should run this script (e.g., using `python3` or `bash` and correct relative paths) to bypass the long manual process.
-- **EXAMPLE CRITERIA**:
-  - BAD SKILL (Too specific / simple): `hermes-agent-classification` (steps to classify the agent), `github-profile-status-check` (steps to check a user's github status), `python-script-generation-and-delivery` (steps to write and email a script).
-  - GOOD SKILL (Generalized / reusable): `browser-based-knowledge-retrieval` (how to search google using the browser agent and read page content to learn about unknown concepts/topics), `multi-account-email-handling` (how to manage multiple email sessions).
-- If you do extract a Skill:
-  - Give it a generalized name in lowercase-kebab-case (e.g. 'browser-information-retrieval', 'obsidian-vault-refactoring').
-  - Assign it a descriptive category (e.g. 'dev-utils', 'information-retrieval', 'productivity', 'communication').
-  - Ensure the 'procedure' is written as generic markdown step-by-step instructions. Explain exactly how future agents should run the automated script (if generated) or utilize specific tools, commands, or APIs to speed up execution.
-- If no complex, generalized workflow was run, keep `new_skills` empty.
+- **CRITICAL RESTRICTION**: Do NOT create a skill for every task. Keep `new_skills` EMPTY for standard/simple tasks, or for one-off tasks that are highly specific.
+- **GENERALIZATION REQUIREMENT**: A skill MUST represent a generalized capability that makes the system faster and more efficient at handling FUTURE queries.
+- **AUTOMATION SCRIPT BYPASS**: Whenever possible, if the workflow/procedure can be automated using a helper script, write the full script in `script_code` and name it in `script_filename`.
 """
 
-def is_personal_query(query: str) -> bool:
-    """Lightweight check to determine if personal memory/skills context is needed."""
-    q = query.lower()
-    
-    personal_keywords = [
-        "my", "me", "i ", " i'm", " i've", " i'd", " i'll", "myself", "mine",
-        "brother", "sister", "father", "mother", "parent", "family", "friend", "rohan", "prithvi",
-        "favorite", "college", "university", "school", "major", "academic", "study",
-        "email", "mail", "calendar", "event", "task", "todo", "appointment", "meeting",
-        "who am i", "my name", "what do you know about", "remember", "recall", "skills", "skill",
-        "memory", "unified memory", "stored", "saved", "preference", "preferences"
-    ]
-    
-    for kw in personal_keywords:
-        if re.search(r'\b' + re.escape(kw) + r'\b', q):
-            return True
-            
-    return False
 
 
 def check_fast_path(primary_goal: str) -> Optional[str]:
@@ -191,35 +212,59 @@ def memory_injector_node(state: AgentState):
     working_memory["active_skills"] = active_skills_content
     working_memory["skills_index"] = all_skill_names
 
-    if not is_personal_query(primary_goal):
-        print("  -> Personal profile context not required. Skipping user info retrieval.")
-        return {
-            "working_memory": working_memory
-        }
-    
+
     # 4. Fetch User Profile & Stored Memories from Unified Database Memory
     user_profile = {}
+    um = UnifiedMemory()
     try:
+        # Load from relational profile table
+        profile_db = um.engine.query_profile()
+        for p in profile_db:
+            user_profile[p["key"]] = p["value"]
+            user_profile[f"user:{p['key']}"] = p["value"]
+            
+        # Load legacy cache categories
         for category in ["user", "past", "current"]:
             raw_mem = fetch_memory(category)
             if raw_mem:
                 for key, val_obj in raw_mem.items():
                     val = val_obj.get("value") if isinstance(val_obj, dict) else val_obj
-                    user_profile[key] = val
-                    user_profile[f"{category}:{key}"] = val
+                    if key not in user_profile:
+                        user_profile[key] = val
+                    if f"{category}:{key}" not in user_profile:
+                        user_profile[f"{category}:{key}"] = val
+                        
+        # Load Social Connections / People CRM
+        connections = um.engine.query_people()
+        if connections:
+            social_connections = []
+            for c in connections:
+                social_connections.append(f"{c['name'].title()} ({c['relation']}): Email={c['email']}, Phone={c['phone']}, Notes={c['notes']}")
+            user_profile["social_connections"] = "; ".join(social_connections)
+            
+        # Load Recent Timeline Events (Episodic)
+        events_db = um.engine.query_events(limit=5)
+        if events_db:
+            recent_events = []
+            for e in events_db:
+                import time
+                time_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(e['timestamp']))
+                recent_events.append(f"[{time_str}] {e['event_type']}: {e['summary']}")
+            user_profile["recent_events"] = "; ".join(recent_events)
+            
     except Exception as e:
         print(f"  ⚠️ Error loading unified memory: {e}")
         
-    # 5. Semantic Search over Vector memory
+    # 5. Semantic Search over Vector memory with distance threshold filtering
     relevant_memories = []
     try:
-        relevant_memories = search_vector(primary_goal, k=5)
+        relevant_memories = search_vector(primary_goal, k=5, threshold=1.15)
     except Exception as e:
         print(f"  ⚠️ Error searching vector memory: {e}")
         
     # --- CONTEXT WINDOW BUDGETING & LATENCY CONTROL ---
-    # Hard budget limit of ~800 tokens (~3200 characters) to prevent context overflows
-    max_char_budget = 3200
+    # Hard budget limit of ~10,000 tokens (~40,000 characters) to prevent context overflows
+    max_char_budget = 40000
     current_char_count = 0
     
     budget_user_profile = {}
@@ -320,29 +365,88 @@ def reflection_node(state: AgentState):
             
         structured_llm = llm.with_structured_output(MemoryReflection)
         
+        # Fetch current memory state to inject as context
+        um = UnifiedMemory()
+        existing_profile = um.engine.query_profile()
+        existing_facts = um.engine.list_vector_facts()
+        existing_people = um.engine.query_people()
+        
+        profile_summary = "\n".join([f"- {p['key']}: {p['value']} (Source: {p['source']})" for p in existing_profile])
+        facts_summary = "\n".join([f"- {f['fact']} (Source: {f['source']})" for f in existing_facts])
+        people_summary = "\n".join([f"- {peop['name']}: relation={peop['relation']}, email={peop['email']}, notes={peop['notes']}" for peop in existing_people])
+        
+        state_context = (
+            f"=== Existing Memory State ===\n"
+            f"Current Profile Fields:\n{profile_summary or 'None'}\n\n"
+            f"Current Vector Facts:\n{facts_summary or 'None'}\n\n"
+            f"Current Social Connections:\n{people_summary or 'None'}"
+        )
+        
         completed_tasks_str = json.dumps(completed_tasks, indent=2)
-        content = f"User Prompt: {primary_goal}\n\nCompleted Tasks:\n{completed_tasks_str}\n\nFinal Response:\n{final_response}"
+        content = (
+            f"User Prompt: {primary_goal}\n\n"
+            f"Completed Tasks:\n{completed_tasks_str}\n\n"
+            f"Final Response:\n{final_response}\n\n"
+            f"{state_context}"
+        )
         
         reflection: MemoryReflection = structured_llm.invoke([
             SystemMessage(content=REFLECTION_PROMPT),
             HumanMessage(content=content)
         ])
         
-        # 1. Update Profile (user_info.json)
-        profile_updates = reflection.profile_updates
-        if profile_updates:
-            print("\n🧠 \033[1;34mAutomatic Profile Updates Learnt:\033[0m")
-            for key, val in profile_updates.items():
-                store_memory("user", key, val)
-                print(f"  \033[32m✔\033[0m Learnt: {key} = {val}")
+        # 1. Update Canonical Profile
+        canonical_updates = reflection.canonical_updates
+        if canonical_updates:
+            print("\n🧠 \033[1;34mAutomatic Canonical Profile Updates Learnt:\033[0m")
+            for key, fact in canonical_updates.items():
+                # Store in relational profile table
+                um.engine.upsert_profile(key, fact.value, fact.source)
+                # Keep legacy cache in sync
+                store_memory("user", key, fact.value)
+                print(f"  \033[32m✔\033[0m Learnt: {key} = {fact.value} (Source: {fact.source})")
                 
-        # 2. Update Vector Memories
+        # 2. Update Unrecognized Profile (Review Queue)
+        unrecognized_updates = reflection.unrecognized_updates
+        if unrecognized_updates:
+            print("\n🧠 \033[1;34mAutomatic Unrecognized Profile Updates Routed to Review Queue:\033[0m")
+            for key, fact in unrecognized_updates.items():
+                um.engine.add_to_profile_review(key, fact.value, fact.source)
+                print(f"  \033[32m✔\033[0m Routed: {key} = {fact.value} (Source: {fact.source})")
+
+        # 3. Update People (CRM)
+        people_updates = reflection.people_updates
+        if people_updates:
+            print("\n🧠 \033[1;34mAutomatic Contact Updates (CRM) Learnt:\033[0m")
+            for p in people_updates:
+                um.engine.upsert_person(p.name, p.relation, p.email, p.phone, p.notes)
+                print(f"  \033[32m✔\033[0m CRM: {p.name} ({p.relation}) - Email: {p.email}")
+
+        # 4. Log Events (Timeline)
+        events = reflection.events
+        if events:
+            print("\n🧠 \033[1;34mAutomatic Timeline Events Logged:\033[0m")
+            for e in events:
+                um.engine.log_event(e.event_type, e.summary, e.ref_id)
+                print(f"  \033[32m✔\033[0m Logged event [{e.event_type}]: {e.summary}")
+
+        # 5. Clear Superseded / Contradicted Facts
+        superseded_facts = reflection.superseded_facts
+        if superseded_facts:
+            print("\n🧠 \033[1;31mAutomatic Contradictions Cleaned Up:\033[0m")
+            from src.CoreFunctions.Infrastructure.vector_memory import delete_vector_fact as remove_vector
+            for stale_fact in superseded_facts:
+                remove_vector(stale_fact)
+                print(f"  \033[31m✘\033[0m Superseded: \"{stale_fact}\"")
+
+        # 6. Update Vector Memories
         vector_memories = reflection.vector_memories
         if vector_memories:
             print("\n🧠 \033[1;34mAutomatic Facts/Memories Learnt:\033[0m")
-            for mem in vector_memories:
-                store_vector(mem)
-                print(f"  \033[32m✔\033[0m Stored: \"{mem}\"")
+            from src.CoreFunctions.Infrastructure.vector_memory import store_vector as save_vector
+            for fact in vector_memories:
+                save_vector(fact.value, source=fact.source)
+                print(f"  \033[32m✔\033[0m Stored: \"{fact.value}\" (Source: {fact.source})")
                 
         # 3. Save new extracted Skills (Nous Research Skills Framework)
         new_skills = reflection.new_skills

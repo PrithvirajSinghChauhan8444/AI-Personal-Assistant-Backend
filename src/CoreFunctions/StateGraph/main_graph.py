@@ -102,7 +102,6 @@ app = create_graph()
 
 import time
 import threading
-print(app.get_graph().draw_mermaid())
 
 class CLIStatusVisualizer:
     instance = None

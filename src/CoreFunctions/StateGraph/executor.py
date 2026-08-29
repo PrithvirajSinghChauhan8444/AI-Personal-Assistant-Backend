@@ -351,6 +351,28 @@ def _load_worker_skills(worker_name: str) -> str:
         return ""
     return "\n\n---\n\n".join(skills_content)
 
+def resolve_file_references(data: Any) -> Any:
+    """Recursively resolves __file_reference__ metadata blocks back to their original values."""
+    if isinstance(data, dict):
+        if "__file_reference__" in data and isinstance(data["__file_reference__"], str):
+            file_path = data["__file_reference__"]
+            if os.path.exists(file_path):
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    if file_path.endswith(".json"):
+                        try:
+                            return json.loads(content)
+                        except Exception:
+                            pass
+                    return content
+                except Exception as e:
+                    print(f"⚠️ Failed to auto-dereference cache file {file_path}: {e}")
+        return {k: resolve_file_references(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [resolve_file_references(item) for item in data]
+    return data
+
 def _clean_working_memory_for_worker(
     working_memory: Optional[Dict[str, Any]], 
     depends_on: Optional[List[str]] = None
@@ -372,7 +394,7 @@ def _clean_working_memory_for_worker(
         for k, v in working_memory.items():
             if k not in system_keys:
                 cleaned[k] = v
-    return cleaned
+    return resolve_file_references(cleaned)
 
 def _get_worker_feedback_instructions(worker_name: str) -> str:
     """Retrieves any active user-tuned behavior preferences for the target worker, handling once-scoped cleanup."""
@@ -760,14 +782,14 @@ def _update_state_completed(state: AgentState, task_id: str, final_data: str):
     file_ext = ".txt"
     
     if isinstance(final_data, str):
-        if len(final_data) > 2000:
+        if len(final_data) > 40000:
             is_large = True
             serialized_data = final_data
             file_ext = ".txt"
     elif isinstance(final_data, (dict, list)):
         try:
             serialized = json.dumps(final_data, indent=2)
-            if len(serialized) > 2000:
+            if len(serialized) > 40000:
                 is_large = True
                 serialized_data = serialized
                 file_ext = ".json"

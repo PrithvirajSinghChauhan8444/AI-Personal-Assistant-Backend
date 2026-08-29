@@ -36,18 +36,22 @@ def clear_unified_memory():
                     um.delete_memory(k)
                 print("✅ Structured memory keys cleared.")
                 
-            # Truncate relations table if SQLite database is used
+            # Truncate relations and new refactored tables if SQLite database is used
             from src.CoreFunctions.Infrastructure.unified_memory import SQLiteMemoryEngine
             if isinstance(um.engine, SQLiteMemoryEngine):
-                # Clear relations in main db
                 db_path = um.engine.db_path
                 conn = sqlite3.connect(db_path)
                 try:
-                    conn.execute("DELETE FROM relations")
+                    tables = ["relations", "people", "profile", "profile_review_queue", "events", "vector_facts"]
+                    for t in tables:
+                        try:
+                            conn.execute(f"DELETE FROM {t}")
+                            print(f"✅ SQLite {t} table truncated.")
+                        except sqlite3.OperationalError:
+                            pass
                     conn.commit()
-                    print("✅ SQLite relations table truncated.")
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"⚠️ Error truncating SQLite tables: {e}")
                 finally:
                     conn.close()
         except Exception as e:

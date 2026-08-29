@@ -37,9 +37,13 @@ def _get_model():
             with contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
                 from sentence_transformers import SentenceTransformer
                 try:
-                    MODEL = SentenceTransformer(model_name_or_path, local_files_only=os.path.exists(local_model_path))
+                    MODEL = SentenceTransformer(
+                        model_name_or_path, 
+                        local_files_only=os.path.exists(local_model_path), 
+                        device="cpu"
+                    )
                 except Exception:
-                    MODEL = SentenceTransformer("BAAI/bge-small-en-v1.5")
+                    MODEL = SentenceTransformer("BAAI/bge-small-en-v1.5", device="cpu")
     return MODEL
 
 def _load_index():
@@ -95,7 +99,7 @@ def _calculate_score(item_metadata: dict) -> float:
     
     return access_count * (decay_factor ** elapsed_days)
 
-def store_vector(text):
+def store_vector(text, source="stated"):
     with _vector_lock:
         index = _load_index()
         data = _load_data()
@@ -103,7 +107,7 @@ def store_vector(text):
         
         # Ensure metadata matches data length
         if len(metadata) != len(data):
-            metadata = [{"timestamp": time.time(), "access_count": 1} for _ in range(len(data))]
+            metadata = [{"timestamp": time.time(), "access_count": 1, "source": "stated"} for _ in range(len(data))]
             _save_metadata(metadata)
 
         # Normalize the incoming text
@@ -116,6 +120,19 @@ def store_vector(text):
                 metadata[i]["access_count"] = metadata[i].get("access_count", 1) + 1
                 metadata[i]["timestamp"] = time.time()
                 _save_metadata(metadata)
+                
+                # Sync update to SQL
+                try:
+                    from .unified_memory import UnifiedMemory
+                    um = UnifiedMemory()
+                    um.engine.upsert_vector_fact(
+                        item, 
+                        source=metadata[i].get("source", source), 
+                        timestamp=metadata[i]["timestamp"], 
+                        access_count=metadata[i]["access_count"]
+                    )
+                except Exception as e:
+                    pass
                 return
 
         # 2. Semantic duplication check (if index has entries)
@@ -135,6 +152,19 @@ def store_vector(text):
                     metadata[matched_idx]["access_count"] = metadata[matched_idx].get("access_count", 1) + 1
                     metadata[matched_idx]["timestamp"] = time.time()
                     _save_metadata(metadata)
+                    
+                    # Sync update to SQL
+                    try:
+                        from .unified_memory import UnifiedMemory
+                        um = UnifiedMemory()
+                        um.engine.upsert_vector_fact(
+                            matched_text, 
+                            source=metadata[matched_idx].get("source", source), 
+                            timestamp=metadata[matched_idx]["timestamp"], 
+                            access_count=metadata[matched_idx]["access_count"]
+                        )
+                    except Exception as e:
+                        pass
                     return
 
         import numpy as np
@@ -142,7 +172,15 @@ def store_vector(text):
         vec = model.encode([text])
         index.add(np.array(vec, dtype=np.float32))
         data.append(text)
-        metadata.append({"timestamp": time.time(), "access_count": 1})
+        metadata.append({"timestamp": time.time(), "access_count": 1, "source": source})
+
+        # Sync insert to SQL
+        try:
+            from .unified_memory import UnifiedMemory
+            um = UnifiedMemory()
+            um.engine.upsert_vector_fact(text, source=source, timestamp=time.time(), access_count=1)
+        except Exception as e:
+            pass
 
         # Impose CAP of 50 facts (Problem 5)
         MAX_FACTS = 50
@@ -173,6 +211,14 @@ def store_vector(text):
                     json.dump(cold_archive, f, indent=2)
             except Exception as e:
                 print(f"⚠️ Failed to write cold archive: {e}")
+                
+            # Remove from SQLite
+            try:
+                from .unified_memory import UnifiedMemory
+                um = UnifiedMemory()
+                um.engine.delete_vector_fact(demoted_text)
+            except Exception:
+                pass
                 
             data.pop(lowest_idx)
             metadata.pop(lowest_idx)
@@ -401,6 +447,17 @@ def delete_vector_fact(text: str) -> bool:
         if len(new_data) == len(data):
             return False
             
+        # Remove from SQLite
+        try:
+            from .unified_memory import UnifiedMemory
+            um = UnifiedMemory()
+            # Find and delete exact matching fact from SQLite
+            for f in um.engine.list_vector_facts():
+                if f["fact"].strip().lower() == normalized_target:
+                    um.engine.delete_vector_fact(f["fact"])
+        except Exception as e:
+            pass
+
         # Re-build index from scratch with the remaining facts
         if len(new_data) > 0:
             model = _get_model()
@@ -419,20 +476,62 @@ def delete_vector_fact(text: str) -> bool:
         return True
 
 def rebuild_general_vector_store():
-    """Rebuilds the general FAISS index from the facts stored in data.json."""
+    """Rebuilds the general FAISS index from the facts stored in SQLite vector_facts table."""
     import faiss
     import numpy as np
-    data = _load_data()
+    
+    try:
+        from .unified_memory import UnifiedMemory
+        um = UnifiedMemory()
+        facts_db = um.engine.list_vector_facts()
+    except Exception as e:
+        print(f"⚠️ Error querying SQLite for general vector rebuild: {e}")
+        facts_db = []
+        
+    if not facts_db:
+        # Fallback to data.json if SQL has no facts, to be safe
+        data = _load_data()
+        metadata = _load_metadata()
+        # Sync these back to SQL so SQL populates
+        try:
+            from .unified_memory import UnifiedMemory
+            um = UnifiedMemory()
+            for idx, fact in enumerate(data):
+                meta = metadata[idx] if idx < len(metadata) else {}
+                um.engine.upsert_vector_fact(
+                    fact, 
+                    source=meta.get("source", "stated"),
+                    timestamp=meta.get("timestamp", time.time()),
+                    access_count=meta.get("access_count", 1)
+                )
+        except Exception:
+            pass
+    else:
+        # Reconstruct data.json and metadata.json from SQL
+        data = [f["fact"] for f in facts_db]
+        metadata = [{
+            "timestamp": f["timestamp"], 
+            "access_count": f["access_count"], 
+            "source": f["source"]
+        } for f in facts_db]
+        
     if not data:
         index = faiss.IndexFlatL2(DIM)
         faiss.write_index(index, INDEX_PATH)
+        with open(DATA_PATH, "w", encoding="utf-8") as f:
+            json.dump([], f)
+        _save_metadata([])
         return
         
     model = _get_model()
     embeddings = model.encode(data)
     index = faiss.IndexFlatL2(DIM)
     index.add(np.array(embeddings, dtype=np.float32))
+    
     faiss.write_index(index, INDEX_PATH)
+    with open(DATA_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    _save_metadata(metadata)
     print(f"✅ Rebuilt General Vector Store with {len(data)} facts.")
 
 VERSION_FILE_PATH = os.path.join(BASE_DIR, "Memory", "vector_store", "model_version.txt")
