@@ -89,7 +89,7 @@ def get_local_commits(branch: str = None, count: int = 5) -> list:
 
 def get_github_profile(username: str = None) -> dict:
     """
-    Fetches basic profile information for a GitHub account.
+    Fetches basic profile information for a GitHub account (including private repository counts if authenticated).
     """
     headers = get_headers()
     
@@ -100,13 +100,17 @@ def get_github_profile(username: str = None) -> dict:
         target_username = username or GITHUB_USERNAME or local_owner
         if not target_username:
             return {"error": "No GitHub username or GITHUB_TOKEN provided."}
-        url = f"https://api.github.com/users/{target_username}"
+        # If target username is the authenticated user, fetch /user to get full private stats
+        if GITHUB_TOKEN and GITHUB_USERNAME and target_username.lower() == GITHUB_USERNAME.lower():
+            url = "https://api.github.com/user"
+        else:
+            url = f"https://api.github.com/users/{target_username}"
 
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
             data = response.json()
-            return {
+            profile_dict = {
                 "login": data.get("login"),
                 "name": data.get("name"),
                 "bio": data.get("bio"),
@@ -119,34 +123,73 @@ def get_github_profile(username: str = None) -> dict:
                 "html_url": data.get("html_url"),
                 "created_at": data.get("created_at")
             }
+            if "total_private_repos" in data:
+                profile_dict["total_private_repos"] = data.get("total_private_repos")
+            if "owned_private_repos" in data:
+                profile_dict["owned_private_repos"] = data.get("owned_private_repos")
+            return profile_dict
         else:
             return {"error": f"Failed to fetch profile: Status {response.status_code}"}
     except Exception as e:
         return {"error": f"Error fetching GitHub profile: {str(e)}"}
 
-def list_github_repos(username: str = None, sort: str = "updated", count: int = 5) -> list:
+def list_github_repos(username: str = None, visibility: str = "all", sort: str = "updated", count: int = 30) -> list:
     """
-    Lists repositories for a GitHub user.
+    Lists repositories for a GitHub user, including private repositories when authenticated.
+    Supports pagination to fetch all repositories or up to `count` items (pass count=0 or None for all).
     """
     headers = get_headers()
     
-    if GITHUB_TOKEN and not username:
-        url = f"https://api.github.com/user/repos?sort={sort}&per_page={count}"
-    else:
+    # Check if we should use /user/repos (authenticated endpoint that includes private repos)
+    use_user_endpoint = False
+    if GITHUB_TOKEN:
+        if not username:
+            use_user_endpoint = True
+        elif GITHUB_USERNAME and username.lower() == GITHUB_USERNAME.lower():
+            use_user_endpoint = True
+
+    base_url = "https://api.github.com/user/repos" if use_user_endpoint else None
+    if not use_user_endpoint:
         local_owner, _ = get_local_git_info()
         target_username = username or GITHUB_USERNAME or local_owner
         if not target_username:
             return [{"error": "No GitHub username or GITHUB_TOKEN provided."}]
-        url = f"https://api.github.com/users/{target_username}/repos?sort={sort}&per_page={count}"
-        
+        base_url = f"https://api.github.com/users/{target_username}/repos"
+
+    fetch_all = (count is None or count <= 0)
+    target_count = float('inf') if fetch_all else count
+    per_page = 100 if fetch_all or count > 100 else count
+    
+    result = []
+    page = 1
+
     try:
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
+        while len(result) < target_count:
+            params = {
+                "sort": sort,
+                "per_page": min(100, target_count - len(result)) if not fetch_all else 100,
+                "page": page
+            }
+            if use_user_endpoint:
+                params["visibility"] = visibility
+                params["affiliation"] = "owner,collaborator,organization_member"
+
+            response = requests.get(base_url, headers=headers, params=params)
+            if response.status_code != 200:
+                if not result:
+                    return [{"error": f"Failed to fetch repositories: Status {response.status_code}"}]
+                break
+
             repos = response.json()
-            result = []
+            if not repos or not isinstance(repos, list):
+                break
+
             for r in repos:
+                is_private = r.get("private", False)
                 result.append({
                     "name": r.get("name"),
+                    "private": is_private,
+                    "visibility": r.get("visibility", "private" if is_private else "public"),
                     "description": r.get("description"),
                     "html_url": r.get("html_url"),
                     "stars": r.get("stargazers_count"),
@@ -154,9 +197,16 @@ def list_github_repos(username: str = None, sort: str = "updated", count: int = 
                     "forks": r.get("forks_count"),
                     "updated_at": r.get("updated_at")
                 })
-            return result
-        else:
-            return [{"error": f"Failed to fetch repositories: Status {response.status_code}"}]
+                if len(result) >= target_count:
+                    break
+
+            # If page had fewer items than per_page requested, we reached the end
+            if len(repos) < params["per_page"]:
+                break
+                
+            page += 1
+
+        return result
     except Exception as e:
         return [{"error": f"Error listing repositories: {str(e)}"}]
 

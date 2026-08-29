@@ -30,18 +30,19 @@ except ImportError as e:
     pass
 
 
-def list_github_repos_tool(username: str = None, sort: str = "updated", count: int = 5) -> str:
-    """Lists repositories for a GitHub user.
+def list_github_repos_tool(username: str = None, visibility: str = "all", sort: str = "updated", count: int = 30) -> str:
+    """Lists repositories for a GitHub user, including private repositories by default when authenticated.
     
     Args:
-        username (str, optional): The target GitHub username.
+        username (str, optional): The target GitHub username. Defaults to authenticated account if omitted.
+        visibility (str, optional): Filter by visibility: 'all', 'public', or 'private'. Defaults to 'all'.
         sort (str, optional): Property to sort repositories by ('created', 'updated', 'pushed', 'full_name'). Defaults to 'updated'.
-        count (int, optional): The number of repositories to list. Defaults to 5.
+        count (int, optional): The number of repositories to list. Defaults to 30. Set to 0 or a high number (e.g. 100) to retrieve all repositories.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: list_github_repos_tool")
     try:
         from src.CoreFunctions.Integrations.Github.github_ops import list_github_repos
-        res = list_github_repos(username, sort=sort, count=count)
+        res = list_github_repos(username, visibility=visibility, sort=sort, count=count)
         return json.dumps(res, indent=2)
     except Exception as e:
         return f"Error listing repositories: {e}"
