@@ -80,7 +80,12 @@ def search_gmail_emails(query: str, max_results: int = 10, page_token: str = Non
 
         email_list = []
         for msg in messages:
-            msg_data = service.users().messages().get(userId='me', id=msg['id'], format='minimal').execute()
+            msg_data = service.users().messages().get(
+                userId='me',
+                id=msg['id'],
+                format='metadata',
+                metadataHeaders=['Subject', 'From', 'Date', 'To']
+            ).execute()
             headers = msg_data.get('payload', {}).get('headers', [])
             
             subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), "(No Subject)")

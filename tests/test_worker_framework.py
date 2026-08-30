@@ -240,6 +240,45 @@ class TestWorkerRegistry(unittest.TestCase):
         # Check find_worker returns None for non-existent worker
         self.assertIsNone(WorkerRegistry.find_worker("NonExistentWorker"))
 
+    def test_worker_instruction_md_loading(self):
+        from src.CoreFunctions.StateGraph.Workers.GmailWorker.gmail_worker import GmailWorker
+        from src.CoreFunctions.StateGraph.Workers.GoogleDriveWorker.drive_worker import GoogleDriveWorker
+        from src.CoreFunctions.StateGraph.Workers.ClassroomWorker.classroom_worker import ClassroomWorker
+        
+        # Test GmailWorker loads gmail_worker_instruction.md
+        gmail_worker = GmailWorker()
+        gmail_instructions = gmail_worker.get_instructions()
+        self.assertIn("# GmailWorker Instructions", gmail_instructions)
+        self.assertIn("Safe Draft-First Policy", gmail_instructions)
+        
+        # Test GoogleDriveWorker loads google_drive_worker_instruction.md
+        drive_worker = GoogleDriveWorker()
+        drive_instructions = drive_worker.get_instructions()
+        self.assertIn("# GoogleDriveWorker Instructions", drive_instructions)
+        
+        # Test ClassroomWorker loads classroom_worker_instruction.md
+        classroom_worker = ClassroomWorker()
+        classroom_instructions = classroom_worker.get_instructions()
+        self.assertIn("# ClassroomWorker Instructions", classroom_instructions)
+
+    def test_build_worker_system_prompt(self):
+        from src.CoreFunctions.StateGraph.Workers.GmailWorker.gmail_worker import GmailWorker
+        from src.CoreFunctions.StateGraph.executor import _build_worker_system_prompt
+        
+        gmail_worker = GmailWorker()
+        prompt = _build_worker_system_prompt("GmailWorker", gmail_worker)
+        
+        # Tier 1 Invariants must be present
+        self.assertIn("CRITICAL FORMATTING RULE: You MUST always wrap critical information inside your text output in custom XML tags", prompt)
+        self.assertIn("### 🚨 HUMAN-IN-THE-LOOP (HITL) PROTOCOL:", prompt)
+        self.assertIn("### 📋 STABLE OPERATIONAL GUIDELINES:", prompt)
+        
+        # Tier 2 Worker Instructions must be present
+        self.assertIn("# GmailWorker Instructions", prompt)
+        
+        # Check that STABLE_GUIDELINE is not duplicated in prompt
+        self.assertEqual(prompt.count("### 📋 STABLE OPERATIONAL GUIDELINES:"), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

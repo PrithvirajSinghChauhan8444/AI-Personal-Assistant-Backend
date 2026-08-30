@@ -370,8 +370,8 @@ def rebuild_skills_vector_store():
     print(f"✅ Rebuilt Skills Vector Store with {len(skills_list)} skills.")
 
 
-def search_skills_vector(query: str, k: int = 2) -> List[Dict[str, Any]]:
-    """Semantically searches for skills matching the query using FAISS vector store."""
+def search_skills_vector(query: str, k: int = 2, threshold: Optional[float] = None) -> List[Dict[str, Any]]:
+    """Semantically searches for skills matching the query using FAISS vector store with optional distance threshold."""
     # Ensure database is built at least once
     if not os.path.exists(SKILLS_INDEX_PATH) or not os.path.exists(SKILLS_DATA_PATH):
         print("📁 Skills Vector Store missing. Indexing skills first...")
@@ -419,17 +419,19 @@ def search_skills_vector(query: str, k: int = 2) -> List[Dict[str, Any]]:
         if index.ntotal == 0 or not data:
             return []
 
+        import numpy as np
         model = _get_model()
         q = model.encode([query])
-        _, idx = index.search(q, k)
+        D, idx = index.search(np.array(q, dtype=np.float32), min(k, index.ntotal))
         
         results = []
-        for i in idx[0]:
-            if i < len(data):
-                # Extra safety: verify that the matched skill path exists before returning
-                skill_path = data[i].get("path")
-                if skill_path and os.path.exists(skill_path):
-                    results.append(data[i])
+        for i, dist in zip(idx[0], D[0]):
+            if i != -1 and i < len(data):
+                if threshold is None or dist <= threshold:
+                    # Extra safety: verify that the matched skill path exists before returning
+                    skill_path = data[i].get("path")
+                    if skill_path and os.path.exists(skill_path):
+                        results.append(data[i])
         return results
 
 

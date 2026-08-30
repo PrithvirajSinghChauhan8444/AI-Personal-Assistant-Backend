@@ -424,8 +424,9 @@ class AssistantREPL:
         fast_llm = get_llm(model_name, temperature=0.7)
 
         try:
-            resp = fast_llm.invoke(f"The user said '{user_input}'. Respond with a warm, concise greeting and ask how you can help.")
-            content = extract_clean_text(resp.content)
+            with console.status("[bold #D97706]✦ Thinking...[/bold #D97706]", spinner="dots"):
+                resp = fast_llm.invoke(f"The user said '{user_input}'. Respond with a warm, concise greeting and ask how you can help.")
+                content = extract_clean_text(resp.content)
         except Exception:
             content = "Hi there! How can I assist you with your tasks today?"
 
@@ -460,41 +461,51 @@ class AssistantREPL:
 
         logs_collector = []
 
-        # Intercept background raw stdout to maintain clean design
-        captured_stdout = io.StringIO()
-        with contextlib.redirect_stdout(captured_stdout):
-            try:
-                for event in self.app_graph.stream(initial_state, config=config):
-                    for node_name, state_update in event.items():
-                        ts = datetime.now().strftime("%H:%M:%S")
+        # Intercept background raw stdout while providing rich live animated status
+        with console.status("[bold #D97706]✦ Analyzing intent & injecting memory...[/bold #D97706]", spinner="dots") as status:
+            captured_stdout = io.StringIO()
+            with contextlib.redirect_stdout(captured_stdout):
+                try:
+                    for event in self.app_graph.stream(initial_state, config=config):
+                        for node_name, state_update in event.items():
+                            ts = datetime.now().strftime("%H:%M:%S")
 
-                        if node_name == "MemoryInjector":
-                            wm = state_update.get("working_memory", {}) or {}
-                            if wm.get("fast_path_matched", False):
-                                logs_collector.append((ts, "MemoryInjector", "Fast-Path cached match"))
-                            else:
-                                relevants = wm.get("relevant_memories", [])
-                                logs_collector.append((ts, "MemoryInjector", f"Injected {len(relevants)} memories"))
+                            if node_name == "MemoryInjector":
+                                wm = state_update.get("working_memory", {}) or {}
+                                if wm.get("fast_path_matched", False):
+                                    logs_collector.append((ts, "MemoryInjector", "Fast-Path cached match"))
+                                    status.update("[bold #38BDF8]✦ Fast-path matched. Planning subtasks...[/bold #38BDF8]")
+                                else:
+                                    relevants = wm.get("relevant_memories", [])
+                                    logs_collector.append((ts, "MemoryInjector", f"Injected {len(relevants)} memories"))
+                                    status.update("[bold #38BDF8]✦ Memory injected. Planning subtasks...[/bold #38BDF8]")
 
-                        elif node_name == "TaskRouter":
-                            subtasks = state_update.get("active_subtasks", [])
-                            summary_plan = ", ".join([f"[{st.get('assigned_worker')}]" for st in subtasks])
-                            logs_collector.append((ts, "TaskRouter", f"Planned subtasks: {summary_plan}"))
+                            elif node_name == "TaskRouter":
+                                subtasks = state_update.get("active_subtasks", [])
+                                summary_plan = ", ".join([f"[{st.get('assigned_worker')}]" for st in subtasks])
+                                logs_collector.append((ts, "TaskRouter", f"Planned subtasks: {summary_plan}"))
+                                worker_names = [st.get('assigned_worker') for st in subtasks if st.get('assigned_worker')]
+                                assigned_desc = ", ".join(worker_names) if worker_names else "workers"
+                                status.update(f"[bold #F59E0B]✦ Executing {assigned_desc}...[/bold #F59E0B]")
 
-                        elif node_name in active_workers:
-                            subtasks = state_update.get("active_subtasks", [])
-                            completed_desc = ""
-                            for st in subtasks:
-                                if st.get("status") == "completed" and st.get("assigned_worker") == node_name:
-                                    completed_desc = st.get("description", "")
-                            logs_collector.append((ts, node_name, f"Completed: {completed_desc or 'Task finished'}"))
+                            elif node_name in active_workers:
+                                subtasks = state_update.get("active_subtasks", [])
+                                completed_desc = ""
+                                for st in subtasks:
+                                    if st.get("status") == "completed" and st.get("assigned_worker") == node_name:
+                                        completed_desc = st.get("description", "")
+                                logs_collector.append((ts, node_name, f"Completed: {completed_desc or 'Task finished'}"))
+                                status.update(f"[bold #34D399]✦ {node_name} finished task. Continuing...[/bold #34D399]")
 
-            except KeyboardInterrupt:
-                console.print("\n[bold yellow]⚠️ Task interrupted by user. Checkpoint saved.[/bold yellow]\n")
-                return
-            except Exception as e:
-                console.print(f"\n[bold red]✖ Graph Execution Error: {e}[/bold red]\n")
-                return
+                            elif node_name == "Supervisor":
+                                status.update("[bold #A855F7]✦ Synthesizing final response...[/bold #A855F7]")
+
+                except KeyboardInterrupt:
+                    console.print("\n[bold yellow]⚠️ Task interrupted by user. Checkpoint saved.[/bold yellow]\n")
+                    return
+                except Exception as e:
+                    console.print(f"\n[bold red]✖ Graph Execution Error: {e}[/bold red]\n")
+                    return
 
         # Render compact, clean logs
         if logs_collector:

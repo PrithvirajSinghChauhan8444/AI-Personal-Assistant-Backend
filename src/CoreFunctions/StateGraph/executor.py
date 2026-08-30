@@ -27,7 +27,8 @@ local_llm = ChatOllama(
 )
 
 TAGGING_INSTRUCTION = " CRITICAL FORMATTING RULE: You MUST always wrap critical information inside your text output in custom XML tags: wrap email addresses in <email>...</email>, URLs/links in <url>...</url>, passwords/credentials in <pass>...</pass>, and blocks of code in <code>...</code>. Do not wrap generic terms, only wrap actual values."
-THINKING_INSTRUCTION = " CRITICAL: You MUST always output your reasoning and intermediate thought process in natural language BEFORE calling any tools. Never invoke tools silently." + TAGGING_INSTRUCTION
+RULE_CITATION_INSTRUCTION = " RULE CITATION: Whenever you apply a specific instruction, constraint, or workflow rule (from general or worker-specific instruction files), you MUST cite the exact rule section/title in your thought/reasoning (e.g. `[Rule: 1.1 Data Sharing]`, `[Rule: 2.1 Safe Draft-First Policy]`, `[Rule: Private Repository Inclusivity]`) so the human can verify and debug the decision."
+THINKING_INSTRUCTION = " CRITICAL: You MUST always output your reasoning and intermediate thought process in natural language BEFORE calling any tools. Never invoke tools silently." + TAGGING_INSTRUCTION + RULE_CITATION_INSTRUCTION
 HUMAN_INTERVENTION_INSTRUCTION = """
 ### 🚨 HUMAN-IN-THE-LOOP (HITL) PROTOCOL:
 You have access to the `request_human_intervention` tool. You MUST call this tool immediately to pause execution and request manual help from the human user in the following scenarios:
@@ -53,17 +54,58 @@ STABLE_GUIDELINE = """
    - If any entry in the Working Memory contains a `\"__file_reference__\"`, the actual large data has been saved to that local file path to avoid context bloat. You can directly read the content of that file using your file-reading tools (like `read_file_tool` or running python/terminal commands), copy/move the file, or use the file path as an attachment/input for other tools.
 """
 
+def _load_general_instructions() -> str:
+    """Dynamically loads general system operational directives from Memory/instructions/general_instruction.md if present."""
+    try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+        gen_path = os.path.join(root_dir, "Memory", "instructions", "general_instruction.md")
+        if os.path.exists(gen_path):
+            with open(gen_path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content:
+                    return f"### 📋 GENERAL SYSTEM DIRECTIVES:\n{content}"
+    except Exception:
+        pass
+    return ""
+
+
+def _build_worker_system_prompt(worker_name: str, worker: Any) -> str:
+    """Builds a unified, two-tier system prompt for a worker agent.
+    
+    Tier 1 (Immutable Invariants): Output Tagging, Rule Citation, Thinking Rules, HITL Protocol, and Working Memory & File Ref Guidelines.
+    Tier 2 (Domain Directives): General System Guidelines (from general_instruction.md) and Worker-Specific Instructions (.md / prompt).
+    """
+    worker_instructions = worker.get_instructions() if hasattr(worker, "get_instructions") else getattr(worker, "instructions", "")
+    general_instructions = _load_general_instructions()
+    
+    prompt_parts = []
+    
+    # 1. Worker Identity & Domain Instructions
+    if worker_instructions and worker_instructions.strip():
+        prompt_parts.append(worker_instructions.strip())
+        
+    # 2. General Operational Directives (from Memory/instructions/general_instruction.md)
+    if general_instructions and general_instructions.strip():
+        prompt_parts.append(general_instructions.strip())
+        
+    # 3. Core System Invariants (HITL Protocol, Output Tagging, Thinking Rules, File Ref/State Guidelines)
+    core_invariants = f"{THINKING_INSTRUCTION}\n{HUMAN_INTERVENTION_INSTRUCTION}\n{STABLE_GUIDELINE}"
+    prompt_parts.append(core_invariants.strip())
+    
+    return "\n\n".join(prompt_parts)
+
+
 AGENT_MAP = {}
 _model_cache = {}
 AGENT_CACHED = {}
 
 class GeminiCacheManager:
     """Manages the creation, lookup, and refresh lifecycle of Gemini Context Caches using composition."""
-    def __init__(self, worker_name: str, system_prompt: str, tools: list, stable_guideline: str, skills_section: str):
+    def __init__(self, worker_name: str, system_prompt: str, tools: list, skills_section: str = ""):
         self.worker_name = worker_name
         self.system_prompt = system_prompt
         self.tools = tools
-        self.stable_guideline = stable_guideline
         self.skills_section = skills_section
         
         self.cache_name = None
@@ -76,9 +118,9 @@ class GeminiCacheManager:
         from langchain_core.messages import SystemMessage, HumanMessage
         from langchain_google_genai import create_context_cache
         
-        # 1. Estimate token size (system prompt + stable guidelines + specialized skills + serialized tool info)
+        # 1. Estimate token size (system prompt + specialized skills + serialized tool info)
         tools_str = "".join([str(t) for t in self.tools])
-        test_text = self.system_prompt + "\n" + self.stable_guideline + "\n" + self.skills_section + "\n" + tools_str
+        test_text = self.system_prompt + "\n" + (self.skills_section or "") + "\n" + tools_str
         
         try:
             self.token_count = base_model.get_num_tokens(test_text)
@@ -96,9 +138,10 @@ class GeminiCacheManager:
             print(f"  ⚡ [Prompt Caching] Attempting to create context cache for '{self.worker_name}' ({self.token_count} tokens)...")
             
             messages = [
-                SystemMessage(content=self.system_prompt),
-                HumanMessage(content=f"{self.stable_guideline}\n\n{self.skills_section}")
+                SystemMessage(content=self.system_prompt)
             ]
+            if self.skills_section:
+                messages.append(HumanMessage(content=self.skills_section))
             
             self.cache_object = create_context_cache(
                 model=base_model,
@@ -117,7 +160,7 @@ class GeminiCacheManager:
             self.cache_name = None
             return False
 
-    def refresh_cache(self, base_model : ChatGoogleGenerativeAI) -> bool:
+    def refresh_cache(self, base_model: ChatGoogleGenerativeAI) -> bool:
         """Refreshes / recreates the context cache when expired."""
         print(f"  🔄 [Prompt Caching] Refreshing context cache for worker '{self.worker_name}'...")
         return self.check_and_create_cache(base_model)
@@ -212,7 +255,8 @@ def compile_worker_agents():
 
 
     for name, worker in WorkerRegistry.get_all_workers().items():
-        if not worker.tools and not worker.instructions:
+        worker_instructions = worker.get_instructions() if hasattr(worker, "get_instructions") else getattr(worker, "instructions", "")
+        if not worker.tools and not worker_instructions:
             continue
             
         worker_tools = list(worker.tools) if worker.tools else []
@@ -224,12 +268,10 @@ def compile_worker_agents():
                     worker_tools.append(tool)
             
         model = get_model_for_worker(name)
-        prompt = worker.instructions + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
+        prompt = _build_worker_system_prompt(name, worker)
         
         cache_manager = None
         if isinstance(model, ChatGoogleGenerativeAI) and getattr(worker, "enable_prompt_caching", True):
-            stable_guideline = STABLE_GUIDELINE
-            
             skills_str = _load_worker_skills(name)
             skills_section = ""
             if skills_str:
@@ -244,7 +286,6 @@ def compile_worker_agents():
                 worker_name=name,
                 system_prompt=prompt,
                 tools=worker_tools,
-                stable_guideline=stable_guideline,
                 skills_section=skills_section
             )
             
@@ -278,7 +319,8 @@ def compile_worker_agents():
             if name in AGENT_MAP:
                 # Already compiled (e.g. referenced by multiple parents)
                 continue
-            if not sub_worker.tools and not sub_worker.instructions:
+            sub_instructions = sub_worker.get_instructions() if hasattr(sub_worker, "get_instructions") else getattr(sub_worker, "instructions", "")
+            if not sub_worker.tools and not sub_instructions:
                 continue
 
             worker_tools = list(sub_worker.tools) if sub_worker.tools else []
@@ -288,13 +330,14 @@ def compile_worker_agents():
                         worker_tools.append(tool)
 
             model = get_model_for_worker(name)
-            prompt = sub_worker.instructions + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
+            prompt = _build_worker_system_prompt(name, sub_worker)
             AGENT_MAP[name] = create_react_agent(model, worker_tools, prompt=prompt)
             AGENT_CACHED[name] = False
             print(f"  ✓ [SubWorker Compiled] '{name}' (private to parent)")
 
             # Recurse into this sub-worker's own sub-workers
             _compile_sub_workers(sub_worker.sub_workers, shared_memory_tools)
+
 
     _compile_sub_workers(
         [sw for w in WorkerRegistry.get_all_workers().values() for sw in w.sub_workers],
@@ -308,26 +351,31 @@ def _get_active_task(state: AgentState, worker_name: str):
             return task
     return None
 
-def _load_worker_skills(worker_name: str) -> str:
-    """Dynamically loads and formats procedural skills matching the categories assigned to a worker using the skills index cache."""
-    from src.CoreFunctions.Infrastructure.vector_memory import _load_skills_data
+def _load_worker_skills(worker_name: str, query: Optional[str] = None, threshold: float = 1.15) -> str:
+    """Dynamically loads and formats procedural skills semantically matching the specific task query for the worker."""
+    if not query or not query.strip():
+        return ""
+        
+    from src.CoreFunctions.Infrastructure.vector_memory import search_skills_vector
     
     try:
         categories = WorkerRegistry.get_worker(worker_name).categories
     except KeyError:
         categories = [worker_name]
     categories_lower = [cat.strip().lower() for cat in categories]
+    # Also include the worker name itself and general categories
+    categories_lower.extend([worker_name.lower(), "general", "all"])
     
-    skills_data = _load_skills_data()
-    if not skills_data:
+    matched_skills = search_skills_vector(query.strip(), k=2, threshold=threshold)
+    if not matched_skills:
         return ""
         
     skills_content = []
     
-    # Filter skills that match the worker's categories
-    for skill in skills_data:
+    # Filter skills that match the worker's categories / domain
+    for skill in matched_skills:
         skill_cat = skill.get("category", "").strip().lower()
-        if skill_cat in categories_lower:
+        if skill_cat in categories_lower or not categories_lower:
             skill_path = skill.get("path")
             if skill_path and os.path.exists(skill_path):
                 try:
@@ -447,13 +495,11 @@ def _run_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict,
     cleaned_memory = _clean_working_memory_for_worker(working_memory, depends_on)
     memory_str = json.dumps(cleaned_memory, indent=2)
     
-    stable_guideline = STABLE_GUIDELINE
-    
-    skills_str = _load_worker_skills(worker_name)
+    skills_str = _load_worker_skills(worker_name, query=task_desc)
     skills_section = ""
     if skills_str:
         skills_section = (
-            f"\n\n### Specialized Skills for {worker_name}:\n"
+            f"\n### Specialized Skills for {worker_name}:\n"
             f"Use the following step-by-step procedures when resolving tasks in your domain:\n"
             f"{skills_str}"
         )
@@ -461,7 +507,7 @@ def _run_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict,
     feedback_instructions = _get_worker_feedback_instructions(worker_name)
     
     volatile_inputs = f"""
-### Operational Context (Volatile):
+### Operational Context:
 Task: {task_desc}
 
 Working Memory (Data from previous tasks):
@@ -470,13 +516,13 @@ Working Memory (Data from previous tasks):
     if feedback_instructions:
         volatile_inputs += f"\n{feedback_instructions}\n"
         
+    if skills_section:
+        volatile_inputs = f"{skills_section}\n\n{volatile_inputs}"
+        
     volatile_inputs += """
 Execute the tools necessary to complete this task. Return a concise, data-rich summary of your findings or actions.
 """
-    if AGENT_CACHED.get(worker_name, False):
-        prompt = volatile_inputs
-    else:
-        prompt = f"{stable_guideline}{skills_section}\n\n{volatile_inputs}"
+    prompt = volatile_inputs
     
     # Log worker run start
     try:
@@ -599,9 +645,9 @@ async def _run_async_ephemeral_agent(worker_name: str, task_desc: str, working_m
     cleaned_memory = _clean_working_memory_for_worker(working_memory, depends_on)
     memory_str = json.dumps(cleaned_memory, indent=2)
     
-    stable_guideline = STABLE_GUIDELINE
+    stable_guideline = _load_general_instructions()
     
-    skills_str = _load_worker_skills(worker_name)
+    skills_str = _load_worker_skills(worker_name, query=task_desc)
     skills_section = ""
     if skills_str:
         skills_section = (
@@ -626,7 +672,7 @@ Working Memory (Data from previous tasks):
 Execute the tools necessary to complete this task. Return a concise, data-rich summary of your findings or actions.
 """
     if AGENT_CACHED.get(worker_name, False):
-        prompt = volatile_inputs
+        prompt = f"{skills_section}\n\n{volatile_inputs}" if skills_section else volatile_inputs
     else:
         prompt = f"{stable_guideline}{skills_section}\n\n{volatile_inputs}"
     

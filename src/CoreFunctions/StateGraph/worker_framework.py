@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import importlib
 from abc import ABC, abstractmethod
 from typing import Dict, List, Callable, Type
@@ -23,6 +24,31 @@ class BaseWorker(ABC):
     def instructions(self) -> str:
         """Detailed system prompt instructions for the worker agent."""
         pass
+
+    def get_instructions(self) -> str:
+        """Dynamically loads instructions from {snake_name}_instruction.md or {worker_name.lower()}_instruction.md
+        if present in the worker directory, falling back to self.instructions."""
+        try:
+            mod = sys.modules.get(self.__class__.__module__)
+            if mod and hasattr(mod, "__file__") and mod.__file__:
+                worker_dir = os.path.dirname(os.path.abspath(mod.__file__))
+                snake_name = re.sub(r'(?<!^)(?=[A-Z])', '_', self.name).lower()
+                candidates = [
+                    os.path.join(worker_dir, f"{snake_name}_instruction.md"),
+                    os.path.join(worker_dir, f"{self.name.lower()}_instruction.md"),
+                    os.path.join(worker_dir, f"{self.name}_instruction.md"),
+                    os.path.join(worker_dir, "instructions.md"),
+                    os.path.join(worker_dir, "instruction.md"),
+                ]
+                for candidate in candidates:
+                    if os.path.exists(candidate):
+                        with open(candidate, "r", encoding="utf-8") as f:
+                            content = f.read().strip()
+                            if content:
+                                return content
+        except Exception:
+            pass
+        return self.instructions if hasattr(self, "instructions") and self.instructions else ""
 
     @property
     @abstractmethod

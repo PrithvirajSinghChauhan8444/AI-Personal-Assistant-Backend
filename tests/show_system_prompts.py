@@ -7,7 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src'
 
 from src.CoreFunctions.StateGraph.worker_framework import WorkerRegistry, scan_and_register_workers
 from src.CoreFunctions.StateGraph.task_router import get_router_prompt
-from src.CoreFunctions.StateGraph.executor import THINKING_INSTRUCTION, HUMAN_INTERVENTION_INSTRUCTION, STABLE_GUIDELINE, _load_worker_skills
+from src.CoreFunctions.StateGraph.executor import _build_worker_system_prompt, _load_worker_skills
 
 def main():
     print("==================================================")
@@ -34,27 +34,25 @@ def main():
         print("--------------------------------------------------")
         
         # Base System Prompt used in compile_worker_agents
-        base_prompt = worker.instructions + THINKING_INSTRUCTION + HUMAN_INTERVENTION_INSTRUCTION
-        print("   --- SYSTEM PROMPT (Instructions + HITL + Formatting Rules) ---")
+        base_prompt = _build_worker_system_prompt(name, worker)
+        print("   --- SYSTEM PROMPT (Two-Tier: Domain Rules + General Directives + Invariants) ---")
         print(base_prompt)
         print("--------------------------------------------------")
         
         # Runtime Prompt Layout (template) used during execution
-        stable_guideline = STABLE_GUIDELINE
-        
         skills_str = _load_worker_skills(name)
         skills_section = ""
         if skills_str:
             skills_section = (
-                f"\n\n### Specialized Skills for {name}:\n"
+                f"\n### Specialized Skills for {name}:\n"
                 f"Use the following step-by-step procedures when resolving tasks in your domain:\n"
-                f"{skills_str}"
+                f"{skills_str}\n"
             )
             
         print("   --- RUNTIME INPUT PROMPT TEMPLATE ---")
-        print(f"{stable_guideline}{skills_section}")
-        print("\n   [Runtime Volatile Inputs]")
-        print("   ### Operational Context (Volatile):")
+        if skills_section:
+            print(skills_section)
+        print("   ### Operational Context:")
         print("   Task: <task description>")
         print("   Working Memory (Data from previous tasks): { ... }")
         print("==================================================")

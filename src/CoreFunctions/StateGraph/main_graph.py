@@ -345,10 +345,9 @@ def save_session_context_async(chat_history, working_memory, completed_tasks):
     thread = threading.Thread(target=run_save, daemon=True)
     thread.start()
 
-def print_node_header(node_name: str, timestamp: str):
-    print(f"\nRunning {node_name} : ({timestamp})")
-    print(f"--- {node_name} Finished ---")
-    print(f"\n📍 Node '{node_name}' Output:")
+def print_node_header(node_name: str, timestamp: str = ""):
+    time_str = f" ({timestamp})" if timestamp else ""
+    print(f"\n\033[1;34m📍 [{node_name}]\033[0m{time_str}")
 
 def run_graph_execution(initial_state, config, thread_id, chat_history_list):
     """
@@ -366,40 +365,41 @@ def run_graph_execution(initial_state, config, thread_id, chat_history_list):
                 
                 if node_name == "MemoryInjector":
                     visualizer.stop()
-                    print_node_header(node_name, timestamp)
                     wm = state_update.get("working_memory", {}) or {}
                     
                     if wm.get("fast_path_matched", False):
-                        print("  ⚡ [Fast-Path Bypass] Matched fast-path intent! Resolving instantly...")
+                        print(f"\n\033[1;34m📍 [MemoryInjector]\033[0m ({timestamp})")
+                        print("   ⚡ \033[1;33m[Fast-Path Bypass]\033[0m Matched fast-path intent! Resolving instantly...")
                     else:
                         user_profile = wm.get("user_profile", {})
                         relevant_memories = wm.get("relevant_memories", [])
-                        if user_profile:
-                            print(f"  -> Loaded User Profile keys: {list(user_profile.keys())}")
-                        if relevant_memories:
-                            print(f"  -> Injected {len(relevant_memories)} semantically relevant memories.")
+                        if user_profile or relevant_memories:
+                            print(f"\n\033[1;34m📍 [MemoryInjector]\033[0m ({timestamp})")
+                            if user_profile:
+                                print(f"   • Loaded User Profile keys: {list(user_profile.keys())}")
+                            if relevant_memories:
+                                print(f"   • Injected {len(relevant_memories)} semantically relevant memories.")
                         visualizer.start("Analyzing request & decomposing into subtasks", "36")
                 
                 elif node_name == "SystemState":
                     visualizer.stop()
-                    print_node_header(node_name, timestamp)
                     visualizer.start("Analyzing request & decomposing into subtasks", "36")
                 
                 elif node_name == "TaskRouter":
                     visualizer.stop()
-                    print_node_header(node_name, timestamp)
                     subtasks = state_update.get("active_subtasks", [])
-                    print("-- PLAN:")
-                    for idx, st in enumerate(subtasks, 1):
-                        print(f"   {idx}. {st['assigned_worker']}: {st['description']}")
+                    if subtasks:
+                        print(f"\n\033[1;36m📋 [TaskRouter Plan]\033[0m ({timestamp})")
+                        for idx, st in enumerate(subtasks, 1):
+                            print(f"   {idx}. \033[1m{st['assigned_worker']}\033[0m: {st['description']}")
                     visualizer.start("Orchestrating subtasks", "34") # Blue
                 
                 elif node_name == "Orchestrator":
                     visualizer.stop()
                     next_node = state_update.get("next_node")
-                    print_node_header(node_name, timestamp)
                     if next_node == "OutputFinalizer":
-                        print("  -> All planned subtasks successfully completed. Routing to Output Finalizer.")
+                        print(f"\n\033[1;35m🔀 [Orchestrator]\033[0m ({timestamp})")
+                        print("   • All planned subtasks successfully completed. Routing to OutputFinalizer.")
                     else:
                         subtasks = state_update.get("active_subtasks", [])
                         task_desc = ""
@@ -409,21 +409,22 @@ def run_graph_execution(initial_state, config, thread_id, chat_history_list):
                                 break
                         
                         next_node_str = ", ".join(next_node) if isinstance(next_node, list) else next_node
-                        print(f"  -> Next Node Target: {next_node_str} | Task: {task_desc}")
+                        print(f"\n\033[1;35m🔀 [Orchestrator]\033[0m ({timestamp})")
+                        print(f"   • Next Node Target: \033[1m{next_node_str}\033[0m | Task: {task_desc}")
                         visualizer.start(f"Running {next_node_str}", "33") # Yellow
                 
                 elif node_name in WorkerRegistry.get_worker_names():
                     visualizer.stop()
-                    print_node_header(node_name, timestamp)
                     subtasks = state_update.get("active_subtasks", [])
                     completed_desc = ""
                     for st in subtasks:
                         if st["status"] == "completed" and st["assigned_worker"] == node_name:
                             completed_desc = st["description"]
+                    print(f"\n\033[1;32m✔ [{node_name}]\033[0m ({timestamp})")
                     if completed_desc:
-                        print(f"  \033[1;32m✔\033[0m Completed Task: {completed_desc}")
+                        print(f"   • Completed Task: {completed_desc}")
                     else:
-                        print(f"  \033[1;32m✔\033[0m {node_name} completed execution successfully.")
+                        print(f"   • {node_name} completed execution successfully.")
                     visualizer.start("Evaluating next steps", "34") # Blue
                     
                 elif node_name == "OutputFinalizer":
@@ -690,13 +691,15 @@ def process_request_interactive():
     except Exception as daemon_err:
         print(f"⚠️ Failed to start Gmail proactive daemon: {daemon_err}")
 
+    # Display active workers once on startup
+    active_workers = WorkerRegistry.get_worker_names()
+    print(f"\n🤖 [Active Workers ({len(active_workers)})]: {', '.join(active_workers)}")
+
     while True:
         # Reload/sync configuration and registry dynamically
         scan_and_register_workers(force_reload=True)
         global app
         app = create_graph()
-        active_workers = WorkerRegistry.get_worker_names()
-        print(f"🤖 [Active Workers]: {', '.join(active_workers)}")
 
         try:
             user_input = input("\nYou: ").strip()
