@@ -30,19 +30,28 @@ except ImportError as e:
     pass
 
 
-def add_calendar_event(summary: str, start_time: str, duration: int = 1, account: str = "personal") -> str:
+def add_calendar_event(
+    summary: str,
+    start_time: str,
+    duration: int = 1,
+    description: str = None,
+    color: str = "orange",
+    account: str = "personal"
+) -> str:
     """Adds an event to the calendar.
 
     Args:
-        summary (str): The title or description of the event.
+        summary (str): The title of the event.
         start_time (str): The start time expected in ISO format (e.g., 'YYYY-MM-DDTHH:MM:SS').
         duration (int): The duration of the event in hours. Defaults to 1.
+        description (str, optional): Additional details/notes for the event. Defaults to None.
+        color (str, optional): The color name (e.g. 'orange', 'blue', 'green', 'red', 'purple', 'yellow', 'gray') or Google Calendar colorId '1'-'11'. Defaults to 'orange'.
         account (str): The target Google account, either 'personal' or 'college'. Defaults to 'personal'.
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: add_calendar_event")
-    print(f"   Args: summary={summary}, start_time={start_time}, duration={duration}, account={account}")
+    print(f"   Args: summary={summary}, start_time={start_time}, duration={duration}, description={description}, color={color}, account={account}")
     try:
-        result = create_new_event(summary, start_time, duration, account=account)
+        result = create_new_event(summary, start_time, duration, description=description, color=color, account=account)
         if result:
             return f"Event '{summary}' created on account '{account}'. Link: {result.get('htmlLink')}"
         return f"Failed to create event on account '{account}'."

@@ -56,7 +56,9 @@ def check_calendar_events(max_results: int = 5, account: str = "personal") -> st
             # Safe retrieval (start is already a string in clean_events)
             start = e.get('start', 'Unknown Time')
             summary = e.get('summary', 'No Title')
-            event_str += f"- {summary} at {start}\n"
+            event_id = e.get('id')
+            id_info = f" [ID: {event_id}]" if event_id else ""
+            event_str += f"- {summary} at {start}{id_info}\n"
         return event_str
     except Exception as e:
         return f"Error reading calendar: {e}"

@@ -506,6 +506,15 @@ def _run_ephemeral_agent(worker_name: str, task_desc: str, working_memory: dict,
         
     feedback_instructions = _get_worker_feedback_instructions(worker_name)
     
+    # Check for on-demand task-specific mode instructions (e.g. ResearchWorker modes)
+    task_mode_instructions = ""
+    try:
+        worker_inst = WorkerRegistry.get_all_workers().get(worker_name)
+        if worker_inst and hasattr(worker_inst, "get_task_instruction"):
+            task_mode_instructions = worker_inst.get_task_instruction(task_desc)
+    except Exception:
+        pass
+    
     volatile_inputs = f"""
 ### Operational Context:
 Task: {task_desc}
@@ -513,6 +522,9 @@ Task: {task_desc}
 Working Memory (Data from previous tasks):
 {memory_str}
 """
+    if task_mode_instructions:
+        volatile_inputs += f"\n### Mode-Specific Operational Directives:\n{task_mode_instructions.strip()}\n"
+        
     if feedback_instructions:
         volatile_inputs += f"\n{feedback_instructions}\n"
         
@@ -658,6 +670,15 @@ async def _run_async_ephemeral_agent(worker_name: str, task_desc: str, working_m
         
     feedback_instructions = _get_worker_feedback_instructions(worker_name)
     
+    # Check for on-demand task-specific mode instructions (e.g. ResearchWorker modes)
+    task_mode_instructions = ""
+    try:
+        worker_inst = WorkerRegistry.get_all_workers().get(worker_name)
+        if worker_inst and hasattr(worker_inst, "get_task_instruction"):
+            task_mode_instructions = worker_inst.get_task_instruction(task_desc)
+    except Exception:
+        pass
+    
     volatile_inputs = f"""
 ### Operational Context (Volatile):
 Task: {task_desc}
@@ -665,6 +686,9 @@ Task: {task_desc}
 Working Memory (Data from previous tasks):
 {memory_str}
 """
+    if task_mode_instructions:
+        volatile_inputs += f"\n### Mode-Specific Operational Directives:\n{task_mode_instructions.strip()}\n"
+        
     if feedback_instructions:
         volatile_inputs += f"\n{feedback_instructions}\n"
         

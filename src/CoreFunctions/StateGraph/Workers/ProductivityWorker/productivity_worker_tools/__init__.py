@@ -3,6 +3,8 @@ from src.CoreFunctions.StateGraph.Workers.MemoryWorker.memory_worker_tools impor
 from .productivity_worker_tool_add_task import productivity_worker_tool_add_task
 from .productivity_worker_tool_check_events import productivity_worker_tool_check_events
 from .productivity_worker_tool_add_event import productivity_worker_tool_add_event
+from .productivity_worker_tool_edit_event import productivity_worker_tool_edit_event
+from .productivity_worker_tool_delete_event import productivity_worker_tool_delete_event
 
 # System health is in tools.py, let's export it as a tool
 from src.CoreFunctions.StateGraph.Workers.SystemWorker.system_worker_tools.system_worker_tool_get_system_health import system_worker_tool_get_system_health
@@ -11,6 +13,8 @@ calendar_tools = [
     productivity_worker_tool_add_task,
     productivity_worker_tool_check_events,
     productivity_worker_tool_add_event,
+    productivity_worker_tool_edit_event,
+    productivity_worker_tool_delete_event,
     system_worker_tool_get_system_health,
     get_weather_tool,
     get_time_tool,

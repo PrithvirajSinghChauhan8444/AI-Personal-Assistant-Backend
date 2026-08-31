@@ -163,7 +163,9 @@ Please correct the JSON formatting, ensure all worker assignments are strictly f
                     id="fallback_task",
                     description=f"Fallback execution of user request: {primary_goal}",
                     assigned_worker="MiscWorker",
-                    depends_on=[]
+                    depends_on=[],
+                    confidence_score=0.5,
+                    confidence_reason="Fallback execution due to router parsing error."
                 )
             ])
 

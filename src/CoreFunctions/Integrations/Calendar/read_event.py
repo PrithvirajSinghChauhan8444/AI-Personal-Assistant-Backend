@@ -29,6 +29,7 @@ def list_upcoming_events(max_results=10, account: str = "personal"):
             # Handle full-day events (which use 'date') vs timed events (which use 'dateTime')
             start = event['start'].get('dateTime', event['start'].get('date'))
             clean_events.append({
+                'id': event.get('id'),
                 'summary': event.get('summary', '(No Title)'),
                 'start': start,
                 'link': event.get('htmlLink')

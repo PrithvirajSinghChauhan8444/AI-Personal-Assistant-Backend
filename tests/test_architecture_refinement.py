@@ -78,7 +78,9 @@ class TestArchitectureRefinement(unittest.TestCase):
                     "id": "task_1",
                     "description": "Test task",
                     "assigned_worker": "MiscWorker",
-                    "depends_on": []
+                    "depends_on": [],
+                    "confidence_score": 1.0,
+                    "confidence_reason": "Direct user request"
                 }
             ]
         }

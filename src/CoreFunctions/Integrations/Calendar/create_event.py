@@ -1,10 +1,12 @@
 from datetime import datetime, timedelta
 from .calendar_service import get_service
+from .calendar_colors import resolve_calendar_color_id
 
-def create_new_event(summary, start_time_iso, duration_hours=1, description=None, account: str = "personal"):
+def create_new_event(summary, start_time_iso, duration_hours=1, description=None, color: str = "orange", account: str = "personal"):
     """
     Creates a new event for a specific account.
     start_time_iso example: "2025-12-25T14:00:00"
+    color example: "orange", "blue", "green", "red", "purple", or color ID "1"-"11" (defaults to "orange")
     """
     service = get_service(account)
     if not service:
@@ -22,9 +24,23 @@ def create_new_event(summary, start_time_iso, duration_hours=1, description=None
         print("❌ Error: Invalid date format.")
         return None
 
+    # Ensure description indicates that the event was added by the AI assistant
+    ai_note = "This event was added by the AI assistant."
+    if description and str(description).strip():
+        desc_str = str(description).strip()
+        if "added by the ai assistant" in desc_str.lower() or "added by ai assistant" in desc_str.lower():
+            final_description = desc_str
+        else:
+            final_description = f"{desc_str}\n\n{ai_note}"
+    else:
+        final_description = ai_note
+
+    color_id = resolve_calendar_color_id(color)
+
     event_body = {
         'summary': summary,
-        'description': description,
+        'description': final_description,
+        'colorId': color_id,
         'start': {
             'dateTime': start_time_iso,
             'timeZone': 'Asia/Kolkata', 

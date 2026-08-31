@@ -220,6 +220,105 @@ def test_check_calendar_events():
         assert "2026-09-02T23:59:00Z" in res
         print("  ✅ check_calendar_events test passed.")
 
+def test_create_calendar_event():
+    print("\n📅 Testing create_new_event with empty/filled descriptions and colors...")
+    from unittest.mock import patch, MagicMock
+    from src.CoreFunctions.Integrations.Calendar.create_event import create_new_event
+    from src.CoreFunctions.StateGraph.Workers.ProductivityWorker.productivity_worker_tools.productivity_worker_tool_add_event import add_calendar_event
+
+    mock_service = MagicMock()
+    mock_events = MagicMock()
+    mock_service.events.return_value = mock_events
+    mock_insert = MagicMock()
+    mock_events.insert.return_value = mock_insert
+    mock_insert.execute.return_value = {'htmlLink': 'https://calendar.google.com/test_link'}
+
+    with patch('src.CoreFunctions.Integrations.Calendar.create_event.get_service', return_value=mock_service):
+        # Case 1: Empty description (defaults to orange / "6")
+        create_new_event("Team Standup", "2026-09-02T10:00:00", 1, description=None, account="personal")
+        call_args = mock_events.insert.call_args[1]
+        assert call_args['body']['description'] == "This event was added by the AI assistant."
+        assert call_args['body']['colorId'] == "6"
+
+        # Case 2: Filled description with custom color ("blue" -> "9")
+        create_new_event("Sprint Review", "2026-09-02T14:00:00", 2, description="Discuss quarterly goals and milestones.", color="blue", account="personal")
+        call_args = mock_events.insert.call_args[1]
+        assert call_args['body']['description'] == "Discuss quarterly goals and milestones.\n\nThis event was added by the AI assistant."
+        assert call_args['body']['colorId'] == "9"
+
+        # Case 3: Via tool add_calendar_event (defaults to orange)
+        res = add_calendar_event("1:1 Sync", "2026-09-02T16:00:00", 1, description="Bi-weekly 1:1 sync meeting", color="orange", account="personal")
+        call_args = mock_events.insert.call_args[1]
+        assert "Bi-weekly 1:1 sync meeting\n\nThis event was added by the AI assistant." == call_args['body']['description']
+        assert call_args['body']['colorId'] == "6"
+        assert "Event '1:1 Sync' created" in res
+
+    print("  ✅ create_new_event and add_calendar_event tests passed.")
+
+def test_edit_and_delete_calendar_event():
+    print("\n📅 Testing edit_calendar_event and delete_calendar_event tools...")
+    from unittest.mock import patch, MagicMock
+    from src.CoreFunctions.Integrations.Calendar.edit_event import edit_existing_event
+    from src.CoreFunctions.Integrations.Calendar.delete_event import delete_existing_event
+    from src.CoreFunctions.StateGraph.Workers.ProductivityWorker.productivity_worker_tools.productivity_worker_tool_edit_event import edit_calendar_event
+    from src.CoreFunctions.StateGraph.Workers.ProductivityWorker.productivity_worker_tools.productivity_worker_tool_delete_event import delete_calendar_event
+
+    mock_service = MagicMock()
+    mock_events = MagicMock()
+    mock_service.events.return_value = mock_events
+
+    # Mock get
+    mock_get = MagicMock()
+    mock_events.get.return_value = mock_get
+    mock_get.execute.return_value = {
+        'id': 'evt_123',
+        'summary': 'Old Title',
+        'description': 'Old notes',
+        'start': {'dateTime': '2026-09-02T10:00:00+05:30'},
+        'end': {'dateTime': '2026-09-02T11:00:00+05:30'},
+        'htmlLink': 'https://calendar.google.com/event_123'
+    }
+
+    # Mock patch
+    mock_patch = MagicMock()
+    mock_events.patch.return_value = mock_patch
+    mock_patch.execute.return_value = {
+        'id': 'evt_123',
+        'summary': 'Updated Title',
+        'htmlLink': 'https://calendar.google.com/event_123'
+    }
+
+    # Mock delete
+    mock_delete = MagicMock()
+    mock_events.delete.return_value = mock_delete
+    mock_delete.execute.return_value = {}
+
+    with patch('src.CoreFunctions.Integrations.Calendar.edit_event.get_service', return_value=mock_service), \
+         patch('src.CoreFunctions.Integrations.Calendar.delete_event.get_service', return_value=mock_service):
+
+        # Test edit_existing_event with color change
+        res_edit = edit_calendar_event(
+            event_id="evt_123",
+            summary="Updated Title",
+            start_time="2026-09-02T12:00:00",
+            duration=2,
+            description="Updated agenda",
+            color="green",
+            account="personal"
+        )
+        patch_body = mock_events.patch.call_args[1]['body']
+        assert patch_body['summary'] == "Updated Title"
+        assert "Updated agenda\n\nThis event was added by the AI assistant." in patch_body['description']
+        assert patch_body['colorId'] == "10"
+        assert "Updated Title" in res_edit
+
+        # Test delete_calendar_event
+        res_delete = delete_calendar_event(event_id="evt_123", account="personal")
+        mock_events.delete.assert_called_with(calendarId='primary', eventId='evt_123')
+        assert "successfully deleted" in res_delete
+
+    print("  ✅ edit_calendar_event and delete_calendar_event tests passed.")
+
 if __name__ == "__main__":
     print("=== Starting Integration Tests ===")
     test_clipboard()
@@ -228,4 +327,6 @@ if __name__ == "__main__":
     test_token_encryption()
     test_update_skill()
     test_check_calendar_events()
+    test_create_calendar_event()
+    test_edit_and_delete_calendar_event()
     print("\n=== All Integration Tests Completed successfully ===")
