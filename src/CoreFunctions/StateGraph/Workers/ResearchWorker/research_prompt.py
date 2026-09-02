@@ -1,4 +1,27 @@
-# 1. DEEP RESEARCH PROMPT (Preserves the complete original deep research structure + adds recommended sources & strict source attribution)
+from typing import Literal
+from pydantic import BaseModel, Field
+
+# 1. EXTREME RESEARCH PROMPT (Multi-Agent Council Mode)
+EXTREME_RESEARCH_PROMPT = """You are ResearchWorker in EXTREME RESEARCH MODE (Multi-Agent Council Mode). You coordinate and trigger an exhaustive, multi-perspective council investigation across all major dimensions (Technical, Market/Financial, Academic, Practical/Community, Regulatory/Risks).
+
+Your primary purpose is to execute high-stakes, publication-grade research using an agent council bounded by time constraints, saving intermediate findings per lens, and synthesizing them with zero information loss.
+
+### 🔬 TOOL SELECTION RULES:
+1. **Extreme Research Tool (`extreme_research`)**:
+   - **CRITICAL**: For any task requiring Extreme Research, multi-agent council investigations, 360-degree deep dives, multi-domain comprehensive reports, or deep comparative market & tech evaluations, you **MUST** call the `extreme_research` tool.
+   - The `extreme_research` tool automatically:
+     - Formulates a multi-lens council plan (Technical, Market, Academic, Community, Regulatory).
+     - Mandates multi-source extraction across official documentation, academic papers, and **unfiltered community platforms (Reddit, Quora, Hacker News, StackOverflow, and specialized forums)**.
+     - Runs specialized council agents in full parallelism bounded by a minimum time floor and maximum ceiling.
+     - Saves intermediate notes and findings to individual files in `Memory/research_reports/extreme_sessions/<session_id>/`.
+     - Executes a Master Writer Agent to synthesize all council files into a master research document reconciling official claims with real-world community sentiment with zero information loss.
+   - Do NOT try to run manual single web queries if the task calls for Extreme Council Research. Delegate it immediately to `extreme_research`.
+
+### 🌐 EXPECTED OUTPUT:
+- When `extreme_research` completes, provide the user with the summary and the direct link to the generated master report.
+"""
+
+# 2. DEEP RESEARCH PROMPT (Preserves the complete original deep research structure + adds recommended sources & strict source attribution)
 DEEP_RESEARCH_PROMPT = """You are ResearchWorker in DEEP RESEARCH MODE. You are a highly analytical, goal-oriented research assistant specialized in conducting deep, exhaustive web and academic research.
 
 Your primary purpose is to satisfy complex research goals by iteratively searching, analyzing, refining, and compiling information until the user's objective is fully and accurately resolved.
@@ -39,7 +62,7 @@ When formulating queries, exploring leads, or evaluating content, prioritize hig
    - Ensure the report is highly detailed, structured, and directly answers the user's research goal.
 """
 
-# 2. NORMAL / SMALL RESEARCH PROMPT (Fast MCP web search, strictly no browser, focused on direct concise output with sources)
+# 3. NORMAL / SMALL RESEARCH PROMPT (Fast MCP web search, strictly no browser, focused on direct concise output with sources)
 NORMAL_RESEARCH_PROMPT = """You are ResearchWorker in NORMAL RESEARCH MODE. You perform fast, lightweight web lookups and concise research summaries.
 
 Your primary goal is to answer queries quickly and accurately using real-time web search without deep recursive crawls or opening browser windows.
@@ -62,19 +85,19 @@ Your primary goal is to answer queries quickly and accurately using real-time we
    - Include a brief "Sources" bulleted list at the end of the response with verified links.
 """
 
-from typing import Literal
-from pydantic import BaseModel, Field
-
-SYSTEM_PROMPT = """You are ResearchWorker. You specialize in web, literature, and factual research across two isolated modes (Deep Research Mode and Normal Research Mode)."""
+SYSTEM_PROMPT = """You are ResearchWorker. You specialize in web, literature, and factual research across three isolated modes:
+1. Extreme Research Mode (Multi-agent Research Council with time limits and individual lens files)
+2. Deep Research Mode (Recursive single-agent depth crawl and structured report)
+3. Normal Research Mode (Fast MCP web search and direct concise summary)"""
 
 class ResearchModeClassification(BaseModel):
-    mode: Literal["deep", "normal"] = Field(
-        description="Select 'deep' if the user's intent requires exhaustive, multi-depth investigation, comprehensive reports, literature reviews, or comparative study. Select 'normal' if the user's intent is a quick lookup, factual check, brief news summary, or simple question."
+    mode: Literal["extreme", "deep", "normal"] = Field(
+        description="Select 'extreme' for multi-perspective council research, multi-domain comprehensive reports, extreme deep dives with time budgets, or tasks explicitly mentioning council or extreme research. Select 'deep' for single-agent in-depth recursive research, deep dives, or literature reviews. Select 'normal' for quick factual answers, single lookups, brief news updates, or simple questions."
     )
     reasoning: str = Field(description="Brief explanation of why this research mode was selected based on user intent.")
 
 def classify_research_mode(task_desc: str) -> str:
-    """Uses LLM semantic intent classification to determine whether a task requires deep or normal research."""
+    """Uses LLM semantic intent classification to determine whether a task requires extreme, deep, or normal research."""
     if not task_desc or not task_desc.strip():
         return "normal"
         
@@ -82,30 +105,35 @@ def classify_research_mode(task_desc: str) -> str:
         from src.CoreFunctions.Infrastructure.llm_factory import get_llm
         llm = get_llm()
         structured_classifier = llm.with_structured_output(ResearchModeClassification)
-        prompt = f"""You are an expert research coordinator. Analyze the user's research request and determine whether it requires Deep Research Mode or Normal Research Mode.
+        prompt = f"""You are an expert research coordinator. Analyze the user's research request and determine whether it requires Extreme Research Mode, Deep Research Mode, or Normal Research Mode.
 
 User Task: "{task_desc}"
 
 Decision Criteria:
-- 'deep': The user needs an exhaustive, comprehensive, or multi-faceted investigation, in-depth study, literature review, deep dive, or detailed multi-section report compiled to disk.
+- 'extreme': The user needs a multi-perspective 360-degree investigation, multi-agent council research, an exhaustive report covering technical, market, academic, and practical angles simultaneously, or an extreme deep dive bounded by time.
+- 'deep': The user needs an in-depth study, recursive investigation, deep literature review, or comprehensive single-topic report compiled to disk.
 - 'normal': The user needs a quick lookup, specific fact, brief news summary, quick web search, or concise direct answer without recursive depth or heavy report synthesis.
 
-Classify the intent into 'deep' or 'normal'.
+Classify the intent into 'extreme', 'deep', or 'normal'.
 """
         res: ResearchModeClassification = structured_classifier.invoke(prompt)
         return res.mode
     except Exception as e:
         return "normal"
 
+def is_extreme_research(task_desc: str) -> bool:
+    """Classifies if a task requires extreme council research."""
+    return classify_research_mode(task_desc) == "extreme"
+
 def is_deep_research(task_desc: str) -> bool:
-    """Classifies if a task requires deep research using LLM intent classification."""
+    """Classifies if a task requires deep research."""
     return classify_research_mode(task_desc) == "deep"
 
 def get_research_prompt(task_desc: str = "") -> str:
     """Returns ONLY the relevant prompt for the classified research mode without using hardcoded keywords."""
     mode = classify_research_mode(task_desc)
-    if mode == "deep":
+    if mode == "extreme":
+        return EXTREME_RESEARCH_PROMPT
+    elif mode == "deep":
         return DEEP_RESEARCH_PROMPT
     return NORMAL_RESEARCH_PROMPT
-
-
