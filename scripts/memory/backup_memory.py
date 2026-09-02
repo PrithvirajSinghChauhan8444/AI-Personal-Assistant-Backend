@@ -4,16 +4,17 @@ import json
 from datetime import datetime
 from dotenv import load_dotenv
 
-# Add src to python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, BASE_DIR)
+sys.path.insert(0, os.path.join(BASE_DIR, 'src'))
 
 # Load env variables
-load_dotenv(override=True)
+load_dotenv(os.path.join(BASE_DIR, '.env'), override=True)
 
 from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
 from src.CoreFunctions.Infrastructure.vector_memory import _load_data as _load_vector_data
 
-BACKUP_DIR = os.path.join(os.path.dirname(__file__), "Memory", "backups")
+BACKUP_DIR = os.path.join(BASE_DIR, "Memory", "backups")
 
 def create_backup():
     print("=" * 60)
@@ -65,8 +66,8 @@ def create_backup():
             json.dump(backup_data, f, indent=4)
             
         print(f"\n✅ Backup saved successfully to:")
-        print(f"   - {os.path.relpath(backup_file)}")
-        print(f"   - {os.path.relpath(latest_file)}")
+        print(f"   - {os.path.relpath(backup_file, BASE_DIR)}")
+        print(f"   - {os.path.relpath(latest_file, BASE_DIR)}")
     except Exception as e:
         print(f"⚠️ Error writing backup files: {e}")
 

@@ -4,12 +4,12 @@ import shutil
 import sqlite3
 from dotenv import load_dotenv
 
-# Add src and workspace to python path
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-sys.path.append(os.path.join(BASE_DIR, 'src'))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, BASE_DIR)
+sys.path.insert(0, os.path.join(BASE_DIR, 'src'))
 
 # Load env variables
-load_dotenv(override=True)
+load_dotenv(os.path.join(BASE_DIR, '.env'), override=True)
 
 from src.CoreFunctions.Infrastructure.unified_memory import UnifiedMemory
 
