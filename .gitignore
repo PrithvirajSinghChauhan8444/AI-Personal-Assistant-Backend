@@ -18,3 +18,4 @@ not_comit
 # TTS models and temporary generated audio
 models/
 *.wav
+docs/
