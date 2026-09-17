@@ -150,22 +150,19 @@ def save_encrypted_json(filepath, data):
         print(f"❌ Failed to save encrypted JSON to {filepath}: {e}")
         raise e
 
-def load_google_accounts():
+def load_google_accounts() -> dict:
     """Loads Google account alias-to-email mapping from google_accounts.json."""
     config_dir = get_config_dir()
     filepath = os.path.join(config_dir, 'google_accounts.json')
     if os.path.exists(filepath):
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
         except Exception as e:
             print(f"⚠️ Error loading google_accounts.json: {e}")
-    # Default mappings if file not found or failed to load
-    return {
-        "personal": "",
-        "college": "",
-        "default": ""
-    }
+    return {}
 
 def save_google_accounts(accounts_data):
     """Saves Google account mappings to google_accounts.json."""
@@ -180,7 +177,8 @@ def save_google_accounts(accounts_data):
 def resolve_expected_email(account: str) -> str:
     """
     Resolves expected email address for a given account alias or raw email address.
-    If alias is not mapped, prompts user and saves to google_accounts.json.
+    Raises ValueError with dynamic configured accounts list if alias is not mapped,
+    allowing caller and LLM agents to receive structured diagnostic feedback.
     """
     if "@" in account:
         return account.strip().lower()
@@ -191,21 +189,14 @@ def resolve_expected_email(account: str) -> str:
     if account_key in accounts and accounts[account_key].strip():
         return accounts[account_key].strip().lower()
         
-    # Alias not mapped. Prompt user dynamically
-    print(f"\n⚠️ Google account alias '{account}' is not mapped to any email in google_accounts.json.")
-    while True:
-        try:
-            email_input = input(f"📧 Enter the expected Google email address for account alias '{account}': ").strip()
-            if "@" in email_input:
-                accounts[account_key] = email_input.lower()
-                save_google_accounts(accounts)
-                print(f"💾 Saved '{account}' -> '{email_input.lower()}' to google_accounts.json")
-                return email_input.lower()
-            else:
-                print("❌ Invalid email format. Please enter a valid email containing '@'.")
-        except (KeyboardInterrupt, EOFError):
-            print("\n❌ Input aborted. Proceeding without email verification.")
-            return ""
+    # Alias not mapped. Format dynamic diagnostic error for LLM self-correction
+    available_list = [f"'{alias}' ({email})" if email else f"'{alias}'" for alias, email in accounts.items() if alias]
+    available_str = ", ".join(available_list) if available_list else "None configured"
+    raise ValueError(
+        f"Google account alias '{account}' is not recognized or configured in google_accounts.json. "
+        f"Available configured accounts: [{available_str}]. "
+        "Please choose from the available configured accounts based on the context of the task, or provide a valid email address."
+    )
 
 def get_authenticated_email(creds) -> str:
     """Queries the Google API to retrieve the email address associated with the credentials."""

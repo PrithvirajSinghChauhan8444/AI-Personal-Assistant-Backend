@@ -6,7 +6,7 @@ def fetch_classroom_courses(account: str = "personal") -> str:
     """Lists the Google Classroom courses that the user is enrolled in or teaching.
 
     Args:
-        account (str): The target Google account, either 'personal', 'college', or 'both' to fetch from both accounts. Defaults to 'personal'.
+        account (str): The target Google account alias from configured accounts or full email (or 'both' to aggregate across accounts).
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_classroom_courses")
     print(f"   Args: account={account}")

@@ -54,6 +54,24 @@ STABLE_GUIDELINE = """
    - If any entry in the Working Memory contains a `\"__file_reference__\"`, the actual large data has been saved to that local file path to avoid context bloat. You can directly read the content of that file using your file-reading tools (like `read_file_tool` or running python/terminal commands), copy/move the file, or use the file path as an attachment/input for other tools.
 """
 
+DYNAMIC_ENTITY_GUIDELINE = """
+### 🎯 DYNAMIC ENTITY & ACCOUNT REASONING:
+1. **Strict Data Grounding**:
+   - When referencing external services, accounts, credentials, or resources, you must ONLY use entities that actually exist in the provided configuration, `user_profile` (such as `configured_accounts`), or `Working Memory`.
+   - NEVER invent generic, placeholder, or non-existent identifiers (e.g., do not invent "default", "primary", or arbitrary account names unless they are explicitly present in the provided configured accounts).
+2. **Semantic Matching & Domain Reasoning**:
+   - When selecting an account or resource for a task, analyze the available configured options against the task requirements:
+     - Compare task context (institution/school, work/organization, personal projects, freelance, domains) with the available account aliases and email domains/usernames.
+     - Select the account whose purpose or domain logically matches the task.
+     - If multiple accounts could apply and the tool supports multi-account querying (e.g. 'both' or merging), utilize that capability where appropriate.
+3. **Autonomous Self-Correction**:
+   - If a tool reports that an account or entity is not recognized or not configured, carefully inspect the list of valid configured accounts returned in the tool's error response.
+   - Re-evaluate your choice against the task requirements and immediately retry the tool call with the appropriate valid account.
+4. **Dynamic User Clarification (HITL)**:
+   - If you face genuine ambiguity where multiple configured accounts could apply and cannot be resolved, or no configured account fits the task and you cannot proceed safely, call `request_human_intervention(reason=...)` to ask the user.
+   - Clearly explain what options are available and what clarification is needed. The user's dynamic response will be returned directly into your tool result and reasoning context so you can proceed accurately.
+"""
+
 def _load_general_instructions() -> str:
     """Dynamically loads general system operational directives from Memory/instructions/general_instruction.md if present."""
     try:
@@ -73,7 +91,7 @@ def _load_general_instructions() -> str:
 def _build_worker_system_prompt(worker_name: str, worker: Any) -> str:
     """Builds a unified, two-tier system prompt for a worker agent.
     
-    Tier 1 (Immutable Invariants): Output Tagging, Rule Citation, Thinking Rules, HITL Protocol, and Working Memory & File Ref Guidelines.
+    Tier 1 (Immutable Invariants): Output Tagging, Rule Citation, Thinking Rules, HITL Protocol, File Ref Guidelines, and Dynamic Entity Reasoning.
     Tier 2 (Domain Directives): General System Guidelines (from general_instruction.md) and Worker-Specific Instructions (.md / prompt).
     """
     worker_instructions = worker.get_instructions() if hasattr(worker, "get_instructions") else getattr(worker, "instructions", "")
@@ -89,8 +107,8 @@ def _build_worker_system_prompt(worker_name: str, worker: Any) -> str:
     if general_instructions and general_instructions.strip():
         prompt_parts.append(general_instructions.strip())
         
-    # 3. Core System Invariants (HITL Protocol, Output Tagging, Thinking Rules, File Ref/State Guidelines)
-    core_invariants = f"{THINKING_INSTRUCTION}\n{HUMAN_INTERVENTION_INSTRUCTION}\n{STABLE_GUIDELINE}"
+    # 3. Core System Invariants (HITL Protocol, Output Tagging, Thinking Rules, File Ref/State Guidelines, Dynamic Entity Grounding)
+    core_invariants = f"{THINKING_INSTRUCTION}\n{HUMAN_INTERVENTION_INSTRUCTION}\n{STABLE_GUIDELINE}\n{DYNAMIC_ENTITY_GUIDELINE}"
     prompt_parts.append(core_invariants.strip())
     
     return "\n\n".join(prompt_parts)

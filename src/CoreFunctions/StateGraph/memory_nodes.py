@@ -251,6 +251,18 @@ def memory_injector_node(state: AgentState):
                 time_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(e['timestamp']))
                 recent_events.append(f"[{time_str}] {e['event_type']}: {e['summary']}")
             user_profile["recent_events"] = "; ".join(recent_events)
+
+        # Load Configured External Accounts dynamically
+        try:
+            from src.CoreFunctions.Infrastructure.auth_utils import load_google_accounts
+            google_accs = load_google_accounts()
+            active_accs = {k: v for k, v in google_accs.items() if v and str(v).strip()}
+            if active_accs:
+                user_profile["configured_accounts"] = active_accs
+                acc_summary = [f"{alias}: {email}" for alias, email in active_accs.items()]
+                user_profile["active_account_aliases"] = ", ".join(acc_summary)
+        except Exception as acc_e:
+            print(f"  ⚠️ Error loading configured accounts into user profile: {acc_e}")
             
     except Exception as e:
         print(f"  ⚠️ Error loading unified memory: {e}")

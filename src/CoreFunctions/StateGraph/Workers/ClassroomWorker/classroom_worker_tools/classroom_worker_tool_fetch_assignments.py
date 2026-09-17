@@ -7,7 +7,7 @@ def fetch_classroom_assignments(course_id: str, account: str = "personal") -> st
 
     Args:
         course_id (str): The unique course ID.
-        account (str): The target Google account, either 'personal', 'college', or 'both'. Defaults to 'personal'.
+        account (str): The target Google account alias from configured accounts or full email (or 'both').
     """
     print(f"\n[DEBUG] 🛠️ Calling Tool: fetch_classroom_assignments")
     print(f"   Args: course_id={course_id}, account={account}")
