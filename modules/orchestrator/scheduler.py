@@ -61,9 +61,30 @@ class TaskScheduler:
                 return ["OutputFinalizer"], updated_subtasks
             return ["OutputFinalizer"], []
 
+        WORKER_ALIASES = {
+            "CalendarWorker": "ProductivityWorker",
+            "TasksWorker": "ProductivityWorker",
+            "EmailWorker": "GmailWorker",
+            "MailWorker": "GmailWorker",
+            "FileWorker": "SystemWorker",
+            "TerminalWorker": "SystemWorker"
+        }
+
+        # Normalize worker names in active subtasks
+        for st in active_subtasks:
+            worker = st.get("assigned_worker")
+            if worker in WORKER_ALIASES:
+                st["assigned_worker"] = WORKER_ALIASES[worker]
+
         if not ready_tasks:
-            # Some tasks are still in progress; wait or cycle
-            return ["Orchestrator"], []
+            # No tasks are ready to dispatch. Conclude to OutputFinalizer
+            updated_subtasks = []
+            for st in active_subtasks:
+                if st.get("status") in ["pending", "in_progress"]:
+                    st_copy = dict(st)
+                    st_copy["status"] = "completed" if st["id"] in completed_ids else "aborted"
+                    updated_subtasks.append(st_copy)
+            return ["OutputFinalizer"], updated_subtasks
 
         # Select tasks to dispatch
         dispatched_tasks = ready_tasks[:self.max_parallel] if self.allow_parallel else ready_tasks[:1]
@@ -77,6 +98,7 @@ class TaskScheduler:
             updated_subtasks.append(st_copy)
 
         return target_workers, updated_subtasks
+
 
     def as_node(self, state: AgentState) -> Dict[str, Any]:
         """LangGraph node compatible function."""

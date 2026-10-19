@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional
 from langchain_core.messages import SystemMessage, HumanMessage
 from modules.contracts.state_contract import AgentState
-from modules.infrastructure.llm_provider.llm_factory import get_llm
+from modules.infrastructure.llm_provider.llm_factory import get_llm, extract_text_content
 from modules.infrastructure.observability.telemetry import get_module_tracer
 
 tracer = get_module_tracer("synthesizer")
@@ -42,7 +42,7 @@ Highlight outcomes, specific results, and any relevant paths or data. Keep it cl
                     SystemMessage(content=sys_prompt),
                     HumanMessage(content=user_content)
                 ])
-                result = resp.content if hasattr(resp, "content") else str(resp)
+                result = extract_text_content(resp)
                 span.set_attribute("synthesizer.status", "success")
                 span.set_attribute("synthesizer.response_length", len(result))
                 return result

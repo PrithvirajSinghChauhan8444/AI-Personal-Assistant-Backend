@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Optional
 from langchain_core.messages import SystemMessage, HumanMessage
 from modules.contracts.state_contract import AgentState
-from modules.infrastructure.llm_provider.llm_factory import get_llm
+from modules.infrastructure.llm_provider.llm_factory import get_llm, extract_text_content
 from modules.infrastructure.observability.telemetry import get_module_tracer
 
 tracer = get_module_tracer("reflection")
@@ -25,7 +25,7 @@ Return only facts as bullet points. If no new personal preferences or persistent
                     SystemMessage(content=prompt),
                     HumanMessage(content=turn_text)
                 ])
-                text = resp.content if hasattr(resp, "content") else str(resp)
+                text = extract_text_content(resp)
                 if "NONE" in text.upper():
                     span.set_attribute("reflection.facts_count", 0)
                     return []

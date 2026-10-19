@@ -3,7 +3,7 @@ from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage
 from modules.contracts.worker_contract import BaseWorkerProtocol
 from modules.workers.productivity_worker.tools.productivity_tools import productivity_tools
-from modules.infrastructure.llm_provider.llm_factory import get_llm
+from modules.infrastructure.llm_provider.llm_factory import get_llm, extract_text_content
 
 class ProductivityWorker(BaseWorkerProtocol):
     """Independent Productivity Worker for Calendar, Tasks, and Scheduling."""
@@ -30,11 +30,11 @@ class ProductivityWorker(BaseWorkerProtocol):
         try:
             result = self._agent.invoke({"messages": [HumanMessage(content=prompt)]})
             messages = result.get("messages", [])
-            last_msg = messages[-1].content if messages else "Productivity task finished."
+            last_msg = extract_text_content(messages[-1].content) if messages else "Productivity task finished."
             return {
                 "status": "completed",
-                "summary": str(last_msg),
-                "data": {"productivity_task_result": str(last_msg)}
+                "summary": last_msg,
+                "data": {"productivity_task_result": last_msg}
             }
         except Exception as e:
             return {

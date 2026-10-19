@@ -21,8 +21,31 @@ def load_environment():
             if os.path.exists(env_path):
                 load_dotenv(env_path, override=True)
                 break
+        # Disable broken LangSmith tracing to prevent 403 network spam
+        os.environ["LANGCHAIN_TRACING_V2"] = "false"
     except Exception:
         pass
+
+def extract_text_content(content: Any) -> str:
+    """Extracts raw string text from string, list of blocks, or structured LLM messages."""
+    if hasattr(content, "content"):
+        content = content.content
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and "text" in item:
+                parts.append(str(item["text"]))
+            elif isinstance(item, str):
+                parts.append(item)
+            elif hasattr(item, "text"):
+                parts.append(str(getattr(item, "text")))
+            else:
+                parts.append(str(item))
+        return "".join(parts).strip()
+    return str(content).strip()
+
 
 def get_llm(model_name: Optional[str] = None, temperature: float = 0.0, **kwargs) -> Any:
     """Creates and returns a LangChain chat model instance dynamically based on model prefixes or config."""

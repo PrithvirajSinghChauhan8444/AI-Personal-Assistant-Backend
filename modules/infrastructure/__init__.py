@@ -1,3 +1,10 @@
+import os
+from dotenv import load_dotenv
+
+# Ensure environment variables (.env) are loaded across all modular components
+load_dotenv()
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+
 from .llm_provider.llm_factory import get_llm
 from .security.vault import verify_password, get_console_lock
 from .storage.unified_storage import UnifiedStorage

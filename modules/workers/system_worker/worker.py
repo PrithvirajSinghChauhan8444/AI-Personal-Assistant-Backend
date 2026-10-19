@@ -3,7 +3,7 @@ from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage
 from modules.contracts.worker_contract import BaseWorkerProtocol
 from modules.workers.system_worker.tools.system_tools import system_tools
-from modules.infrastructure.llm_provider.llm_factory import get_llm
+from modules.infrastructure.llm_provider.llm_factory import get_llm, extract_text_content
 
 class SystemWorker(BaseWorkerProtocol):
     """Independent System Worker module for OS diagnostics, terminal commands, and file operations."""
@@ -30,11 +30,11 @@ class SystemWorker(BaseWorkerProtocol):
         try:
             result = self._agent.invoke({"messages": [HumanMessage(content=prompt)]})
             messages = result.get("messages", [])
-            last_msg = messages[-1].content if messages else "Execution completed."
+            last_msg = extract_text_content(messages[-1].content) if messages else "Execution completed."
             return {
                 "status": "completed",
-                "summary": str(last_msg),
-                "data": {"system_task_result": str(last_msg)}
+                "summary": last_msg,
+                "data": {"system_task_result": last_msg}
             }
         except Exception as e:
             return {
