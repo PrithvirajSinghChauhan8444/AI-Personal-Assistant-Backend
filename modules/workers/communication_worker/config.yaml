@@ -1,0 +1,7 @@
+worker:
+  name: "GmailWorker"
+  active: true
+  model: "gemini-3.1-flash-lite"
+  temperature: 0.0
+  max_results_per_query: 10
+  credentials_token_path: "config/token_gmail.json"

@@ -1,0 +1,9 @@
+app:
+  name: "AI Personal Assistant"
+  version: "2.0.0"
+  fast_path_greetings_enabled: true
+  persistence_checkpointing: true
+  default_workers:
+    - "SystemWorker"
+    - "GmailWorker"
+    - "ProductivityWorker"

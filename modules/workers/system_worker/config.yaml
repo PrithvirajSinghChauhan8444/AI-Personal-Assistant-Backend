@@ -1,0 +1,8 @@
+worker:
+  name: "SystemWorker"
+  active: true
+  model: "gemini-3.1-flash-lite"
+  temperature: 0.0
+  security:
+    require_password_for_writes: true
+    workspace_dir: "workspace"

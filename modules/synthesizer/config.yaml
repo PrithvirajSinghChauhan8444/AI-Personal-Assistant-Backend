@@ -1,0 +1,6 @@
+synthesizer:
+  model: "gemini-3.1-flash-lite"
+  temperature: 0.3
+  reflection:
+    enabled: true
+    extract_facts: true

@@ -1,0 +1,18 @@
+infrastructure:
+  llm:
+    default_provider: "gemini"
+    default_model: "gemini-3.1-flash-lite"
+    local_model: "gemma4:e4b"
+    temperature: 0.0
+  storage:
+    backend: "sqlite"
+    sqlite_db_path: "Memory/workspace_cache.db"
+    vector_store_dir: "Memory/vector_store"
+    ttl_seconds: 1800
+  security:
+    system_password_env: "SYSTEM_PASSWORD"
+    require_password_for_critical_tools: true
+  observability:
+    logs_dir: "Memory/logs"
+    enable_json_trace: true
+    enable_console_logging: true

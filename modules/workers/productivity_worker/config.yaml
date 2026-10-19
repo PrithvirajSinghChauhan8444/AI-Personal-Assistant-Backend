@@ -1,0 +1,6 @@
+worker:
+  name: "ProductivityWorker"
+  active: true
+  model: "gemini-3.1-flash-lite"
+  temperature: 0.0
+  calendar_timezone: "UTC"
