@@ -27,3 +27,5 @@ piper-tts
 kokoro-onnx
 soundfile
 redis
+opentelemetry-api
+opentelemetry-sdk

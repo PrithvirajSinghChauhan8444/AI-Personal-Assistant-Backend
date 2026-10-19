@@ -16,3 +16,10 @@ infrastructure:
     logs_dir: "Memory/logs"
     enable_json_trace: true
     enable_console_logging: true
+    telemetry:
+      enabled: true
+      service_name: "ai-personal-assistant"
+      export_to_file: true
+      traces_file: "Memory/logs/otel_traces.jsonl"
+      export_to_console: false
+

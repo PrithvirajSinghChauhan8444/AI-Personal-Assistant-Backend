@@ -2,6 +2,9 @@ from typing import Dict, Any, Optional
 from langchain_core.messages import SystemMessage, HumanMessage
 from modules.contracts.state_contract import AgentState
 from modules.infrastructure.llm_provider.llm_factory import get_llm
+from modules.infrastructure.observability.telemetry import get_module_tracer
+
+tracer = get_module_tracer("synthesizer")
 
 class OutputSynthesizer:
     """Independent Response Synthesis Module.
@@ -13,30 +16,41 @@ class OutputSynthesizer:
         self._llm = llm_client or get_llm(model_name=self.model_name, temperature=self.temperature)
 
     def synthesize(self, goal: str, completed_tasks: Dict[str, Any], working_memory: Optional[Dict[str, Any]] = None) -> str:
-        if not completed_tasks:
-            return "I completed your request, but no task updates were recorded."
+        with tracer.start_as_current_span("synthesizer.synthesize") as span:
+            span.set_attribute("synthesizer.goal", goal)
+            span.set_attribute("synthesizer.completed_tasks_count", len(completed_tasks))
 
-        task_summaries = []
-        for tid, tinfo in completed_tasks.items():
-            worker = tinfo.get("worker", "Worker")
-            desc = tinfo.get("description", tid)
-            summary = tinfo.get("summary", "Done")
-            task_summaries.append(f"- **{worker}** ({desc}): {summary}")
-        tasks_text = "\n".join(task_summaries)
+            if not completed_tasks:
+                span.set_attribute("synthesizer.status", "empty_tasks")
+                return "I completed your request, but no task updates were recorded."
 
-        sys_prompt = """You are the personal assistant output synthesizer.
+            task_summaries = []
+            for tid, tinfo in completed_tasks.items():
+                worker = tinfo.get("worker", "Worker")
+                desc = tinfo.get("description", tid)
+                summary = tinfo.get("summary", "Done")
+                task_summaries.append(f"- **{worker}** ({desc}): {summary}")
+            tasks_text = "\n".join(task_summaries)
+
+            sys_prompt = """You are the personal assistant output synthesizer.
 Synthesize the executed task outputs into a direct, friendly, and complete final response for the user.
 Highlight outcomes, specific results, and any relevant paths or data. Keep it clean and well-structured."""
 
-        user_content = f"User Request: {goal}\n\nTask Outputs:\n{tasks_text}"
-        try:
-            resp = self._llm.invoke([
-                SystemMessage(content=sys_prompt),
-                HumanMessage(content=user_content)
-            ])
-            return resp.content if hasattr(resp, "content") else str(resp)
-        except Exception as e:
-            return f"Summary of results for '{goal}':\n\n{tasks_text}"
+            user_content = f"User Request: {goal}\n\nTask Outputs:\n{tasks_text}"
+            try:
+                resp = self._llm.invoke([
+                    SystemMessage(content=sys_prompt),
+                    HumanMessage(content=user_content)
+                ])
+                result = resp.content if hasattr(resp, "content") else str(resp)
+                span.set_attribute("synthesizer.status", "success")
+                span.set_attribute("synthesizer.response_length", len(result))
+                return result
+            except Exception as e:
+                span.record_exception(e)
+                span.set_attribute("synthesizer.status", "error_fallback")
+                return f"Summary of results for '{goal}':\n\n{tasks_text}"
+
 
     def as_node(self, state: AgentState) -> Dict[str, Any]:
         goal = state.get("primary_goal", "")

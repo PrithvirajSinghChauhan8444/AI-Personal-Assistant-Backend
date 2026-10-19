@@ -1,5 +1,8 @@
 from typing import List, Dict, Any, Tuple, Optional, Union
 from modules.contracts.state_contract import AgentState, SubTask
+from modules.infrastructure.observability.telemetry import get_module_tracer
+
+tracer = get_module_tracer("orchestrator")
 
 class TaskScheduler:
     """Independent Execution Orchestrator & State Machine Scheduler.
@@ -15,8 +18,14 @@ class TaskScheduler:
         1. target_workers: list of worker names to invoke next
         2. updated_subtasks: task list with newly in_progress statuses
         """
-        if not active_subtasks:
-            return ["OutputFinalizer"], []
+        with tracer.start_as_current_span("orchestrator.evaluate_queue") as span:
+            span.set_attribute("orchestrator.active_subtasks_count", len(active_subtasks))
+            span.set_attribute("orchestrator.completed_tasks_count", len(completed_tasks))
+
+            if not active_subtasks:
+                span.set_attribute("orchestrator.decision", "route_to_finalizer_empty")
+                return ["OutputFinalizer"], []
+
 
         # Map completed task IDs
         completed_ids = set(completed_tasks.keys())

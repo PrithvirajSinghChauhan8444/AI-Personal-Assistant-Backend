@@ -42,23 +42,75 @@ class UnifiedStorage:
         return self._local.conn
 
     def set(self, key: str, value: Any) -> None:
-        val_str = json.dumps(value)
-        conn = self._get_conn()
-        conn.execute("INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)", (key, val_str))
-        conn.commit()
+        try:
+            from modules.infrastructure.observability.telemetry import get_module_tracer
+            tracer = get_module_tracer("storage")
+        except Exception:
+            tracer = None
+
+        if tracer:
+            with tracer.start_as_current_span("storage.set") as span:
+                span.set_attribute("db.system", "sqlite")
+                span.set_attribute("db.operation", "set")
+                span.set_attribute("db.key", key)
+                val_str = json.dumps(value)
+                conn = self._get_conn()
+                conn.execute("INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)", (key, val_str))
+                conn.commit()
+        else:
+            val_str = json.dumps(value)
+            conn = self._get_conn()
+            conn.execute("INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)", (key, val_str))
+            conn.commit()
 
     def get(self, key: str) -> Optional[Any]:
-        conn = self._get_conn()
-        cursor = conn.execute("SELECT value FROM kv_store WHERE key = ?", (key,))
-        row = cursor.fetchone()
-        if row:
-            return json.loads(row[0])
-        return None
+        try:
+            from modules.infrastructure.observability.telemetry import get_module_tracer
+            tracer = get_module_tracer("storage")
+        except Exception:
+            tracer = None
+
+        if tracer:
+            with tracer.start_as_current_span("storage.get") as span:
+                span.set_attribute("db.system", "sqlite")
+                span.set_attribute("db.operation", "get")
+                span.set_attribute("db.key", key)
+                conn = self._get_conn()
+                cursor = conn.execute("SELECT value FROM kv_store WHERE key = ?", (key,))
+                row = cursor.fetchone()
+                hit = row is not None
+                span.set_attribute("db.cache_hit", hit)
+                if hit:
+                    return json.loads(row[0])
+                return None
+        else:
+            conn = self._get_conn()
+            cursor = conn.execute("SELECT value FROM kv_store WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            if row:
+                return json.loads(row[0])
+            return None
 
     def delete(self, key: str) -> None:
-        conn = self._get_conn()
-        conn.execute("DELETE FROM kv_store WHERE key = ?", (key,))
-        conn.commit()
+        try:
+            from modules.infrastructure.observability.telemetry import get_module_tracer
+            tracer = get_module_tracer("storage")
+        except Exception:
+            tracer = None
+
+        if tracer:
+            with tracer.start_as_current_span("storage.delete") as span:
+                span.set_attribute("db.system", "sqlite")
+                span.set_attribute("db.operation", "delete")
+                span.set_attribute("db.key", key)
+                conn = self._get_conn()
+                conn.execute("DELETE FROM kv_store WHERE key = ?", (key,))
+                conn.commit()
+        else:
+            conn = self._get_conn()
+            conn.execute("DELETE FROM kv_store WHERE key = ?", (key,))
+            conn.commit()
+
 
     def list_keys(self, prefix: str = "") -> List[str]:
         conn = self._get_conn()

@@ -4,6 +4,9 @@ from modules.contracts.task_contract import TaskPlan, SubTaskModel, WorkerCapabi
 from modules.contracts.state_contract import AgentState, SubTask
 from modules.task_router.prompt_templates import build_task_router_prompt
 from modules.infrastructure.llm_provider.llm_factory import get_llm
+from modules.infrastructure.observability.telemetry import get_module_tracer
+
+tracer = get_module_tracer("task_router")
 
 class TaskRouter:
     """Independent Intent Decomposition Module.
@@ -16,34 +19,44 @@ class TaskRouter:
 
     def route(self, goal: str, available_workers: List[WorkerCapability], context: Optional[Dict[str, Any]] = None) -> TaskPlan:
         """Decomposes goal into structured TaskPlan DAG."""
-        sys_prompt = build_task_router_prompt(available_workers)
-        user_prompt = f"Decompose this request:\n{goal}"
-        if context:
-            user_prompt += f"\nContext:\n{context}"
+        with tracer.start_as_current_span("task_router.route") as span:
+            span.set_attribute("task_router.goal", goal)
+            span.set_attribute("task_router.model", self.model_name)
+            span.set_attribute("task_router.available_workers", [w.name for w in available_workers])
 
-        structured_llm = self._llm.with_structured_output(TaskPlan)
-        try:
-            plan = structured_llm.invoke([
-                SystemMessage(content=sys_prompt),
-                HumanMessage(content=user_prompt)
-            ])
-            return plan
-        except Exception as e:
-            # Fallback single-task plan if LLM decomposition fails
-            fallback_worker = available_workers[0].name if available_workers else "SystemWorker"
-            return TaskPlan(
-                primary_goal=goal,
-                subtasks=[
-                    SubTaskModel(
-                        id="task_1",
-                        description=goal,
-                        assigned_worker=fallback_worker,
-                        depends_on=[],
-                        confidence_score=0.5,
-                        confidence_reason=f"Fallback due to decomposition error: {str(e)}"
-                    )
-                ]
-            )
+            sys_prompt = build_task_router_prompt(available_workers)
+            user_prompt = f"Decompose this request:\n{goal}"
+            if context:
+                user_prompt += f"\nContext:\n{context}"
+
+            structured_llm = self._llm.with_structured_output(TaskPlan)
+            try:
+                plan = structured_llm.invoke([
+                    SystemMessage(content=sys_prompt),
+                    HumanMessage(content=user_prompt)
+                ])
+                span.set_attribute("task_router.subtasks_count", len(plan.subtasks))
+                span.set_attribute("task_router.status", "success")
+                return plan
+            except Exception as e:
+                span.record_exception(e)
+                span.set_attribute("task_router.status", "fallback")
+                # Fallback single-task plan if LLM decomposition fails
+                fallback_worker = available_workers[0].name if available_workers else "SystemWorker"
+                return TaskPlan(
+                    primary_goal=goal,
+                    subtasks=[
+                        SubTaskModel(
+                            id="task_1",
+                            description=goal,
+                            assigned_worker=fallback_worker,
+                            depends_on=[],
+                            confidence_score=0.5,
+                            confidence_reason=f"Fallback due to decomposition error: {str(e)}"
+                        )
+                    ]
+                )
+
 
     def as_node(self, state: AgentState, available_workers: List[WorkerCapability]) -> Dict[str, Any]:
         """LangGraph node compatible function."""

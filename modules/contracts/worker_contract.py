@@ -73,12 +73,34 @@ class BaseWorkerProtocol(ABC):
             "working_memory": {k: v for k, v in working_memory.items() if not k.startswith("_")},
             "task": current_task
         }
-        
-        result = self.execute_task(task_id, desc, context)
-        
-        status = result.get("status", "completed")
-        summary = result.get("summary", "")
-        data_payload = result.get("data", {})
+
+        # OpenTelemetry tracing
+        try:
+            from modules.infrastructure.observability.telemetry import get_module_tracer
+            tracer = get_module_tracer(f"worker.{self.name}")
+        except Exception:
+            tracer = None
+
+        if tracer:
+            with tracer.start_as_current_span(f"worker.{self.name}.execute_task") as span:
+                span.set_attribute("worker.name", self.name)
+                span.set_attribute("task.id", task_id)
+                span.set_attribute("task.description", desc)
+
+                result = self.execute_task(task_id, desc, context)
+
+                status = result.get("status", "completed")
+                summary = result.get("summary", "")
+                data_payload = result.get("data", {})
+                span.set_attribute("task.status", status)
+                span.set_attribute("task.summary", summary[:200] if summary else "")
+                if result.get("error_message"):
+                    span.set_attribute("task.error", result["error_message"])
+        else:
+            result = self.execute_task(task_id, desc, context)
+            status = result.get("status", "completed")
+            summary = result.get("summary", "")
+            data_payload = result.get("data", {})
         
         return {
             "active_subtasks": [{
@@ -96,3 +118,4 @@ class BaseWorkerProtocol(ABC):
             },
             "working_memory": data_payload
         }
+
