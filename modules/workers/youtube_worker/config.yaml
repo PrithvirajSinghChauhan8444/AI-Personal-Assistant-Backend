@@ -1,0 +1,11 @@
+worker:
+  name: "YoutubeWorker"
+  active: true
+  model: "gemini-3.1-flash-lite"
+  temperature: 0.0
+  capabilities:
+    - "youtube_search"
+    - "subscription_updates"
+    - "video_details"
+    - "video_transcription"
+    - "watch_state_tracking"

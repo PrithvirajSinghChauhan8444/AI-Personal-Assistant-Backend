@@ -2,16 +2,17 @@ from typing import List, Dict, Any, Optional
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage
 from modules.contracts.worker_contract import BaseWorkerProtocol
-from modules.workers.system_worker.tools.system_tools import system_tools
+from modules.workers.system_worker.tools import tools as system_tools
+from modules.workers.system_worker.prompts import SYSTEM_INSTRUCTIONS
 from modules.infrastructure.llm_provider.llm_factory import get_llm, extract_text_content
 
 class SystemWorker(BaseWorkerProtocol):
     """Independent System Worker module for OS diagnostics, terminal commands, and file operations."""
     name = "SystemWorker"
-    description = "Handles local system diagnostics, file reading/writing, and OS environment execution."
-    instructions = "You are the SystemWorker. You manage local files and monitor system health. Output intermediate reasoning clearly."
+    description = "Handles local system diagnostics, file reading/writing, OS environment execution, and media playback control (Spotify, YouTube Music, system audio)."
+    instructions = SYSTEM_INSTRUCTIONS
     tools = system_tools
-    categories = ["system", "files", "diagnostics"]
+    categories = ["system", "files", "diagnostics", "media-playback", "spotify", "youtube-music"]
 
     def __init__(self, model_name: str = "gemini-3.1-flash-lite", temperature: float = 0.0, llm_client: Optional[Any] = None):
         self._llm = llm_client or get_llm(model_name=model_name, temperature=temperature)
@@ -20,7 +21,8 @@ class SystemWorker(BaseWorkerProtocol):
     @property
     def routing_rules(self) -> List[str]:
         return [
-            "Any file system reads or writes, CPU/RAM monitoring, or diagnostic health checks must be routed to SystemWorker."
+            "Any file system reads or writes, CPU/RAM monitoring, or diagnostic health checks must be routed to SystemWorker.",
+            "Any requests to control media playback, pause/play songs, skip tracks, check currently playing songs, or change volume on Spotify or YouTube Music should be routed to SystemWorker."
         ]
 
     def execute_task(self, task_id: str, description: str, context: Dict[str, Any]) -> Dict[str, Any]:

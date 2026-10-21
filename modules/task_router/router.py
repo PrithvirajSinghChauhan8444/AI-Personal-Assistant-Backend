@@ -41,7 +41,11 @@ class TaskRouter:
             except Exception as e:
                 span.record_exception(e)
                 span.set_attribute("task_router.status", "fallback")
-                # Fallback single-task plan if LLM decomposition fails
+                # Do not mask quota or rate limit errors; fail fast so user is notified
+                err_lower = str(e).lower()
+                if any(k in err_lower for k in ["429", "resourceexhausted", "quota", "rate limit", "ratelimit", "too many requests"]):
+                    raise e
+                # Fallback single-task plan for parse or syntax errors
                 fallback_worker = available_workers[0].name if available_workers else "SystemWorker"
                 return TaskPlan(
                     primary_goal=goal,

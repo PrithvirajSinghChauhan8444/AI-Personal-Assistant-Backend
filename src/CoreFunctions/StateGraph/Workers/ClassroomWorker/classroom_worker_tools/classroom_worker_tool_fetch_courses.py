@@ -12,6 +12,8 @@ def fetch_classroom_courses(account: str = "personal") -> str:
     print(f"   Args: account={account}")
     try:
         res = list_courses(account=account)
+        if isinstance(res, dict) and "error" in res:
+            return f"Error listing courses: {res['error']}"
         return json.dumps(res, indent=2)
     except Exception as e:
         return f"Error listing courses: {e}"

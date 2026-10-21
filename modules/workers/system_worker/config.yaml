@@ -6,3 +6,10 @@ worker:
   security:
     require_password_for_writes: true
     workspace_dir: "workspace"
+  capabilities:
+    - "diagnostics"
+    - "file_management"
+    - "process_control"
+    - "clipboard"
+    - "media_playback_spotify"
+    - "media_playback_ytmusic"

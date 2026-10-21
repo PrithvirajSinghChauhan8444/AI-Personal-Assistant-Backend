@@ -1,0 +1,12 @@
+worker:
+  name: "BrowserWorker"
+  active: true
+  model: "gemini-3.1-flash-lite"
+  temperature: 0.0
+  headless: true
+  capabilities:
+    - "web_navigation"
+    - "dom_inspection"
+    - "form_filling"
+    - "web_scraping"
+    - "page_screenshots"

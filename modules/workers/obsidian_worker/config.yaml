@@ -1,0 +1,11 @@
+worker:
+  name: "ObsidianWorker"
+  active: true
+  model: "gemini-3.1-flash-lite"
+  temperature: 0.0
+  capabilities:
+    - "obsidian_create_note"
+    - "obsidian_append_note"
+    - "obsidian_canvas"
+    - "obsidian_vault_search"
+    - "obsidian_properties"

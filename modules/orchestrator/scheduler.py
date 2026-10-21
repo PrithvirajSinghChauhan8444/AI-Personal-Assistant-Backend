@@ -27,6 +27,30 @@ class TaskScheduler:
                 return ["OutputFinalizer"], []
 
 
+        WORKER_ALIASES = {
+            "CalendarWorker": "ProductivityWorker",
+            "TasksWorker": "ProductivityWorker",
+            "EmailWorker": "CommunicationWorker",
+            "GmailWorker": "CommunicationWorker",
+            "MailWorker": "CommunicationWorker",
+            "FileWorker": "SystemWorker",
+            "TerminalWorker": "SystemWorker",
+            "DriveWorker": "GoogleDriveWorker",
+            "GoogleDriveManager": "GoogleDriveWorker",
+            "BrowserNavigator": "BrowserWorker",
+            "BrowserReader": "BrowserWorker",
+            "ObsidianNoteWorker": "ObsidianWorker",
+            "ObsidianCanvasWorker": "ObsidianWorker",
+            "ObsidianRefactorWorker": "ObsidianWorker",
+            "YouTubeWorker": "YoutubeWorker"
+        }
+
+        # Normalize worker names in active subtasks
+        for st in active_subtasks:
+            worker = st.get("assigned_worker")
+            if worker in WORKER_ALIASES:
+                st["assigned_worker"] = WORKER_ALIASES[worker]
+
         # Map completed task IDs
         completed_ids = set(completed_tasks.keys())
         for st in active_subtasks:
@@ -46,8 +70,10 @@ class TaskScheduler:
                 if all(dep in completed_ids for dep in deps):
                     ready_tasks.append(st)
 
-        # Handle deadlock: pending tasks exist, but none are ready and none are in_progress
+        # Check in_progress tasks
         in_progress_tasks = [st for st in active_subtasks if st.get("status") == "in_progress"]
+
+        # Handle deadlock: pending tasks exist, but none are ready and none are in_progress
         if not ready_tasks and not in_progress_tasks:
             if self.auto_heal_deadlocks:
                 # Mark remaining blocked tasks as aborted
@@ -61,33 +87,25 @@ class TaskScheduler:
                 return ["OutputFinalizer"], updated_subtasks
             return ["OutputFinalizer"], []
 
-        WORKER_ALIASES = {
-            "CalendarWorker": "ProductivityWorker",
-            "TasksWorker": "ProductivityWorker",
-            "EmailWorker": "GmailWorker",
-            "MailWorker": "GmailWorker",
-            "FileWorker": "SystemWorker",
-            "TerminalWorker": "SystemWorker"
-        }
-
-        # Normalize worker names in active subtasks
-        for st in active_subtasks:
-            worker = st.get("assigned_worker")
-            if worker in WORKER_ALIASES:
-                st["assigned_worker"] = WORKER_ALIASES[worker]
-
         if not ready_tasks:
-            # No tasks are ready to dispatch. Conclude to OutputFinalizer
-            updated_subtasks = []
-            for st in active_subtasks:
-                if st.get("status") in ["pending", "in_progress"]:
-                    st_copy = dict(st)
-                    st_copy["status"] = "completed" if st["id"] in completed_ids else "aborted"
-                    updated_subtasks.append(st_copy)
-            return ["OutputFinalizer"], updated_subtasks
+            # If tasks are already in_progress, route to their worker to complete them
+            if in_progress_tasks:
+                target_worker = in_progress_tasks[0].get("assigned_worker")
+                if target_worker:
+                    return [target_worker], []
+            return ["OutputFinalizer"], []
 
-        # Select tasks to dispatch
-        dispatched_tasks = ready_tasks[:self.max_parallel] if self.allow_parallel else ready_tasks[:1]
+        # Select ready tasks to dispatch, ensuring at most ONE task per unique worker
+        dispatched_tasks = []
+        workers_seen = set()
+        for st in ready_tasks:
+            worker_name = st.get("assigned_worker")
+            if worker_name and worker_name not in workers_seen:
+                workers_seen.add(worker_name)
+                dispatched_tasks.append(st)
+                if not self.allow_parallel or len(dispatched_tasks) >= self.max_parallel:
+                    break
+
         target_workers = [st["assigned_worker"] for st in dispatched_tasks]
 
         # Update dispatched tasks to in_progress

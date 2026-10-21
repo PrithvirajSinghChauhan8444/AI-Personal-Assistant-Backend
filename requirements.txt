@@ -29,3 +29,4 @@ soundfile
 redis
 opentelemetry-api
 opentelemetry-sdk
+python-telegram-bot>=20.0

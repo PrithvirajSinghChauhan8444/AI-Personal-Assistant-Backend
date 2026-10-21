@@ -69,7 +69,7 @@ pt_style = Style.from_dict({
 })
 
 SLASH_COMMANDS = [
-    '/help', '/workers', '/memory', '/graph', '/stats', '/history',
+    '/help', '/remote', '/remote_control', '/export', '/workers', '/memory', '/graph', '/stats', '/history',
     '/doctor', '/clear', '/exit', '/quit'
 ]
 
@@ -292,6 +292,8 @@ class AssistantREPL:
             t = Table(title="✦ Available Slash Commands", border_style="dim #334155", header_style="bold #38BDF8")
             t.add_column("Command", style="bold #F59E0B", no_wrap=True)
             t.add_column("Description", style="#E2E8F0")
+            t.add_row("/remote", "Check Remote Control gateway status & configuration")
+            t.add_row("/export", "Export conversation transcript (Clean or Verbose)")
             t.add_row("/workers", "Inspect all registered StateGraph workers and active tools")
             t.add_row("/memory", "Inspect Vector Memory, Knowledge Graph, and context stats")
             t.add_row("/graph", "Display StateGraph topologies and active routing paths")
@@ -301,6 +303,30 @@ class AssistantREPL:
             t.add_row("/clear", "Clear screen and redraw banner")
             t.add_row("/exit", "Gracefully terminate the CLI and background daemons")
             console.print(t)
+            console.print()
+            return True
+
+        elif cmd in ('/remote', '/remote_control'):
+            console.print()
+            token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+            raw_ids = os.getenv("TELEGRAM_ALLOWED_USER_IDS", "").strip()
+            t = Table(title="🌐 Remote Control Gateway Status", border_style="dim #334155", header_style="bold #38BDF8")
+            t.add_column("Property", style="bold #F8FAFC")
+            t.add_column("Status / Detail", style="#34D399")
+            t.add_row("Dual Interaction Mode", "CLI + Telegram Remote")
+            t.add_row("Telegram Token Configured", "🟢 Configured" if token else "🔴 Not Set (Configure TELEGRAM_BOT_TOKEN)")
+            t.add_row("Authorized User IDs", raw_ids if raw_ids else "None")
+            t.add_row("Interactive Runner", "Run './run_remote_control.py' or 'python run_modular.py --remote-control'")
+            console.print(t)
+            console.print()
+            return True
+
+        elif cmd == '/export':
+            from modules.adapters.remote_control.exporter import ConversationExporter
+            console.print()
+            content = ConversationExporter.format_clean("cli_session", turns=[], chat_history=self.chat_history)
+            path = ConversationExporter.save_to_file(content, "cli_session", verbose=False)
+            console.print(f"[bold green]✔ Conversation exported to file:[/bold green] {path}")
             console.print()
             return True
 

@@ -1,0 +1,10 @@
+worker:
+  name: "ClassroomWorker"
+  active: true
+  model: "gemini-3.1-flash-lite"
+  temperature: 0.0
+  capabilities:
+    - "google_classroom_courses"
+    - "google_classroom_assignments"
+    - "google_classroom_announcements"
+    - "coursework_submission"

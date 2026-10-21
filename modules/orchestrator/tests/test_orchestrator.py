@@ -42,8 +42,8 @@ class TestTaskScheduler(unittest.TestCase):
             }
         ]
         targets, updated = self.scheduler.evaluate_queue(subtasks, {})
-        # task_2 cannot run yet because task_1 is not completed
-        self.assertEqual(targets, ["Orchestrator"])
+        # task_2 cannot run yet because task_1 is not completed; routes to task_1's worker to complete it
+        self.assertEqual(targets, ["CommunicationWorker"])
         self.assertEqual(len(updated), 0)
 
     def test_dependent_task_runs_after_completion(self):

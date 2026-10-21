@@ -1,5 +1,15 @@
 from datetime import datetime, timezone
+from typing import Optional
 from langchain_core.tools import tool
+from modules.workers.productivity_worker.integrations.calendar_client import (
+    list_calendar_events as _list_cal,
+    create_calendar_event as _create_cal,
+    delete_calendar_event as _delete_cal
+)
+from modules.workers.productivity_worker.integrations.tasks_client import (
+    list_tasks as _list_tasks,
+    add_task as _add_task
+)
 
 @tool
 def get_current_time() -> str:
@@ -9,35 +19,98 @@ def get_current_time() -> str:
 
 @tool
 def list_calendar_events(max_results: int = 5, account: str = "both") -> str:
-    """Checks real upcoming calendar events across Google Calendar accounts ('personal', 'college', or 'both')."""
+    """Checks upcoming calendar events across Google Calendar accounts ('personal', 'college', or 'both')."""
     try:
-        from src.CoreFunctions.Integrations.Calendar.read_event import list_upcoming_events
-        accounts_to_check = ["personal", "college"] if account == "both" else [account]
-        all_events = []
-        for acc in accounts_to_check:
-            try:
-                events = list_upcoming_events(max_results=max_results, account=acc)
-                if events and isinstance(events, list):
-                    for ev in events:
-                        start = ev.get("start", "Unknown date")
-                        summary = ev.get("summary", "No Title")
-                        all_events.append(f"[{acc.capitalize()} Calendar]: {summary} at {start}")
-            except Exception:
-                pass
-        if not all_events:
+        events = _list_cal(max_results=max_results, account=account)
+        if not events:
             return "No upcoming calendar events found."
-        return "Upcoming Calendar Events:\n" + "\n".join(f"- {e}" for e in all_events)
+        lines = ["Upcoming Calendar Events:"]
+        for ev in events:
+            start = ev.get("start", "Unknown date")
+            summary = ev.get("summary", "No Title")
+            ev_id = ev.get("id", "")
+            acc = ev.get("account", account).capitalize()
+            lines.append(f"- [{acc} Calendar]: {summary} at {start} (ID: {ev_id})")
+        return "\n".join(lines)
     except Exception as e:
         return f"Could not retrieve calendar events: {e}"
+
+@tool
+def add_calendar_event_tool(
+    summary: str,
+    start_time: str,
+    duration: int = 1,
+    description: Optional[str] = None,
+    color: str = "orange",
+    account: str = "personal"
+) -> str:
+    """Creates a new calendar event on Google Calendar.
+    
+    Args:
+        summary (str): Title of the event.
+        start_time (str): ISO formatted start timestamp (e.g. '2026-10-20T10:00:00').
+        duration (int): Duration in hours. Default is 1.
+        description (str, optional): Notes or details.
+        color (str): Color name or ID. Default is 'orange'.
+        account (str): 'personal' or 'college'. Default is 'personal'.
+    """
+    try:
+        res = _create_cal(
+            summary=summary,
+            start_time=start_time,
+            duration=duration,
+            description=description,
+            color=color,
+            account=account
+        )
+        if res:
+            return f"Event '{summary}' created successfully on '{account}' calendar."
+        return f"Failed to create event '{summary}'."
+    except Exception as e:
+        return f"Error creating calendar event: {e}"
+
+@tool
+def delete_calendar_event_tool(event_id: str, account: str = "personal") -> str:
+    """Deletes an event from Google Calendar by its event ID."""
+    try:
+        success = _delete_cal(event_id=event_id, account=account)
+        if success:
+            return f"Event with ID '{event_id}' deleted successfully from '{account}' calendar."
+        return f"Failed to delete event '{event_id}'."
+    except Exception as e:
+        return f"Error deleting calendar event: {e}"
 
 @tool
 def add_task_tool(title: str, due_date: str = "") -> str:
     """Adds a new task to Google Tasks."""
     try:
-        from src.CoreFunctions.Integrations.Google.tasks import add_new_task
-        res = add_new_task(title=title, due=due_date)
+        res = _add_task(title=title, due=due_date)
         return f"Task '{title}' added to Google Tasks: {res}"
     except Exception:
         return f"Task '{title}' scheduled."
 
-productivity_tools = [get_current_time, list_calendar_events, add_task_tool]
+@tool
+def list_tasks_tool() -> str:
+    """Lists existing tasks from Google Tasks."""
+    try:
+        tasks = _list_tasks()
+        if not tasks:
+            return "No tasks found in Google Tasks."
+        lines = ["Google Tasks:"]
+        for t in tasks:
+            title = t.get("title", "No Title")
+            status = t.get("status", "needsAction")
+            due = t.get("due", "No due date")
+            lines.append(f"- [{status}] {title} (Due: {due})")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error listing tasks: {e}"
+
+productivity_tools = [
+    get_current_time,
+    list_calendar_events,
+    add_calendar_event_tool,
+    delete_calendar_event_tool,
+    add_task_tool,
+    list_tasks_tool
+]

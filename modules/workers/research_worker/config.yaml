@@ -1,0 +1,11 @@
+worker:
+  name: "ResearchWorker"
+  active: true
+  model: "gemini-3.1-flash-lite"
+  temperature: 0.1
+  capabilities:
+    - "web_search"
+    - "deep_research"
+    - "extreme_research"
+    - "market_intelligence"
+    - "academic_investigation"

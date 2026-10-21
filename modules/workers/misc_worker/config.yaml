@@ -1,0 +1,10 @@
+worker:
+  name: "MiscWorker"
+  active: true
+  model: "gemini-3.1-flash-lite"
+  temperature: 0.0
+  capabilities:
+    - "custom_script_execution"
+    - "playlist_management"
+    - "content_drafting"
+    - "general_integrations"

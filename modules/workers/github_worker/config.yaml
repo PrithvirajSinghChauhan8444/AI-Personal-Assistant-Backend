@@ -1,0 +1,11 @@
+worker:
+  name: "GithubWorker"
+  active: true
+  model: "gemini-3.1-flash-lite"
+  temperature: 0.0
+  capabilities:
+    - "repository_search"
+    - "code_search"
+    - "commits_inspection"
+    - "branch_inspection"
+    - "activity_tracking"

@@ -5,5 +5,14 @@ app:
   persistence_checkpointing: true
   default_workers:
     - "SystemWorker"
-    - "GmailWorker"
+    - "CommunicationWorker"
     - "ProductivityWorker"
+    - "BrowserWorker"
+    - "GithubWorker"
+    - "ClassroomWorker"
+    - "GoogleDriveWorker"
+    - "YoutubeWorker"
+    - "ResearchWorker"
+    - "ObsidianWorker"
+    - "MemoryWorker"
+    - "MiscWorker"
