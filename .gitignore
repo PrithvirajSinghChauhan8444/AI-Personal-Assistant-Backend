@@ -1,13 +1,20 @@
 .venv/
 .env
-config/
 __pycache__/
 *.pyc
 .vscode/
 .session_cache
 .spotify_cache
+
+# Configuration secrets (protect tokens and credentials)
+config/.env
+config/credentials.json
+config/token*.json
+config/ytmusic_headers.json
 # Local databases and memory logs
 Memory/
+*.db
+workspace/data/*.db
 
 # Dynamically generated skills (already tracked core skills remain tracked)
 Skills/
@@ -16,6 +23,18 @@ not_comit
 .codelens/
 
 # TTS models and temporary generated audio
-models/
+/models/
 *.wav
 docs/
+reference/
+
+# Go build artifacts
+/bin/
+go/assistant
+go/gateway
+*.test
+
+
+# Workbench
+workbench/ui/node_modules/
+workspace/workbench/

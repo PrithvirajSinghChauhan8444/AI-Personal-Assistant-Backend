@@ -1,0 +1,161 @@
+{
+  "default_unknown_tool_risk": "HIGH",
+  "tools": [
+    {
+      "name": "system",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "system"
+    },
+    {
+      "name": "browser",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "browser"
+    },
+    {
+      "name": "research",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "research"
+    },
+    {
+      "name": "productivity",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "productivity"
+    },
+    {
+      "name": "manager",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "manager"
+    },
+    {
+      "name": "fs_read",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "fs_read"
+    },
+    {
+      "name": "fs_list",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "fs_read"
+    },
+    {
+      "name": "fs_ripgrep",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "fs_read"
+    },
+    {
+      "name": "git_status",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "git"
+    },
+    {
+      "name": "git_diff",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "git"
+    },
+    {
+      "name": "net_search",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "network"
+    },
+    {
+      "name": "net_fetch",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "network"
+    },
+    {
+      "name": "gmail_list",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "email"
+    },
+    {
+      "name": "gmail_read",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "email"
+    },
+    {
+      "name": "calendar_list",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "calendar"
+    },
+    {
+      "name": "memory_search",
+      "risk": "LOW",
+      "requires_interactive": false,
+      "required_capability": "memory"
+    },
+    {
+      "name": "fs_write",
+      "risk": "MEDIUM",
+      "requires_interactive": false,
+      "required_capability": "fs_write"
+    },
+    {
+      "name": "gmail_send_draft",
+      "risk": "MEDIUM",
+      "requires_interactive": false,
+      "required_capability": "email"
+    },
+    {
+      "name": "memory_store_fact",
+      "risk": "MEDIUM",
+      "requires_interactive": false,
+      "required_capability": "memory"
+    },
+    {
+      "name": "memory_update_profile",
+      "risk": "MEDIUM",
+      "requires_interactive": false,
+      "required_capability": "memory"
+    },
+    {
+      "name": "sys_exec",
+      "risk": "HIGH",
+      "requires_interactive": true,
+      "required_capability": "system_exec"
+    },
+    {
+      "name": "sys_kill",
+      "risk": "HIGH",
+      "requires_interactive": true,
+      "required_capability": "system_kill"
+    },
+    {
+      "name": "fs_delete",
+      "risk": "HIGH",
+      "requires_interactive": true,
+      "required_capability": "fs_delete"
+    },
+    {
+      "name": "git_commit",
+      "risk": "HIGH",
+      "requires_interactive": true,
+      "required_capability": "git"
+    },
+    {
+      "name": "git_push",
+      "risk": "HIGH",
+      "requires_interactive": true,
+      "required_capability": "git"
+    },
+    {
+      "name": "memory_delete",
+      "risk": "HIGH",
+      "requires_interactive": true,
+      "required_capability": "memory"
+    }
+  ]
+}

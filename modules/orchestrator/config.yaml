@@ -1,5 +1,0 @@
-orchestrator:
-  allow_parallel: true
-  max_parallel_workers: 4
-  max_retries: 2
-  deadlock_auto_heal: true

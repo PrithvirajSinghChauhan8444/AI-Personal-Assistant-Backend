@@ -1,0 +1,10 @@
+{
+  "engine": "kokoro",
+  "speed": 1.0,
+  "voice_kokoro": "am_michael",
+  "voice_piper": "en_US-lessac-medium.onnx",
+  "voice_piper_hi": "hi_IN-pratham-medium.onnx",
+  "voice_piper_en": "en_US-lessac-medium.onnx",
+  "sample_rate_hz": 24000,
+  "speaker_id": null
+}

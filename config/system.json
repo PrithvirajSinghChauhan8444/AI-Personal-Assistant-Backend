@@ -1,0 +1,9 @@
+{
+  "user_id": "local:prit",
+  "timezone": "Asia/Kolkata",
+  "log_level": "INFO",
+  "max_turn_iterations": 10,
+  "artifact_spillover_threshold_bytes": 102400,
+  "database_path": "workspace/data/sessions.db",
+  "artifacts_dir": "workspace/artifacts"
+}
