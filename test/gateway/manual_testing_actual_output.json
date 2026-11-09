@@ -1,0 +1,52 @@
+{
+  "title": "Layer 1 Gateway - Manual Testing Actual Output Recording",
+  "executed_at": "2026-11-10T19:38:13.415762021Z",
+  "input_file": "/home/prit/Project_Linux/AI-Personal-Assistant-Backend/test/gateway/manual_testing_input.json",
+  "output_file": "/home/prit/Project_Linux/AI-Personal-Assistant-Backend/test/gateway/manual_testing_actual_output.json",
+  "total_cases_run": 2,
+  "successful_dispatches": 1,
+  "gateway_errors_encountered": 1,
+  "panics_encountered": 0,
+  "results": [
+    {
+      "id": "MY_TEST_001",
+      "description": "Custom prompt test",
+      "type": "turn",
+      "input_raw": {
+        "id": "MY_TEST_001",
+        "description": "Custom prompt test",
+        "prompt": "@asd Hello assistant, schedule a meeting tomorrow at 10 AM",
+        "session_id": "550e8400-e29b-41d4-a716-446655440000",
+        "channel": "CLI",
+        "trigger": "INTERACTIVE"
+      },
+      "dispatched_to_gateway": false,
+      "error_occurred": true,
+      "error_code": "ERR_UNKNOWN_AGENT",
+      "error_message": "normalization failed: Agent '@asd' is not recognized. Valid agents: system, browser, research, productivity.",
+      "panic_occurred": false,
+      "execution_duration_ms": 0.014
+    },
+    {
+      "id": "MY_TEST_002",
+      "description": "HITL response test",
+      "type": "hitl",
+      "input_raw": {
+        "id": "MY_TEST_002",
+        "description": "HITL response test",
+        "type": "hitl",
+        "hitl_response": {
+          "request_id": "req_100",
+          "session_id": "550e8400-e29b-41d4-a716-446655440000",
+          "approved": true,
+          "user_feedback": "Approved",
+          "responded_at": "0001-01-01T00:00:00Z"
+        }
+      },
+      "dispatched_to_gateway": true,
+      "error_occurred": false,
+      "panic_occurred": false,
+      "execution_duration_ms": 0
+    }
+  ]
+}
