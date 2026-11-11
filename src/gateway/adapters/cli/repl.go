@@ -109,6 +109,8 @@ func (r *TerminalREPL) executeInteractiveTurn(ctx context.Context, prompt string
 
 	go r.watchTurnInterrupt(sigCh, cancel)
 
+	fmt.Fprint(r.out, RenderStatus("CLI", "Turn initiated. Connecting to control plane..."))
+
 	rawReq := gateway.InboundTurnRequest{
 		SessionID: r.sessionID,
 		Channel:   gateway.ClientTypeCLI,
@@ -134,14 +136,24 @@ func (r *TerminalREPL) watchTurnInterrupt(sigCh <-chan os.Signal, cancel context
 }
 
 func (r *TerminalREPL) consumeTurnStream(ctx context.Context, eventCh <-chan gateway.OutboundEvent) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	lastActivity := time.Now()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-ticker.C:
+			elapsed := time.Since(lastActivity).Truncate(time.Second)
+			if elapsed >= 2*time.Second {
+				fmt.Fprint(r.out, RenderHeartbeat(elapsed))
+			}
 		case ev, ok := <-eventCh:
 			if !ok {
 				return
 			}
+			lastActivity = time.Now()
 			r.dispatchRenderEvent(ctx, ev)
 		}
 	}

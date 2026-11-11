@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"assistant/src/gateway"
 	"github.com/google/uuid"
@@ -45,19 +46,31 @@ func (a *CLIAdapter) StartInteractive(ctx context.Context) error {
 
 // RunSingleTurn executes a single turn request to completion and streams output.
 func RunSingleTurn(ctx context.Context, gw *gateway.Gateway, rawReq gateway.InboundTurnRequest, out io.Writer) error {
+	fmt.Fprint(out, RenderStatus("CLI", "Turn initiated. Connecting to control plane..."))
+
 	eventCh, _, err := gw.SubmitTurn(ctx, rawReq)
 	if err != nil {
 		return fmt.Errorf("single turn submission failed: %w", err)
 	}
 
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	lastActivity := time.Now()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-ticker.C:
+			elapsed := time.Since(lastActivity).Truncate(time.Second)
+			if elapsed >= 2*time.Second {
+				fmt.Fprint(out, RenderHeartbeat(elapsed))
+			}
 		case ev, ok := <-eventCh:
 			if !ok {
 				return nil
 			}
+			lastActivity = time.Now()
 			renderSingleEvent(out, ev)
 		}
 	}

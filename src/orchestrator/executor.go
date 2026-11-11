@@ -73,19 +73,14 @@ func (e *StandaloneExecutor) Execute(ctx context.Context, input TurnExecutionInp
 		TextDelta: reply,
 	}
 
-	// Complete turn with telemetry metrics
+	// Complete subtask execution
 	duration := time.Since(start).Milliseconds()
 	eventCh <- gateway.OutboundEvent{
 		SessionID: input.SessionID,
 		TraceID:   input.TraceID,
-		Type:      gateway.EventTurnComplete,
+		Type:      gateway.EventStatusUpdate,
 		AgentName: input.Decision.TargetAgent,
-		Metrics: &gateway.TurnMetrics{
-			ModelName:       "layer2-orchestrator",
-			PromptTokens:    int32(len(input.Prompt) / 4),
-			CompletionTokens: int32(len(reply) / 4),
-			TotalDurationMs: duration,
-		},
+		StatusMsg: fmt.Sprintf("Completed execution in %dms", duration),
 	}
 
 	return nil

@@ -87,7 +87,16 @@ func (h *Host) ExecuteTurn(
 		return fmt.Errorf("failed to load session history: %w", err)
 	}
 
-	// 4. Construct execution context and forward to Controller
+	// 4. Emit session verification status event
+	eventCh <- gateway.OutboundEvent{
+		SessionID: sess.SessionID,
+		TraceID:   req.TraceID,
+		Type:      gateway.EventStatusUpdate,
+		AgentName: "Host",
+		StatusMsg: fmt.Sprintf("Session verified. Handing turn to Layer 2 Orchestrator Controller..."),
+	}
+
+	// 5. Construct execution context and forward to Controller
 	turnCtx := TurnContext{
 		SessionID:           sess.SessionID,
 		TurnID:              turnID,
@@ -104,7 +113,7 @@ func (h *Host) ExecuteTurn(
 		return err
 	}
 
-	// 5. Persist assistant response to SQLite
+	// 6. Persist assistant response to SQLite
 	return h.persistAssistantResponse(ctx, sess.SessionID, turnID, assistantReply)
 }
 

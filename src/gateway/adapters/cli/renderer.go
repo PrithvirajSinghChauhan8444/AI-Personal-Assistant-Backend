@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"assistant/src/gateway"
 	"github.com/charmbracelet/lipgloss"
@@ -48,14 +49,23 @@ func RenderHelp() string {
 func RenderThought(agent string, text string) string {
 	tag := ThoughtStyle.Render(fmt.Sprintf("[%s reasoning]", agent))
 	content := ThoughtStyle.Render(text)
-	return fmt.Sprintf("%s %s", tag, content)
+	return fmt.Sprintf("\n%s %s\n", tag, content)
 }
 
 // RenderStatus formats operational status notifications.
 func RenderStatus(agent string, statusMsg string) string {
 	badge := StatusStyle.Render("●")
+	timeStr := ThoughtStyle.Render(time.Now().Format("15:04:05"))
 	agentTag := AgentStyle.Render(agent)
-	return fmt.Sprintf("%s %s: %s\n", badge, agentTag, statusMsg)
+	return fmt.Sprintf("%s %s [%s] %s\n", badge, timeStr, agentTag, statusMsg)
+}
+
+// RenderHeartbeat formats an activity heartbeat indicator for ongoing operations.
+func RenderHeartbeat(elapsed time.Duration) string {
+	dot := StatusStyle.Render("⋯")
+	timeStr := ThoughtStyle.Render(time.Now().Format("15:04:05"))
+	msg := ThoughtStyle.Render(fmt.Sprintf("Still processing... (%s elapsed)", elapsed))
+	return fmt.Sprintf("%s %s %s\n", dot, timeStr, msg)
 }
 
 // RenderHITLPrompt formats an approval prompt for human clearance.
@@ -84,7 +94,7 @@ func RenderTurnMetrics(metrics *gateway.TurnMetrics) string {
 		metrics.TimeToFirstByteMs,
 		metrics.TotalDurationMs,
 	)
-	return lipgloss.NewStyle().Foreground(lipgloss.Color("#64748B")).Render("\n── " + info + " ──\n")
+	return fmt.Sprintf("\n%s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("#64748B")).Render("── "+info+" ──"))
 }
 
 // RenderError formats error messages cleanly for terminal display.

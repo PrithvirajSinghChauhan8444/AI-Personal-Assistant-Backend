@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"assistant/src/gateway"
 	"assistant/src/orchestrator/planner"
@@ -92,7 +93,18 @@ func (c *Controller) Orchestrate(
 	turn TurnContext,
 	eventCh chan<- gateway.OutboundEvent,
 ) (string, error) {
-	// 1. LLM Cognitive Planning via Manager Agent
+	startTime := time.Now()
+
+	// 1. Emit planning start notification
+	eventCh <- gateway.OutboundEvent{
+		SessionID: turn.SessionID,
+		TraceID:   turn.TraceID,
+		Type:      gateway.EventStatusUpdate,
+		AgentName: "Manager",
+		StatusMsg: "Decomposing user request into actionable TaskPlan DAG...",
+	}
+
+	// 2. LLM Cognitive Planning via Manager Agent
 	plan, err := c.planTurn(ctx, turn)
 	if err != nil {
 		return "", fmt.Errorf("manager planning failed: %w", err)
@@ -100,15 +112,38 @@ func (c *Controller) Orchestrate(
 
 	c.emitPlanThought(turn.SessionID, turn.TraceID, plan, eventCh)
 
-	// 2. Task Scheduler walks the DAG
+	// 3. Task Scheduler walks the DAG
 	sched := scheduler.NewTaskScheduler(plan, scheduler.Config{
 		AllowParallel:     true,
 		MaxParallel:       4,
 		AutoHealDeadlocks: true,
 	})
 
+	eventCh <- gateway.OutboundEvent{
+		SessionID: turn.SessionID,
+		TraceID:   turn.TraceID,
+		Type:      gateway.EventStatusUpdate,
+		AgentName: "Scheduler",
+		StatusMsg: fmt.Sprintf("Walking DAG and dispatching %d subtask(s)...", len(plan.SubTasks)),
+	}
+
 	accumulator := &stringAccumulator{}
 	c.executeScheduledDAG(ctx, sched, turn, accumulator, eventCh)
+
+	// 4. Emit final turn completion event with telemetry
+	duration := time.Since(startTime).Milliseconds()
+	eventCh <- gateway.OutboundEvent{
+		SessionID: turn.SessionID,
+		TraceID:   turn.TraceID,
+		Type:      gateway.EventTurnComplete,
+		AgentName: "Orchestrator",
+		Metrics: &gateway.TurnMetrics{
+			ModelName:        "layer2-orchestrator",
+			PromptTokens:     int32(len(turn.Prompt) / 4),
+			CompletionTokens: int32(len(accumulator.String()) / 4),
+			TotalDurationMs:  duration,
+		},
+	}
 
 	return accumulator.String(), nil
 }
@@ -208,6 +243,14 @@ func (c *Controller) executeSubTask(
 		}
 	}
 
+	eventCh <- gateway.OutboundEvent{
+		SessionID: turn.SessionID,
+		TraceID:   turn.TraceID,
+		Type:      gateway.EventStatusUpdate,
+		AgentName: targetWorker,
+		StatusMsg: fmt.Sprintf("Executing subtask %s: %s", t.ID, t.Description),
+	}
+
 	taskPrompt := c.buildTaskPrompt(t, sched)
 	taskDecision := router.RouteDecision{
 		Type:        router.RouteFastPath,
@@ -292,4 +335,10 @@ func (c *Controller) finalizeSubTaskOutput(
 		rawOutput = "completed successfully"
 	}
 	_ = sched.MarkCompleted(t.ID, rawOutput)
+	eventCh <- gateway.OutboundEvent{
+		SessionID: sessionID,
+		Type:      gateway.EventStatusUpdate,
+		AgentName: targetWorker,
+		StatusMsg: fmt.Sprintf("Subtask %s completed successfully.", t.ID),
+	}
 }
