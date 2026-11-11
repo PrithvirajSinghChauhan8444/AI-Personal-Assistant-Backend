@@ -68,12 +68,19 @@ func Start(port int, historyDir string) error {
 	registry := engine.NewRegistry()
 	supervisor := engine.NewSupervisor(registry, recorder)
 
-	// Register All Modules & Pipelines
+	// Register All Core Modules & Pipelines
 	modules.RegisterLayer1Gateway(registry, supervisor)
 	modules.RegisterLayer2Orchestrator(registry, supervisor)
 	modules.RegisterSafetyGatekeeper(registry)
 	modules.RegisterSessionStore(registry)
 	modules.RegisterE2EPipeline(registry, supervisor)
+
+	// Initialize AST Codebase Scanner
+	srcRoot := engine.FindSourceRoot()
+	scanner := engine.NewASTScanner(srcRoot, registry)
+	if _, err := scanner.Scan(); err == nil {
+		scanner.AutoRegisterDiscoveredModules(registry)
+	}
 
 	mux := http.NewServeMux()
 
@@ -267,6 +274,51 @@ func Start(port int, historyDir string) error {
 				flusher.Flush()
 			}
 		}
+	})
+
+	// API: Get AST Scan Summary
+	mux.HandleFunc("GET /api/scanner/summary", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		res, err := scanner.GetLastResult()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(res.Summary)
+	})
+
+	// API: Get AST Details (All packages, types, methods)
+	mux.HandleFunc("GET /api/scanner/details", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		res, err := scanner.GetLastResult()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(res)
+	})
+
+	// API: Force Rescan Codebase
+	mux.HandleFunc("POST /api/scanner/rescan", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		res, err := scanner.Scan()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		added := scanner.AutoRegisterDiscoveredModules(registry)
+		engine.GlobalTelemetry.RecordGoLog(engine.GoLogEntry{
+			Timestamp:   time.Now(),
+			Level:       "INFO",
+			Source:      "ASTScanner",
+			ExecutionID: "",
+			TraceID:     "",
+			Message:     fmt.Sprintf("AST scan completed: %d packages, %d types, %d methods. Auto-registered %d modules.", res.Summary.PackageCount, res.Summary.TypeCount, res.Summary.MethodCount+res.Summary.FunctionCount, added),
+		})
+		_ = json.NewEncoder(w).Encode(res)
 	})
 
 	// Static Web Assets via Embedded FS

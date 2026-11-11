@@ -90,6 +90,20 @@ type ASTScanResult struct {
 	Summary     ASTScanSummary `json:"summary"`
 }
 
+// FindSourceRoot discovers the relative or absolute path to the project's src directory.
+func FindSourceRoot() string {
+	for _, candidate := range []string{"src", "../src", "../../src", "../../../src"} {
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			abs, err := filepath.Abs(candidate)
+			if err == nil {
+				return abs
+			}
+			return candidate
+		}
+	}
+	return "src"
+}
+
 // ASTScanner parses Go source files using go/parser and go/ast.
 type ASTScanner struct {
 	mu         sync.RWMutex
