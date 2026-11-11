@@ -19,6 +19,7 @@ class ToolCallChunk:
     call_id: str
     tool_name: str
     arguments_json: str
+    thought_signature: Optional[bytes] = None
 
 
 @dataclass
