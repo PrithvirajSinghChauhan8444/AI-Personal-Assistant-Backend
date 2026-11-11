@@ -38,7 +38,13 @@ func (p *PythonManagerBridge) Generate(ctx context.Context, systemPrompt, userPr
 		return "", errors.New("python runtime binary not found on system")
 	}
 
+	root := findProjectRoot()
 	cmd := exec.CommandContext(ctx, p.pythonBinary, p.managerScript, "--raw-llm")
+	cmd.Dir = root
+	env := os.Environ()
+	env = append(env, "PYTHONPATH="+root)
+	cmd.Env = env
+
 	payload := map[string]string{
 		"system": systemPrompt,
 		"user":   userPrompt,
@@ -66,7 +72,13 @@ func (p *PythonManagerBridge) Plan(ctx context.Context, goal string, contextData
 		return nil, errors.New("python runtime binary not found on system")
 	}
 
+	root := findProjectRoot()
 	cmd := exec.CommandContext(ctx, p.pythonBinary, p.managerScript)
+	cmd.Dir = root
+	env := os.Environ()
+	env = append(env, "PYTHONPATH="+root)
+	cmd.Env = env
+
 	payload := map[string]interface{}{
 		"goal":    goal,
 		"context": contextData,
@@ -94,9 +106,31 @@ func (p *PythonManagerBridge) Plan(ctx context.Context, goal string, contextData
 	return &plan, nil
 }
 
+// findProjectRoot locates the repository root containing go.mod.
+func findProjectRoot() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "."
+}
+
 // findPythonBinary searches for the virtual environment python first, then PATH binaries.
 func findPythonBinary() string {
+	root := findProjectRoot()
 	candidates := []string{
+		filepath.Join(root, ".venv", "bin", "python"),
+		filepath.Join(root, ".venv", "bin", "python3"),
 		filepath.Join(".venv", "bin", "python"),
 		filepath.Join(".venv", "bin", "python3"),
 		filepath.Join("..", ".venv", "bin", "python"),
@@ -119,22 +153,23 @@ func findPythonBinary() string {
 
 // findManagerScript locates the Layer 2 Manager package or entry point.
 func findManagerScript() string {
+	root := findProjectRoot()
 	candidates := []string{
+		filepath.Join(root, "src", "orchestrator", "manager", "manager.py"),
+		filepath.Join(root, "src", "orchestrator", "manager", "__main__.py"),
+		filepath.Join(root, "src", "orchestrator", "manager"),
 		filepath.Join("src", "orchestrator", "manager", "manager.py"),
 		filepath.Join("src", "orchestrator", "manager", "__main__.py"),
 		filepath.Join("src", "orchestrator", "manager"),
-		filepath.Join("..", "src", "orchestrator", "manager", "manager.py"),
-		filepath.Join("..", "src", "orchestrator", "manager", "__main__.py"),
-		filepath.Join("..", "src", "orchestrator", "manager"),
 	}
 
 	for _, c := range candidates {
 		if fi, err := os.Stat(c); err == nil {
-			if !fi.IsDir() || c == filepath.Join("src", "orchestrator", "manager") {
+			if !fi.IsDir() || c == filepath.Join(root, "src", "orchestrator", "manager") || c == filepath.Join("src", "orchestrator", "manager") {
 				return c
 			}
 		}
 	}
 
-	return filepath.Join("src", "orchestrator", "manager", "__main__.py")
+	return filepath.Join(root, "src", "orchestrator", "manager", "__main__.py")
 }

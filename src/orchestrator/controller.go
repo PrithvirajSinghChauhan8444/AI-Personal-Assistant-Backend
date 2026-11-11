@@ -227,11 +227,16 @@ func (c *Controller) executeSubTask(
 		return
 	}
 
+	subtaskTurnID := turn.TurnID
+	if t.ID != "" {
+		subtaskTurnID = fmt.Sprintf("%s_%s", turn.TurnID, t.ID)
+	}
+
 	// Human-In-The-Loop check if required
 	if eval.RequiresHITL && c.hitlRequester != nil {
 		hitlReq := HITLRequest{
 			SessionID: turn.SessionID,
-			TurnID:    turn.TurnID,
+			TurnID:    subtaskTurnID,
 			ToolName:  targetWorker,
 			ArgsJSON:  fmt.Sprintf(`{"task_id":%q,"description":%q}`, t.ID, t.Description),
 			EventChan: eventCh,
@@ -276,7 +281,7 @@ func (c *Controller) executeSubTask(
 
 	input := TurnExecutionInput{
 		SessionID:   turn.SessionID,
-		TurnID:      turn.TurnID,
+		TurnID:      subtaskTurnID,
 		TraceID:     turn.TraceID,
 		Decision:    taskDecision,
 		Prompt:      taskPrompt,

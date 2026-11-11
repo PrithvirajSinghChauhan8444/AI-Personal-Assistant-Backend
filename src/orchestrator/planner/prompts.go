@@ -131,8 +131,8 @@ func BuildPlannerSystemPrompt(workers []WorkerCapability, promptFilePath string)
 	} else {
 		// Try default location on disk for live editing
 		candidates := []string{
-			"src/orchestrator/planner/manager_prompt.md",
 			"config/prompts/manager_prompt.md",
+			"src/orchestrator/planner/manager_prompt.md",
 		}
 		for _, c := range candidates {
 			if content, err := os.ReadFile(c); err == nil && len(content) > 0 {
@@ -150,5 +150,25 @@ func BuildPlannerSystemPrompt(workers []WorkerCapability, promptFilePath string)
 		}
 	}
 
-	return strings.Replace(template, "{{AVAILABLE_WORKERS}}", strings.TrimSpace(workerBullets.String()), 1)
+	wsDir := "workspace"
+	artDir := "workspace/artifacts"
+	if sysData, err := os.ReadFile("config/system.json"); err == nil {
+		var sysCfg struct {
+			WorkspaceDir string `json:"workspace_dir"`
+			ArtifactsDir string `json:"artifacts_dir"`
+		}
+		if err := json.Unmarshal(sysData, &sysCfg); err == nil {
+			if sysCfg.WorkspaceDir != "" {
+				wsDir = sysCfg.WorkspaceDir
+			}
+			if sysCfg.ArtifactsDir != "" {
+				artDir = sysCfg.ArtifactsDir
+			}
+		}
+	}
+
+	res := strings.Replace(template, "{{AVAILABLE_WORKERS}}", strings.TrimSpace(workerBullets.String()), 1)
+	res = strings.Replace(res, "{{WORKSPACE_DIR}}", wsDir, -1)
+	res = strings.Replace(res, "{{ARTIFACTS_DIR}}", artDir, -1)
+	return res
 }

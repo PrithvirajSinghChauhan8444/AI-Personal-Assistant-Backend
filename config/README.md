@@ -56,30 +56,36 @@ Controls the **Layer 2 Safety Gatekeeper**:
 
 ## 4. System Settings (`config/system.json`)
 
-- `user_id`: Default user identity (`local:prit`).
-- `timezone`: Timezone for relative time parsing and Google Calendar (`Asia/Kolkata`).
-- `log_level`: `DEBUG`, `INFO`, `WARN`, `ERROR`.
-- `max_turn_iterations`: Maximum ReAct iterations allowed per turn (default: `10`).
-- `artifact_spillover_threshold_bytes`: Payload limit (default: `102400` = 100KB) before spilling to disk (`workspace/artifacts/`).
-- `database_path`: Location of SQLite session store (`workspace/data/sessions.db`).
-
----
-
-## 5. Account & Identity Aliases (`config/accounts.json`)
-
-Maps human-readable account aliases to specific email addresses:
+Configure paths, limits, and runtime settings:
 ```json
 {
-  "primary": "prithvirajsinghchauhan8444@gmail.com",
-  "personal": "prithvirajsinghchauhan8444@gmail.com",
-  "college": "prithvi24101@iiitnr.edu.in"
+  "workspace_dir": "workspace",
+  "artifacts_dir": "workspace/artifacts",
+  "database_path": "workspace/data/sessions.db",
+  "notes_dir": "workspace/obsidian_vault",
+  "allowed_access_roots": [
+    "workspace"
+  ],
+  "timezone": "Asia/Kolkata",
+  "log_level": "INFO",
+  "max_turn_iterations": 10,
+  "artifact_spillover_threshold_bytes": 102400
 }
 ```
-Allows prompts like *"Check my college emails"* vs *"Draft a message from my personal account"*.
+
+- **`workspace_dir`**: Root directory that agents use for file access and storage (e.g. `workspace` or `/custom/path`).
+- **`artifacts_dir`**: Destination for large output files and text drafts ("Pointers, Not Payloads").
+- **`database_path`**: Location of SQLite session and message store.
+- **`notes_dir`**: Directory for Obsidian markdown notes and research logs.
+- **`allowed_access_roots`**: List of allowed root paths for agent filesystem operations.
+- **`timezone`**: Timezone for relative time parsing and Google Calendar.
+- **`log_level`**: `DEBUG`, `INFO`, `WARN`, `ERROR`.
+- **`max_turn_iterations`**: Maximum ReAct iterations allowed per turn (default: `10`).
+- **`artifact_spillover_threshold_bytes`**: Output threshold (default: `102400` = 100KB) before spilling to disk.
 
 ---
 
-## 6. Speech & Neural TTS (`config/speech.json`)
+## 5. Speech & Neural TTS (`config/speech.json`)
 
 - `engine`: Primary TTS engine (`kokoro` or `piper`).
 - `voice_kokoro`: Default Kokoro neural voice (e.g. `am_michael`).

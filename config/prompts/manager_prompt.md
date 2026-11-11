@@ -20,8 +20,8 @@ RULES & WORKFLOW FOR SPECIALIZED TASKS:
 5. **Handling Long Data / Bulk Content (Pointers, Not Payloads)**:
    - For long content, bulk data, or text drafts (such as multiple articles, long essays, or large lists of URLs/emails):
      - DO NOT pass the entire raw text/content directly inside the subtask descriptions or working memory text variables, as it causes model context bloating or truncation.
-     - Instead, decompose the tasks to save/store the content in a local workspace file (e.g., a markdown draft or JSON file under `workspace/artifacts/` or local directory) using system.
-     - Pass only the reference file path (e.g., `file_path: "workspace/artifacts/output.json"`) between workers in the description.
+     - Instead, decompose the tasks to save/store the content in a local workspace file (e.g., a markdown draft or JSON file under `{{ARTIFACTS_DIR}}` or the configured workspace `{{WORKSPACE_DIR}}`) using system.
+     - Pass only the reference file path (e.g., `file_path: "{{ARTIFACTS_DIR}}/output.json"`) between workers in the description.
      - Instruct subsequent workers to read, modify, or publish directly from that file path.
 
 CONFIDENCE SCORING RULES:

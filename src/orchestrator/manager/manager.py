@@ -76,7 +76,7 @@ class ManagerAgent:
     def __init__(
         self,
         config_path: str = "config/agents.json",
-        prompt_path: str = "src/orchestrator/planner/manager_prompt.md",
+        prompt_path: str = "config/prompts/manager_prompt.md",
         model_override: Optional[str] = None,
         temperature_override: Optional[float] = None,
     ) -> None:
@@ -188,10 +188,10 @@ class ManagerAgent:
         """Loads the markdown prompt template and formats worker capabilities."""
         candidates = [
             Path(self.prompt_path),
-            Path(__file__).resolve().parent / "prompt.md",
             _PROJECT_ROOT / "config" / "prompts" / "manager_prompt.md",
-            _PROJECT_ROOT / "src" / "orchestrator" / "planner" / "manager_prompt.md",
             Path("config/prompts/manager_prompt.md"),
+            Path(__file__).resolve().parent / "prompt.md",
+            _PROJECT_ROOT / "src" / "orchestrator" / "planner" / "manager_prompt.md",
             Path("src/orchestrator/planner/manager_prompt.md"),
         ]
         template = ""
@@ -217,21 +217,44 @@ class ManagerAgent:
             for r in w.get("routing_rules", []):
                 worker_bullets.append(f"  • {r}")
 
-        return template.replace("{{AVAILABLE_WORKERS}}", "\n".join(worker_bullets))
+        # Inject workspace and artifacts paths from system.json
+        try:
+            from src.agents.factory import load_system_config
+            sys_cfg = load_system_config()
+            ws_dir = sys_cfg.get("workspace_dir", "workspace")
+            art_dir = sys_cfg.get("artifacts_dir", "workspace/artifacts")
+        except Exception:
+            ws_dir = "workspace"
+            art_dir = "workspace/artifacts"
+
+        formatted = template.replace("{{AVAILABLE_WORKERS}}", "\n".join(worker_bullets))
+        formatted = formatted.replace("{{WORKSPACE_DIR}}", ws_dir)
+        formatted = formatted.replace("{{ARTIFACTS_DIR}}", art_dir)
+        return formatted
 
     async def plan(
         self,
         goal: str,
         context_data: Optional[Dict[str, Any]] = None,
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Asynchronously decomposes the goal into a validated TaskPlan DAG."""
         goal = (goal or "").strip()
         if not goal:
             return self._fallback_plan("Empty request received")
 
-        user_content = f"User Request: {goal}"
+        context_parts = []
+        if conversation_history:
+            history_str = "\n".join(
+                f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in conversation_history
+            )
+            context_parts.append(f"Conversation History:\n{history_str}")
         if context_data:
-            user_content = f"Context: {json.dumps(context_data)}\n\n{user_content}"
+            context_parts.append(f"Context: {json.dumps(context_data)}")
+
+        user_content = f"User Request: {goal}"
+        if context_parts:
+            user_content = f"{'\n\n'.join(context_parts)}\n\n{user_content}"
 
         try:
             client = ModelFactory.get_client(

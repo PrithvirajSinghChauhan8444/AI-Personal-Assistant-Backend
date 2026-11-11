@@ -1,9 +1,14 @@
 {
-  "user_id": "local:prit",
+  "workspace_dir": "/home/prit/Project_Linux/Assistant_Foler",
+  "artifacts_dir": "/home/prit/Project_Linux/Assistant_Foler/artifacts",
+  "database_path": "/home/prit/Project_Linux/AI-Personal-Assistant-Backend/workspace/data/sessions.db",
+  "notes_dir": "/home/prit/Project_Linux/Assistant_Foler",
+  "allowed_access_roots": [
+    "/home/prit/Project_Linux/Assistant_Foler",
+    "/home/prit/Project_Linux/AI-Personal-Assistant-Backend/workspace"
+  ],
   "timezone": "Asia/Kolkata",
   "log_level": "INFO",
   "max_turn_iterations": 10,
-  "artifact_spillover_threshold_bytes": 102400,
-  "database_path": "workspace/data/sessions.db",
-  "artifacts_dir": "workspace/artifacts"
+  "artifact_spillover_threshold_bytes": 102400
 }
