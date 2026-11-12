@@ -89,4 +89,29 @@ BROWSER_TOOLS: List[ToolDefinition] = [
             },
         },
     ),
+    ToolDefinition(
+        name="browser_snapshot",
+        category="browser",
+        description="Captures accessibility tree snapshot of the page with interactive element references and roles.",
+        risk="LOW",
+        prompt_usage_tip="Always call after navigation to inspect buttons, links, inputs, and text content.",
+        parameters={
+            "type": "object",
+            "properties": {},
+        },
+    ),
+    ToolDefinition(
+        name="browser_take_screenshot",
+        category="browser",
+        description="Takes a visual PNG screenshot of the current browser page.",
+        risk="LOW",
+        prompt_usage_tip="Use to visually capture rendered pages or charts.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "fullPage": {"type": "boolean", "description": "Whether to capture full scrollable height", "default": False},
+                "filename": {"type": "string", "description": "Optional file path to save screenshot to"},
+            },
+        },
+    ),
 ]

@@ -14,7 +14,10 @@ config/ytmusic_headers.json
 # Local databases and memory logs
 Memory/
 *.db
-workspace/data/*.db
+*.db-shm
+*.db-wal
+workspace/data/*.db*
+.playwright-mcp/
 
 # Dynamically generated skills (already tracked core skills remain tracked)
 Skills/

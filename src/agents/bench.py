@@ -17,6 +17,7 @@ from src.agents.contracts import (
     ToolCallIntent,
     ToolCallResult,
 )
+from src.agents.browser.mcp_bridge import PlaywrightMCPBridge
 from src.agents.factory import create_agent, create_all_agents
 from src.models.base import BaseLLMClient
 from src.models.types import StreamChunk, ToolCallChunk
@@ -55,11 +56,13 @@ class ConsolePipeEmitter(PipeEmitterProtocol):
 
 
 class LiveGoToolBridgeReader(PipeReaderProtocol):
-    """Executes remote tool calls natively via the Go Layer 3 Tool Engine."""
+    """Executes remote tool calls natively via the Go Layer 3 Tool Engine or Playwright MCP."""
 
-    def __init__(self, mock_tools: bool = False) -> None:
+    def __init__(self, mock_tools: bool = False, isolated_browser: bool = True) -> None:
         self.mock_tools = mock_tools
+        self.isolated_browser = isolated_browser
         self.pending_intents: List[ToolCallIntent] = []
+        self._browser_bridge: Optional[PlaywrightMCPBridge] = None
 
     def queue_intent(self, intent: ToolCallIntent) -> None:
         self.pending_intents.append(intent)
@@ -72,10 +75,24 @@ class LiveGoToolBridgeReader(PipeReaderProtocol):
         for intent in intents:
             if self.mock_tools:
                 results.append(ToolCallResult(call_id=intent.call_id, output=f"Simulated output for {intent.tool_name}"))
+            elif intent.tool_name.startswith("browser_"):
+                result = await self._run_browser_tool(intent)
+                results.append(result)
             else:
                 result = await asyncio.to_thread(self._run_native_tool, intent)
                 results.append(result)
         return results
+
+    async def _run_browser_tool(self, intent: ToolCallIntent) -> ToolCallResult:
+        if self._browser_bridge is None:
+            self._browser_bridge = PlaywrightMCPBridge(isolated=self.isolated_browser)
+            self._browser_bridge.start()
+        return await self._browser_bridge.execute_tool(intent.tool_name, intent.arguments, intent.call_id)
+
+    def close(self) -> None:
+        if self._browser_bridge is not None:
+            self._browser_bridge.stop()
+            self._browser_bridge = None
 
     def _run_native_tool(self, intent: ToolCallIntent) -> ToolCallResult:
         try:
@@ -147,6 +164,22 @@ class MockBenchLLMClient(BaseLLMClient):
                     )
                 ]
             )
+        elif tools and ("browser" in last_message.lower() or "navigate" in last_message.lower() or "http" in last_message.lower() or "page" in last_message.lower()):
+            url = "https://example.com"
+            if "http" in last_message:
+                for word in last_message.split():
+                    if word.startswith("http"):
+                        url = word.strip(" '\",")
+                        break
+            yield StreamChunk(
+                tool_calls=[
+                    ToolCallChunk(
+                        call_id="call_mock_browser_nav",
+                        tool_name="browser_navigate",
+                        arguments_json=json.dumps({"url": url}),
+                    )
+                ]
+            )
         else:
             yield StreamChunk(text_delta=f"Response for: {last_message}")
 
@@ -171,15 +204,18 @@ async def execute_agent_prompt(
         return json.dumps(plan_dict, indent=2), 1
     else:
         worker = create_agent(agent_type=agent_type, model_client=model_client)
-        result = await worker.execute_turn(
-            session_id="manual_bench_session",
-            turn_id=turn_id,
-            prompt=prompt,
-            history=history,
-            pipe_emitter=emitter,
-            pipe_reader=bridge,
-        )
-        return result.final_response, result.iterations_used
+        try:
+            result = await worker.execute_turn(
+                session_id="manual_bench_session",
+                turn_id=turn_id,
+                prompt=prompt,
+                history=history,
+                pipe_emitter=emitter,
+                pipe_reader=bridge,
+            )
+            return result.final_response, result.iterations_used
+        finally:
+            bridge.close()
 
 
 async def interactive_repl(agent_type: AgentType, model_client: Optional[BaseLLMClient], mock_tools: bool) -> None:
