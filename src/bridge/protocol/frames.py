@@ -117,6 +117,7 @@ class ToolResultPayload:
     artifact_path: Optional[str] = None
     duration_ms: int = 0
     is_error: bool = False
+    tool_name: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

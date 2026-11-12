@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -45,7 +46,7 @@ func (b *BridgeTurnExecutor) Execute(ctx context.Context, input TurnExecutionInp
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(4)
 
 	// Stream live tokens to gateway channel
 	go func() {
@@ -71,6 +72,55 @@ func (b *BridgeTurnExecutor) Execute(ctx context.Context, input TurnExecutionInp
 				Type:      gateway.EventThoughtChunk,
 				AgentName: input.Decision.TargetAgent,
 				TextDelta: thought,
+			}
+		}
+	}()
+
+	// Stream tool calls to gateway channel
+	go func() {
+		defer wg.Done()
+		for tc := range handle.ToolCalls() {
+			argsBytes, _ := json.Marshal(tc.Arguments)
+			eventCh <- gateway.OutboundEvent{
+				SessionID: input.SessionID,
+				TraceID:   input.TraceID,
+				Type:      gateway.EventToolCall,
+				AgentName: input.Decision.TargetAgent,
+				StatusMsg: fmt.Sprintf("Executing tool %s...", tc.ToolName),
+				ToolCall: &gateway.ToolCallInfo{
+					CallID:         tc.CallID,
+					ToolName:       tc.ToolName,
+					Arguments:      tc.Arguments,
+					ArgsJSON:       string(argsBytes),
+					IdempotencyKey: tc.IdempotencyKey,
+				},
+			}
+		}
+	}()
+
+	// Stream tool results to gateway channel
+	go func() {
+		defer wg.Done()
+		for tr := range handle.ToolResults() {
+			statusMsg := fmt.Sprintf("Tool %s completed (%dms)", tr.ToolName, tr.DurationMs)
+			if tr.IsError {
+				statusMsg = fmt.Sprintf("Tool %s failed (%dms)", tr.ToolName, tr.DurationMs)
+			}
+			eventCh <- gateway.OutboundEvent{
+				SessionID: input.SessionID,
+				TraceID:   input.TraceID,
+				Type:      gateway.EventToolResult,
+				AgentName: input.Decision.TargetAgent,
+				StatusMsg: statusMsg,
+				ToolResult: &gateway.ToolResultInfo{
+					CallID:       tr.CallID,
+					ToolName:     tr.ToolName,
+					ExitCode:     tr.ExitCode,
+					Output:       tr.Output,
+					ArtifactPath: tr.ArtifactPath,
+					DurationMs:   tr.DurationMs,
+					IsError:      tr.IsError,
+				},
 			}
 		}
 	}()

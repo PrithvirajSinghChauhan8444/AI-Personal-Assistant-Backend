@@ -136,6 +136,9 @@ func (r *TerminalREPL) watchTurnInterrupt(sigCh <-chan os.Signal, cancel context
 }
 
 func (r *TerminalREPL) consumeTurnStream(ctx context.Context, eventCh <-chan gateway.OutboundEvent) {
+	streamRenderer := NewStreamRenderer(r.out)
+	defer streamRenderer.Flush()
+
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	lastActivity := time.Now()
@@ -147,33 +150,31 @@ func (r *TerminalREPL) consumeTurnStream(ctx context.Context, eventCh <-chan gat
 		case <-ticker.C:
 			elapsed := time.Since(lastActivity).Truncate(time.Second)
 			if elapsed >= 2*time.Second {
-				fmt.Fprint(r.out, RenderHeartbeat(elapsed))
+				streamRenderer.RenderHeartbeat(elapsed)
 			}
 		case ev, ok := <-eventCh:
 			if !ok {
 				return
 			}
 			lastActivity = time.Now()
-			r.dispatchRenderEvent(ctx, ev)
+			if ev.Type == gateway.EventHITLRequest {
+				streamRenderer.Flush()
+				r.handleHITLPrompt(ctx, ev.HITL)
+			} else {
+				streamRenderer.RenderEvent(ev)
+			}
 		}
 	}
 }
 
 func (r *TerminalREPL) dispatchRenderEvent(ctx context.Context, ev gateway.OutboundEvent) {
-	switch ev.Type {
-	case gateway.EventTokenChunk:
-		fmt.Fprint(r.out, ev.TextDelta)
-	case gateway.EventThoughtChunk:
-		fmt.Fprintln(r.out, RenderThought(ev.AgentName, ev.TextDelta))
-	case gateway.EventStatusUpdate:
-		fmt.Fprint(r.out, RenderStatus(ev.AgentName, ev.StatusMsg))
-	case gateway.EventHITLRequest:
+	if ev.Type == gateway.EventHITLRequest {
 		r.handleHITLPrompt(ctx, ev.HITL)
-	case gateway.EventTurnComplete:
-		fmt.Fprint(r.out, RenderTurnMetrics(ev.Metrics))
-	case gateway.EventTurnError:
-		fmt.Fprint(r.out, RenderError(ev.Error))
+		return
 	}
+	renderer := NewStreamRenderer(r.out)
+	renderer.RenderEvent(ev)
+	renderer.Flush()
 }
 
 func (r *TerminalREPL) handleHITLPrompt(ctx context.Context, prompt *gateway.HITLApprovalPrompt) {

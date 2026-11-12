@@ -50,10 +50,32 @@ const (
 	EventTokenChunk   EventType = "TOKEN_CHUNK"   // Text to display live
 	EventThoughtChunk EventType = "THOUGHT_CHUNK" // Agent reasoning or internal monologue
 	EventStatusUpdate EventType = "STATUS_UPDATE" // Operational status (e.g. "Running tool...")
+	EventToolCall     EventType = "TOOL_CALL"     // Tool execution start
+	EventToolResult   EventType = "TOOL_RESULT"   // Tool execution result
 	EventHITLRequest  EventType = "HITL_REQUEST"  // Interactive human approval prompt
 	EventTurnComplete EventType = "TURN_COMPLETE" // Final completion
 	EventTurnError    EventType = "TURN_ERROR"    // Failure event
 )
+
+// ToolCallInfo provides structured details when an agent invokes a tool.
+type ToolCallInfo struct {
+	CallID         string         `json:"call_id"`
+	ToolName       string         `json:"tool_name"`
+	Arguments      map[string]any `json:"arguments,omitempty"`
+	ArgsJSON       string         `json:"args_json,omitempty"`
+	IdempotencyKey string         `json:"idempotency_key,omitempty"`
+}
+
+// ToolResultInfo provides structured details when a tool execution finishes.
+type ToolResultInfo struct {
+	CallID       string `json:"call_id"`
+	ToolName     string `json:"tool_name,omitempty"`
+	ExitCode     int    `json:"exit_code"`
+	Output       string `json:"output,omitempty"`
+	ArtifactPath string `json:"artifact_path,omitempty"`
+	DurationMs   int64  `json:"duration_ms"`
+	IsError      bool   `json:"is_error"`
+}
 
 // OutboundEvent is streamed from Layer 2 back to Layer 1 for live rendering.
 type OutboundEvent struct {
@@ -70,6 +92,10 @@ type OutboundEvent struct {
 	HITL      *HITLApprovalPrompt `json:"hitl,omitempty"`       // For approval requests
 	Metrics   *TurnMetrics        `json:"metrics,omitempty"`    // For turn completion
 	Error     string              `json:"error,omitempty"`      // For errors
+
+	// Tool execution fields
+	ToolCall   *ToolCallInfo   `json:"tool_call,omitempty"`   // Populated when Type == EventToolCall
+	ToolResult *ToolResultInfo `json:"tool_result,omitempty"` // Populated when Type == EventToolResult
 }
 
 // HITLApprovalPrompt is sent when human approval is required before executing a high-risk tool.

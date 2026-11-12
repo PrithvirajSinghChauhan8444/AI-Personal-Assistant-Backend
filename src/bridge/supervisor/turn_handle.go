@@ -12,6 +12,8 @@ type TurnHandle struct {
 	turnID       string
 	tokenCh      chan string
 	thoughtCh    chan string
+	toolCallCh   chan protocol.ToolCallPayload
+	toolResultCh chan protocol.ToolResultPayload
 	completeCh   chan *protocol.TurnCompletePayload
 	errCh        chan error
 	closeOnce    sync.Once
@@ -22,12 +24,14 @@ type TurnHandle struct {
 // NewTurnHandle initializes an active turn stream handle with buffered channels.
 func NewTurnHandle(sessionID, turnID string) *TurnHandle {
 	return &TurnHandle{
-		sessionID:  sessionID,
-		turnID:     turnID,
-		tokenCh:    make(chan string, 128),
-		thoughtCh:  make(chan string, 64),
-		completeCh: make(chan *protocol.TurnCompletePayload, 1),
-		errCh:      make(chan error, 1),
+		sessionID:    sessionID,
+		turnID:       turnID,
+		tokenCh:      make(chan string, 128),
+		thoughtCh:    make(chan string, 64),
+		toolCallCh:   make(chan protocol.ToolCallPayload, 64),
+		toolResultCh: make(chan protocol.ToolResultPayload, 64),
+		completeCh:   make(chan *protocol.TurnCompletePayload, 1),
+		errCh:        make(chan error, 1),
 	}
 }
 
@@ -49,6 +53,16 @@ func (h *TurnHandle) Tokens() <-chan string {
 // Thoughts returns a read-only channel of internal agent thoughts.
 func (h *TurnHandle) Thoughts() <-chan string {
 	return h.thoughtCh
+}
+
+// ToolCalls returns a read-only channel delivering initiated tool calls.
+func (h *TurnHandle) ToolCalls() <-chan protocol.ToolCallPayload {
+	return h.toolCallCh
+}
+
+// ToolResults returns a read-only channel delivering completed tool results.
+func (h *TurnHandle) ToolResults() <-chan protocol.ToolResultPayload {
+	return h.toolResultCh
 }
 
 // Complete returns a read-only channel delivering the terminal turn payload.
@@ -87,6 +101,32 @@ func (h *TurnHandle) PushThought(thought string) {
 	}
 }
 
+// PushToolCall delivers a tool call invocation non-blockingly.
+func (h *TurnHandle) PushToolCall(call protocol.ToolCallPayload) {
+	h.closedMu.RLock()
+	defer h.closedMu.RUnlock()
+	if h.closed {
+		return
+	}
+	select {
+	case h.toolCallCh <- call:
+	default:
+	}
+}
+
+// PushToolResult delivers a completed tool result non-blockingly.
+func (h *TurnHandle) PushToolResult(res protocol.ToolResultPayload) {
+	h.closedMu.RLock()
+	defer h.closedMu.RUnlock()
+	if h.closed {
+		return
+	}
+	select {
+	case h.toolResultCh <- res:
+	default:
+	}
+}
+
 // Finish emits the completion payload and closes stream channels.
 func (h *TurnHandle) Finish(complete *protocol.TurnCompletePayload) {
 	h.closeOnce.Do(func() {
@@ -100,6 +140,8 @@ func (h *TurnHandle) Finish(complete *protocol.TurnCompletePayload) {
 		close(h.completeCh)
 		close(h.tokenCh)
 		close(h.thoughtCh)
+		close(h.toolCallCh)
+		close(h.toolResultCh)
 		close(h.errCh)
 	})
 }
@@ -117,6 +159,8 @@ func (h *TurnHandle) Fail(err error) {
 		close(h.errCh)
 		close(h.tokenCh)
 		close(h.thoughtCh)
+		close(h.toolCallCh)
+		close(h.toolResultCh)
 		close(h.completeCh)
 	})
 }

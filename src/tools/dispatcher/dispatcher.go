@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"assistant/src/tools"
+	"assistant/src/tools/tools/browser"
 	"assistant/src/tools/tools/fs"
 	"assistant/src/tools/tools/git"
 	"assistant/src/tools/tools/net"
@@ -47,6 +48,8 @@ func RegisterAllTools(registry *tools.ToolRegistry, configDir string) error {
 		workspace.NewGmailSendDraftTool(googleClient),
 		workspace.NewCalendarListTool(googleClient),
 	}
+
+	allTools = append(allTools, browser.GetAllBrowserTools(nil)...)
 
 	for _, t := range allTools {
 		if err := registry.Register(t); err != nil {

@@ -3,7 +3,9 @@ package tools
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 )
@@ -129,6 +131,29 @@ func (r *ToolRegistry) SetToolStatus(toolName string, enabled bool) error {
 // SetToolEnabled is an alias for SetToolStatus.
 func (r *ToolRegistry) SetToolEnabled(toolName string, enabled bool) error {
 	return r.SetToolStatus(toolName, enabled)
+}
+
+// LoadConfigFile loads tool enabled toggles from a user-configurable JSON file without modifying code.
+func (r *ToolRegistry) LoadConfigFile(filePath string) error {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	var toggles map[string]bool
+	if err := json.Unmarshal(data, &toggles); err != nil {
+		return fmt.Errorf("invalid tools config json in %s: %w", filePath, err)
+	}
+
+	for toolName, enabled := range toggles {
+		if _, exists := r.GetTool(toolName); exists {
+			_ = r.SetToolStatus(toolName, enabled)
+		}
+	}
+	return nil
 }
 
 // IsToolEnabled queries the live operational state of a tool.

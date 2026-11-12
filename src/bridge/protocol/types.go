@@ -89,6 +89,7 @@ type ToolCallPayload struct {
 // ToolResultPayload delivers execution outputs from Go Layer 3 back to Python.
 type ToolResultPayload struct {
 	CallID       string `json:"call_id"`
+	ToolName     string `json:"tool_name,omitempty"`
 	ExitCode     int    `json:"exit_code"`
 	Output       string `json:"output"`
 	ArtifactPath string `json:"artifact_path,omitempty"`

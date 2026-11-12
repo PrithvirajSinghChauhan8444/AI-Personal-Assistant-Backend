@@ -358,6 +358,11 @@ func (s *SQLiteStore) RecordToolAudit(ctx context.Context, entry ToolAuditEntry)
 	return nil
 }
 
+// DB returns the underlying SQLite database handle for shared persistence.
+func (s *SQLiteStore) DB() *sql.DB {
+	return s.db
+}
+
 // Close gracefully closes the SQLite database connection.
 func (s *SQLiteStore) Close() error {
 	if s.db != nil {

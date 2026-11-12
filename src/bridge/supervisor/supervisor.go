@@ -195,17 +195,26 @@ func (s *Supervisor) handleToolCallFrame(frame *protocol.MasterFrame) {
 		return
 	}
 
+	if handle := s.getTurn(frame.TurnID); handle != nil {
+		handle.PushToolCall(payload)
+	}
+
 	go s.executeToolCallConcurrently(frame.SessionID, frame.TurnID, payload)
 }
 
 func (s *Supervisor) executeToolCallConcurrently(sessionID, turnID string, call protocol.ToolCallPayload) {
 	if s.cfg.ToolExecutor == nil {
-		s.sendToolResult(sessionID, turnID, protocol.ToolResultPayload{
+		resPayload := protocol.ToolResultPayload{
 			CallID:   call.CallID,
+			ToolName: call.ToolName,
 			ExitCode: 1,
 			Output:   "error: tool executor not configured in supervisor",
 			IsError:  true,
-		})
+		}
+		if handle := s.getTurn(turnID); handle != nil {
+			handle.PushToolResult(resPayload)
+		}
+		s.sendToolResult(sessionID, turnID, resPayload)
 		return
 	}
 
@@ -225,6 +234,7 @@ func (s *Supervisor) executeToolCallConcurrently(sessionID, turnID string, call 
 
 	resultPayload := protocol.ToolResultPayload{
 		CallID:     call.CallID,
+		ToolName:   call.ToolName,
 		DurationMs: duration,
 	}
 
@@ -240,6 +250,10 @@ func (s *Supervisor) executeToolCallConcurrently(sessionID, turnID string, call 
 		}
 		resultPayload.ArtifactPath = res.ArtifactPath
 		resultPayload.IsError = res.IsError
+	}
+
+	if handle := s.getTurn(turnID); handle != nil {
+		handle.PushToolResult(resultPayload)
 	}
 
 	s.sendToolResult(sessionID, turnID, resultPayload)

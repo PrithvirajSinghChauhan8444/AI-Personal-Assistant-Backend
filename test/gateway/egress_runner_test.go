@@ -104,6 +104,32 @@ func renderEventSafely(evt gateway.OutboundEvent) (output string, panicked bool)
 		output = cli.RenderThought(evt.AgentName, evt.TextDelta)
 	case gateway.EventStatusUpdate:
 		output = cli.RenderStatus(evt.AgentName, evt.StatusMsg)
+	case gateway.EventToolCall:
+		argsJSON := ""
+		toolName := ""
+		callID := ""
+		if evt.ToolCall != nil {
+			argsJSON = evt.ToolCall.ArgsJSON
+			toolName = evt.ToolCall.ToolName
+			callID = evt.ToolCall.CallID
+		}
+		output = cli.RenderToolCall(evt.AgentName, toolName, argsJSON, callID)
+	case gateway.EventToolResult:
+		toolName := ""
+		exitCode := 0
+		outText := ""
+		artifactPath := ""
+		var durationMs int64
+		isError := false
+		if evt.ToolResult != nil {
+			toolName = evt.ToolResult.ToolName
+			exitCode = evt.ToolResult.ExitCode
+			outText = evt.ToolResult.Output
+			artifactPath = evt.ToolResult.ArtifactPath
+			durationMs = evt.ToolResult.DurationMs
+			isError = evt.ToolResult.IsError
+		}
+		output = cli.RenderToolResult(evt.AgentName, toolName, exitCode, outText, artifactPath, durationMs, isError)
 	case gateway.EventHITLRequest:
 		output = cli.RenderHITLPrompt(evt.HITL)
 	case gateway.EventTurnComplete:

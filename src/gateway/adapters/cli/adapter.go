@@ -53,6 +53,9 @@ func RunSingleTurn(ctx context.Context, gw *gateway.Gateway, rawReq gateway.Inbo
 		return fmt.Errorf("single turn submission failed: %w", err)
 	}
 
+	streamRenderer := NewStreamRenderer(out)
+	defer streamRenderer.Flush()
+
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	lastActivity := time.Now()
@@ -64,29 +67,20 @@ func RunSingleTurn(ctx context.Context, gw *gateway.Gateway, rawReq gateway.Inbo
 		case <-ticker.C:
 			elapsed := time.Since(lastActivity).Truncate(time.Second)
 			if elapsed >= 2*time.Second {
-				fmt.Fprint(out, RenderHeartbeat(elapsed))
+				streamRenderer.RenderHeartbeat(elapsed)
 			}
 		case ev, ok := <-eventCh:
 			if !ok {
 				return nil
 			}
 			lastActivity = time.Now()
-			renderSingleEvent(out, ev)
+			streamRenderer.RenderEvent(ev)
 		}
 	}
 }
 
 func renderSingleEvent(out io.Writer, ev gateway.OutboundEvent) {
-	switch ev.Type {
-	case gateway.EventTokenChunk:
-		fmt.Fprint(out, ev.TextDelta)
-	case gateway.EventThoughtChunk:
-		fmt.Fprintln(out, RenderThought(ev.AgentName, ev.TextDelta))
-	case gateway.EventStatusUpdate:
-		fmt.Fprint(out, RenderStatus(ev.AgentName, ev.StatusMsg))
-	case gateway.EventTurnComplete:
-		fmt.Fprint(out, RenderTurnMetrics(ev.Metrics))
-	case gateway.EventTurnError:
-		fmt.Fprint(out, RenderError(ev.Error))
-	}
+	renderer := NewStreamRenderer(out)
+	renderer.RenderEvent(ev)
+	renderer.Flush()
 }
