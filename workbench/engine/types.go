@@ -71,7 +71,9 @@ type ModuleExecutionFunc func(ctx context.Context, inputRaw json.RawMessage, str
 type Module struct {
 	ID          string              `json:"id"`
 	Name        string              `json:"name"`
-	Category    string              `json:"category"` // "Isolated Module" | "Pipeline"
+	Tier        string              `json:"tier"` // "LAYER_BENCH" | "COMPONENT" | "GRANULAR_AST"
+	Layer       string              `json:"layer"` // "pipeline" | "layer1" | "layer2" | "layer3" | "layer6" | "layer7" | "system"
+	Category    string              `json:"category"` // Display category
 	Description string              `json:"description"`
 	InputType   reflect.Type        `json:"-"`
 	Schema      ModuleSchema        `json:"schema"`

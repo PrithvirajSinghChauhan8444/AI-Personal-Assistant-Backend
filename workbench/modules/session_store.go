@@ -51,7 +51,9 @@ func RegisterSessionStore(r *engine.Registry) {
 	r.Register(engine.Module{
 		ID:          "l2_session_store_get_or_create",
 		Name:        "Layer 2: Session Store (GetOrCreateSession)",
-		Category:    "Isolated Module",
+		Tier:        "COMPONENT",
+		Layer:       "layer2",
+		Category:    "Layer 2: Orchestrator",
 		Description: "Fetches or inserts an active conversation session thread in SQLite.",
 		InputType:   reflect.TypeOf(GetOrCreateSessionInput{}),
 		Presets: []engine.Preset{
@@ -118,7 +120,9 @@ func RegisterSessionStore(r *engine.Registry) {
 	r.Register(engine.Module{
 		ID:          "l2_session_store_append_message",
 		Name:        "Layer 2: Session Store (AppendMessage)",
-		Category:    "Isolated Module",
+		Tier:        "COMPONENT",
+		Layer:       "layer2",
+		Category:    "Layer 2: Orchestrator",
 		Description: "Appends a new turn message directly to the SQLite conversation store.",
 		InputType:   reflect.TypeOf(AppendMessageInput{}),
 		Presets: []engine.Preset{
@@ -177,7 +181,9 @@ func RegisterSessionStore(r *engine.Registry) {
 	r.Register(engine.Module{
 		ID:          "l2_session_store_get_history",
 		Name:        "Layer 2: Session Store (GetSessionHistory)",
-		Category:    "Isolated Module",
+		Tier:        "COMPONENT",
+		Layer:       "layer2",
+		Category:    "Layer 2: Orchestrator",
 		Description: "Retrieves chronological message history for a given session from SQLite.",
 		InputType:   reflect.TypeOf(GetSessionHistoryInput{}),
 		Presets: []engine.Preset{

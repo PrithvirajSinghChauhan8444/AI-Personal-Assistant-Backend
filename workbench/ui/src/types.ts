@@ -24,6 +24,8 @@ export interface Preset {
 export interface Module {
   id: string;
   name: string;
+  tier?: 'LAYER_BENCH' | 'COMPONENT' | 'GRANULAR_AST';
+  layer?: 'pipeline' | 'layer1' | 'layer2' | 'layer3' | 'layer4' | 'layer5' | 'layer6' | 'layer7' | 'system';
   category: string;
   description: string;
   schema: ModuleSchema;
@@ -113,3 +115,81 @@ export interface HITLApprovalPrompt {
   arguments_json: string;
   available_choices?: string[];
 }
+
+export interface ASTField {
+  name: string;
+  type: string;
+  tag?: string;
+  json_name?: string;
+  doc?: string;
+  is_exported: boolean;
+  is_required: boolean;
+}
+
+export interface ASTMethod {
+  id: string;
+  name: string;
+  package: string;
+  layer: string;
+  language: 'go' | 'python';
+  receiver?: string;
+  receiver_raw?: string;
+  signature: string;
+  doc: string;
+  params: ASTField[];
+  returns: string[];
+  file_path: string;
+  line_number: number;
+  is_callable: boolean;
+  has_registered_runner: boolean;
+  registered_module_id?: string;
+}
+
+export interface ASTType {
+  name: string;
+  package: string;
+  layer: string;
+  language: 'go' | 'python';
+  kind: string;
+  doc: string;
+  fields?: ASTField[];
+  methods?: string[];
+  file_path: string;
+  line_number: number;
+  is_exported: boolean;
+}
+
+export interface ASTPackage {
+  name: string;
+  rel_path: string;
+  layer: string;
+  language: 'go' | 'python';
+  doc: string;
+  files: string[];
+  types: ASTType[];
+  methods: ASTMethod[];
+  functions: ASTMethod[];
+}
+
+export interface ASTScanSummary {
+  package_count: number;
+  file_count: number;
+  type_count: number;
+  method_count: number;
+  function_count: number;
+  callable_count: number;
+  integrated_count: number;
+  go_count?: number;
+  python_count?: number;
+  layers?: Record<string, number>;
+}
+
+export interface ASTScanResult {
+  scanned_at: string;
+  root_dir: string;
+  packages: ASTPackage[];
+  all_methods: ASTMethod[];
+  all_types: ASTType[];
+  summary: ASTScanSummary;
+}
+

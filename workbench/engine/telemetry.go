@@ -119,6 +119,16 @@ func (h *TelemetryHub) RecordGoLog(entry GoLogEntry) {
 	)
 }
 
+// BroadcastEvent sends an arbitrary event payload to all SSE subscribers.
+func (h *TelemetryHub) BroadcastEvent(eventType string, data any) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.broadcast(map[string]any{
+		"type": eventType,
+		"data": data,
+	})
+}
+
 func (h *TelemetryHub) broadcast(msg any) {
 	for ch := range h.subscribers {
 		select {

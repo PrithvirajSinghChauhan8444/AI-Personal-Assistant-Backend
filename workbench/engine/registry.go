@@ -57,6 +57,48 @@ func (r *Registry) List() []Module {
 	}
 
 	sort.Slice(list, func(i, j int) bool {
+		// 1. Tier Priority: LAYER_BENCH > COMPONENT > GRANULAR_AST
+		tierScore := func(t string) int {
+			switch t {
+			case "LAYER_BENCH":
+				return 1
+			case "COMPONENT":
+				return 2
+			case "GRANULAR_AST":
+				return 3
+			default:
+				return 2
+			}
+		}
+
+		if tierScore(list[i].Tier) != tierScore(list[j].Tier) {
+			return tierScore(list[i].Tier) < tierScore(list[j].Tier)
+		}
+
+		// 2. Layer Order: pipeline -> layer1 -> layer2 -> layer3 -> layer6 -> layer7
+		layerScore := func(l string) int {
+			switch l {
+			case "pipeline":
+				return 1
+			case "layer1":
+				return 2
+			case "layer2":
+				return 3
+			case "layer3":
+				return 4
+			case "layer6":
+				return 5
+			case "layer7":
+				return 6
+			default:
+				return 9
+			}
+		}
+
+		if layerScore(list[i].Layer) != layerScore(list[j].Layer) {
+			return layerScore(list[i].Layer) < layerScore(list[j].Layer)
+		}
+
 		if list[i].Category != list[j].Category {
 			return list[i].Category < list[j].Category
 		}

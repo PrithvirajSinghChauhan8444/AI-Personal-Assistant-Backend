@@ -25,7 +25,9 @@ func RegisterSafetyGatekeeper(r *engine.Registry) {
 	r.Register(engine.Module{
 		ID:          "l2_safety_gatekeeper_evaluate",
 		Name:        "Layer 2: Safety Gatekeeper (Evaluate)",
-		Category:    "Isolated Module",
+		Tier:        "COMPONENT",
+		Layer:       "layer2",
+		Category:    "Layer 2: Orchestrator",
 		Description: "Evaluates tool execution security against safety policies, autonomous constraints, and required capabilities.",
 		InputType:   reflect.TypeOf(SafetyEvaluateInput{}),
 		Presets: []engine.Preset{

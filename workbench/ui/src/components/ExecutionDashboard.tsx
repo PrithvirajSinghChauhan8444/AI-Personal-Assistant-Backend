@@ -11,6 +11,9 @@ import {
   Clock,
   Copy,
   Check,
+  Wrench,
+  Bot,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface ExecutionDashboardProps {
@@ -65,7 +68,7 @@ export const ExecutionDashboard: React.FC<ExecutionDashboardProps> = ({
   // 4. Reasoning / Thoughts (aggregated)
   const thoughts = useMemo(() => {
     return events
-      .filter((e) => e.type === 'THOUGHT_CHUNK')
+      .filter((e) => e.type === 'THOUGHT_CHUNK' || e.type === 'AGENT_THOUGHT')
       .map((e) => (typeof e.payload === 'string' ? e.payload : JSON.stringify(e.payload)))
       .join(' ');
   }, [events]);
@@ -73,12 +76,24 @@ export const ExecutionDashboard: React.FC<ExecutionDashboardProps> = ({
   // 5. Tokens / Output (aggregated stream)
   const streamedTokens = useMemo(() => {
     return events
-      .filter((e) => e.type === 'TOKEN_CHUNK')
+      .filter((e) => e.type === 'TOKEN_CHUNK' || e.type === 'AGENT_TOKEN')
       .map((e) => (typeof e.payload === 'string' ? e.payload : JSON.stringify(e.payload)))
-      .join('');
+      .join('\n');
   }, [events]);
 
-  // 6. Turn Complete / Metrics
+  // 6. Layer 3 Tool Events
+  const toolStarted = useMemo(() => events.find((e) => e.type === 'TOOL_STARTED'), [events]);
+  const toolStdout = useMemo(() => events.find((e) => e.type === 'TOOL_STDOUT'), [events]);
+  const toolStderr = useMemo(() => events.find((e) => e.type === 'TOOL_STDERR'), [events]);
+  const toolFinished = useMemo(() => events.find((e) => e.type === 'TOOL_FINISHED'), [events]);
+  const toolSpillover = useMemo(() => events.find((e) => e.type === 'TOOL_SPILLOVER'), [events]);
+
+  // 7. Layer 6 Specialised Agent Events
+  const agentInit = useMemo(() => events.find((e) => e.type === 'AGENT_INIT'), [events]);
+  const toolIntents = useMemo(() => events.filter((e) => e.type === 'TOOL_INTENT'), [events]);
+  const agentResponse = useMemo(() => events.find((e) => e.type === 'AGENT_RESPONSE'), [events]);
+
+  // 8. Turn Complete / Metrics
   const turnCompleteEvent = useMemo(() => {
     return events.find((e) => e.type === 'TURN_COMPLETE');
   }, [events]);
@@ -301,6 +316,174 @@ export const ExecutionDashboard: React.FC<ExecutionDashboardProps> = ({
               {streamedTokens}
               {isRunning && <span className="blinking-cursor" />}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Layer 3: Tool Execution Panel */}
+      {(toolStarted || toolStdout || toolFinished) && (
+        <div className="card" style={{ margin: 0, borderLeft: '4px solid var(--accent-coral)' }}>
+          <div className="card-header">
+            <div className="card-title">
+              <Wrench size={15} style={{ color: 'var(--accent-coral)' }} />
+              <span>Layer 3: Native Tool Execution Ground Truth</span>
+              {toolStarted?.payload?.tool_name && (
+                <span className="badge badge-sky">{toolStarted.payload.tool_name}</span>
+              )}
+              {toolStarted?.payload?.risk_level && (
+                <span
+                  className={`badge ${
+                    toolStarted.payload.risk_level === 'HIGH'
+                      ? 'badge-coral'
+                      : toolStarted.payload.risk_level === 'MEDIUM'
+                      ? 'badge-amber'
+                      : 'badge-mint'
+                  }`}
+                >
+                  RISK: {toolStarted.payload.risk_level}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="card-body">
+            {toolStarted?.payload?.args && (
+              <div style={{ marginBottom: '10px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                  Arguments:
+                </span>
+                <pre style={{ background: 'var(--bg-app)', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', marginTop: '4px', border: '1px solid var(--border-subtle)' }}>
+                  {typeof toolStarted.payload.args === 'string' ? toolStarted.payload.args : JSON.stringify(toolStarted.payload.args, null, 2)}
+                </pre>
+              </div>
+            )}
+
+            {toolStdout && (
+              <div style={{ marginBottom: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                    Stdout Stream:
+                  </span>
+                  <button
+                    className="btn btn-default"
+                    style={{ padding: '2px 6px', fontSize: '11px' }}
+                    onClick={() => copyToClipboard('stdout', String(toolStdout.payload))}
+                  >
+                    {copiedId === 'stdout' ? <Check size={11} color="var(--accent-mint)" /> : <Copy size={11} />}
+                    <span>{copiedId === 'stdout' ? 'Copied' : 'Copy'}</span>
+                  </button>
+                </div>
+                <pre style={{ background: '#0f172a', color: '#38bdf8', padding: '12px', borderRadius: '6px', fontSize: '12px', overflowX: 'auto', maxHeight: '300px' }}>
+                  {String(toolStdout.payload)}
+                </pre>
+              </div>
+            )}
+
+            {toolStderr && (
+              <div style={{ marginBottom: '10px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--accent-coral)', textTransform: 'uppercase' }}>
+                  Stderr Stream:
+                </span>
+                <pre style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-coral)', padding: '10px', borderRadius: '6px', fontSize: '12px', marginTop: '4px', border: '1px solid var(--accent-coral)' }}>
+                  {String(toolStderr.payload)}
+                </pre>
+              </div>
+            )}
+
+            {toolSpillover && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--accent-amber-bg)', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', color: 'var(--accent-amber)', marginBottom: '10px' }}>
+                <AlertTriangle size={14} />
+                <span>{String(toolSpillover.payload)}</span>
+              </div>
+            )}
+
+            {toolFinished && (
+              <div style={{ display: 'flex', gap: '16px', fontSize: '12px', paddingTop: '8px', borderTop: '1px solid var(--border-subtle)' }}>
+                <div>
+                  <span style={{ color: 'var(--text-muted)' }}>Exit Code: </span>
+                  <strong style={{ color: toolFinished.payload?.exit_code === 0 ? 'var(--accent-mint)' : 'var(--accent-coral)' }}>
+                    {toolFinished.payload?.exit_code ?? 0}
+                  </strong>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-muted)' }}>Duration: </span>
+                  <strong>{toolFinished.payload?.duration_ms ?? 0}ms</strong>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Layer 6: Specialised Agent Cognitive ReAct Panel */}
+      {(agentInit || toolIntents.length > 0 || agentResponse) && (
+        <div className="card" style={{ margin: 0, borderLeft: '4px solid var(--accent-amber)' }}>
+          <div className="card-header">
+            <div className="card-title">
+              <Bot size={15} style={{ color: 'var(--accent-amber)' }} />
+              <span>Layer 6: Specialised Worker Agent ReAct Loop</span>
+              {agentInit?.payload?.agent && (
+                <span className="badge badge-amber">@{agentInit.payload.agent}</span>
+              )}
+              {agentInit?.payload?.model_mode && (
+                <span className="badge badge-lavender">Mode: {agentInit.payload.model_mode}</span>
+              )}
+            </div>
+          </div>
+
+          <div className="card-body">
+            {toolIntents.length > 0 && (
+              <div style={{ marginBottom: '12px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                  Tool Invocations Proposed by Agent:
+                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                  {toolIntents.map((ti, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        background: 'var(--bg-app)',
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-subtle)',
+                        fontSize: '12px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                        <Wrench size={12} style={{ color: 'var(--accent-blue)' }} />
+                        <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-blue)' }}>
+                          {ti.agent_name || 'tool'}
+                        </strong>
+                      </div>
+                      <pre style={{ margin: 0, fontSize: '11.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                        {typeof ti.payload === 'string' ? ti.payload : JSON.stringify(ti.payload, null, 2)}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {agentResponse && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                    Final Agent Response:
+                  </span>
+                  <button
+                    className="btn btn-default"
+                    style={{ padding: '2px 6px', fontSize: '11px' }}
+                    onClick={() => copyToClipboard('agent_resp', String(agentResponse.payload))}
+                  >
+                    {copiedId === 'agent_resp' ? <Check size={11} color="var(--accent-mint)" /> : <Copy size={11} />}
+                    <span>{copiedId === 'agent_resp' ? 'Copied' : 'Copy'}</span>
+                  </button>
+                </div>
+                <div style={{ background: '#ffffff', border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '12px 14px', fontSize: '13px', lineHeight: 1.5, color: 'var(--text-main)' }}>
+                  {String(agentResponse.payload)}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

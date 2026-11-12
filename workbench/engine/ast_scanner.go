@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -18,13 +19,13 @@ import (
 
 // ASTField represents a field or parameter discovered via AST analysis.
 type ASTField struct {
-	Name        string `json:"name"`
-	Type        string `json:"type"`
-	Tag         string `json:"tag,omitempty"`
-	JSONName    string `json:"json_name,omitempty"`
-	Doc         string `json:"doc,omitempty"`
-	IsExported  bool   `json:"is_exported"`
-	IsRequired  bool   `json:"is_required"`
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	Tag        string `json:"tag,omitempty"`
+	JSONName   string `json:"json_name,omitempty"`
+	Doc        string `json:"doc,omitempty"`
+	IsExported bool   `json:"is_exported"`
+	IsRequired bool   `json:"is_required"`
 }
 
 // ASTMethod represents an exported receiver method or function discovered via AST.
@@ -32,8 +33,10 @@ type ASTMethod struct {
 	ID                  string     `json:"id"`
 	Name                string     `json:"name"`
 	Package             string     `json:"package"`
-	Receiver            string     `json:"receiver,omitempty"` // e.g. "*Gateway"
-	ReceiverRaw         string     `json:"receiver_raw,omitempty"` // e.g. "Gateway"
+	Layer               string     `json:"layer"`
+	Language            string     `json:"language"` // "go" | "python"
+	Receiver            string     `json:"receiver,omitempty"`
+	ReceiverRaw         string     `json:"receiver_raw,omitempty"`
 	Signature           string     `json:"signature"`
 	Doc                 string     `json:"doc"`
 	Params              []ASTField `json:"params"`
@@ -45,49 +48,56 @@ type ASTMethod struct {
 	RegisteredModuleID  string     `json:"registered_module_id,omitempty"`
 }
 
-// ASTType represents a struct, interface, or type definition discovered in source.
+// ASTType represents a struct, interface, class, or type definition.
 type ASTType struct {
-	Name        string     `json:"name"`
-	Package     string     `json:"package"`
-	Kind        string     `json:"kind"` // "struct", "interface", "type", "alias"
-	Doc         string     `json:"doc"`
-	Fields      []ASTField `json:"fields,omitempty"`
-	Methods     []string   `json:"methods,omitempty"`
-	FilePath    string     `json:"file_path"`
-	LineNumber  int        `json:"line_number"`
-	IsExported  bool       `json:"is_exported"`
+	Name       string     `json:"name"`
+	Package    string     `json:"package"`
+	Layer      string     `json:"layer"`
+	Language   string     `json:"language"` // "go" | "python"
+	Kind       string     `json:"kind"`     // "struct", "interface", "class", "type"
+	Doc        string     `json:"doc"`
+	Fields     []ASTField `json:"fields,omitempty"`
+	Methods    []string   `json:"methods,omitempty"`
+	FilePath   string     `json:"file_path"`
+	LineNumber int        `json:"line_number"`
+	IsExported bool       `json:"is_exported"`
 }
 
-// ASTPackage represents a scanned Go package.
+// ASTPackage represents a scanned package or Python module directory.
 type ASTPackage struct {
-	Name       string      `json:"name"`
-	RelPath    string      `json:"rel_path"`
-	Doc        string      `json:"doc"`
-	Files      []string    `json:"files"`
-	Types      []ASTType   `json:"types"`
-	Methods    []ASTMethod `json:"methods"`
-	Functions  []ASTMethod `json:"functions"`
+	Name      string      `json:"name"`
+	RelPath   string      `json:"rel_path"`
+	Layer     string      `json:"layer"`
+	Language  string      `json:"language"`
+	Doc       string      `json:"doc"`
+	Files     []string    `json:"files"`
+	Types     []ASTType   `json:"types"`
+	Methods   []ASTMethod `json:"methods"`
+	Functions []ASTMethod `json:"functions"`
 }
 
-// ASTScanSummary provides high-level discovery metrics.
+// ASTScanSummary provides high-level discovery metrics across languages.
 type ASTScanSummary struct {
-	PackageCount    int `json:"package_count"`
-	FileCount       int `json:"file_count"`
-	TypeCount       int `json:"type_count"`
-	MethodCount     int `json:"method_count"`
-	FunctionCount   int `json:"function_count"`
-	CallableCount   int `json:"callable_count"`
-	IntegratedCount int `json:"integrated_count"`
+	PackageCount    int            `json:"package_count"`
+	FileCount       int            `json:"file_count"`
+	TypeCount       int            `json:"type_count"`
+	MethodCount     int            `json:"method_count"`
+	FunctionCount   int            `json:"function_count"`
+	CallableCount   int            `json:"callable_count"`
+	IntegratedCount int            `json:"integrated_count"`
+	GoCount         int            `json:"go_count"`
+	PythonCount     int            `json:"python_count"`
+	Layers          map[string]int `json:"layers"`
 }
 
 // ASTScanResult represents the complete scan outcome.
 type ASTScanResult struct {
-	ScannedAt   time.Time      `json:"scanned_at"`
-	RootDir     string         `json:"root_dir"`
-	Packages    []ASTPackage   `json:"packages"`
-	AllMethods  []ASTMethod    `json:"all_methods"`
-	AllTypes    []ASTType      `json:"all_types"`
-	Summary     ASTScanSummary `json:"summary"`
+	ScannedAt  time.Time      `json:"scanned_at"`
+	RootDir    string         `json:"root_dir"`
+	Packages   []ASTPackage   `json:"packages"`
+	AllMethods []ASTMethod    `json:"all_methods"`
+	AllTypes   []ASTType      `json:"all_types"`
+	Summary    ASTScanSummary `json:"summary"`
 }
 
 // FindSourceRoot discovers the relative or absolute path to the project's src directory.
@@ -104,46 +114,78 @@ func FindSourceRoot() string {
 	return "src"
 }
 
-// ASTScanner parses Go source files using go/parser and go/ast.
+// DetermineLayer maps any relative or absolute file path to its architectural layer.
+func DetermineLayer(path string) string {
+	norm := filepath.ToSlash(path)
+	switch {
+	case strings.Contains(norm, "/gateway"):
+		return "Layer 1: Ingress Gateway"
+	case strings.Contains(norm, "/orchestrator"):
+		return "Layer 2: Orchestration & Session"
+	case strings.Contains(norm, "/tools"):
+		return "Layer 3: Tool Engine"
+	case strings.Contains(norm, "/bridge"):
+		return "Layer 4: IPC & Bridge"
+	case strings.Contains(norm, "/memory"):
+		return "Layer 5: Memory Plane"
+	case strings.Contains(norm, "/agents"):
+		return "Layer 6: Autonomous Agents"
+	case strings.Contains(norm, "/models"):
+		return "Layer 7: Model Engine"
+	default:
+		return "System Core"
+	}
+}
+
+// ASTScanner parses Go and Python source files and continuously watches for additions.
 type ASTScanner struct {
-	mu         sync.RWMutex
-	rootDir    string
-	lastResult *ASTScanResult
-	registry   *Registry
+	mu           sync.RWMutex
+	rootDir      string
+	lastResult   *ASTScanResult
+	registry     *Registry
+	watchCancel  context.CancelFunc
+	fileModTimes map[string]time.Time
 }
 
 // NewASTScanner creates a scanner configured for the specified root source directory.
 func NewASTScanner(rootDir string, reg *Registry) *ASTScanner {
 	return &ASTScanner{
-		rootDir:  rootDir,
-		registry: reg,
+		rootDir:      rootDir,
+		registry:     reg,
+		fileModTimes: make(map[string]time.Time),
 	}
 }
 
-// Scan parses all .go files in rootDir (ignoring vendor, test files, and dot directories).
+// Scan parses all .go and .py files in rootDir.
 func (s *ASTScanner) Scan() (*ASTScanResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	fset := token.NewFileSet()
 	packagesMap := make(map[string]*ASTPackage)
-	var allFiles []string
+	var goFiles []string
+	var pyFiles []string
+	newModTimes := make(map[string]time.Time)
 
-	// Walk directory to find all Go files
+	// Walk directory to discover all Go and Python files
 	err := filepath.Walk(s.rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
 		if info.IsDir() {
 			name := info.Name()
-			if strings.HasPrefix(name, ".") || name == "vendor" || name == "testdata" || name == "node_modules" {
+			if strings.HasPrefix(name, ".") || name == "vendor" || name == "testdata" || name == "node_modules" || name == "__pycache__" {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
+		newModTimes[path] = info.ModTime()
+
 		if strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go") {
-			allFiles = append(allFiles, path)
+			goFiles = append(goFiles, path)
+		} else if strings.HasSuffix(path, ".py") && !strings.HasSuffix(path, "_test.py") {
+			pyFiles = append(pyFiles, path)
 		}
 		return nil
 	})
@@ -152,11 +194,13 @@ func (s *ASTScanner) Scan() (*ASTScanResult, error) {
 		return nil, fmt.Errorf("error walking source directory: %w", err)
 	}
 
-	// Parse AST for each file
-	for _, filePath := range allFiles {
+	s.fileModTimes = newModTimes
+
+	// 1. Parse Go AST
+	for _, filePath := range goFiles {
 		node, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
 		if err != nil {
-			continue // skip unparseable files
+			continue
 		}
 
 		pkgName := node.Name.Name
@@ -166,13 +210,18 @@ func (s *ASTScanner) Scan() (*ASTScanResult, error) {
 			relDir = pkgName
 		}
 
-		pkgKey := dirPath
+		pkgKey := "go:" + dirPath
 		pkg, exists := packagesMap[pkgKey]
 		if !exists {
 			pkg = &ASTPackage{
-				Name:    pkgName,
-				RelPath: filepath.ToSlash(relDir),
-				Files:   make([]string, 0),
+				Name:      pkgName,
+				RelPath:   filepath.ToSlash(relDir),
+				Layer:     DetermineLayer(filePath),
+				Language:  "go",
+				Files:     make([]string, 0),
+				Types:     make([]ASTType, 0),
+				Methods:   make([]ASTMethod, 0),
+				Functions: make([]ASTMethod, 0),
 			}
 			if node.Doc != nil {
 				pkg.Doc = strings.TrimSpace(node.Doc.Text())
@@ -183,27 +232,59 @@ func (s *ASTScanner) Scan() (*ASTScanResult, error) {
 		relFile, _ := filepath.Rel(".", filePath)
 		pkg.Files = append(pkg.Files, filepath.ToSlash(relFile))
 
-		// Inspect Declarations
 		for _, decl := range node.Decls {
 			switch d := decl.(type) {
 			case *ast.GenDecl:
-				s.inspectGenDecl(fset, d, filePath, pkg)
+				s.inspectGoGenDecl(fset, d, filePath, pkg)
 			case *ast.FuncDecl:
-				s.inspectFuncDecl(fset, d, filePath, pkg)
+				s.inspectGoFuncDecl(fset, d, filePath, pkg)
 			}
 		}
 	}
 
-	// Collect into result
+	// 2. Parse Python AST (Classes, Methods, Functions, Layer)
+	for _, filePath := range pyFiles {
+		dirPath := filepath.Dir(filePath)
+		relDir, _ := filepath.Rel(s.rootDir, dirPath)
+		if relDir == "" || relDir == "." {
+			relDir = filepath.Base(s.rootDir)
+		}
+
+		pkgName := filepath.Base(dirPath)
+		pkgKey := "py:" + dirPath
+		pkg, exists := packagesMap[pkgKey]
+		if !exists {
+			pkg = &ASTPackage{
+				Name:      pkgName,
+				RelPath:   filepath.ToSlash(relDir),
+				Layer:     DetermineLayer(filePath),
+				Language:  "python",
+				Files:     make([]string, 0),
+				Types:     make([]ASTType, 0),
+				Methods:   make([]ASTMethod, 0),
+				Functions: make([]ASTMethod, 0),
+			}
+			packagesMap[pkgKey] = pkg
+		}
+
+		relFile, _ := filepath.Rel(".", filePath)
+		pkg.Files = append(pkg.Files, filepath.ToSlash(relFile))
+
+		s.inspectPythonFile(filePath, pkg)
+	}
+
+	// 3. Assemble and sort result
 	result := &ASTScanResult{
 		ScannedAt:  time.Now(),
 		RootDir:    s.rootDir,
 		Packages:   make([]ASTPackage, 0, len(packagesMap)),
 		AllMethods: make([]ASTMethod, 0),
 		AllTypes:   make([]ASTType, 0),
+		Summary: ASTScanSummary{
+			Layers: make(map[string]int),
+		},
 	}
 
-	// Map registered modules for fast matching
 	registeredMap := make(map[string]string)
 	if s.registry != nil {
 		for _, m := range s.registry.List() {
@@ -213,12 +294,10 @@ func (s *ASTScanner) Scan() (*ASTScanResult, error) {
 	}
 
 	for _, pkg := range packagesMap {
-		// Sort items
 		sort.Slice(pkg.Types, func(i, j int) bool { return pkg.Types[i].Name < pkg.Types[j].Name })
 		sort.Slice(pkg.Methods, func(i, j int) bool { return pkg.Methods[i].Name < pkg.Methods[j].Name })
 		sort.Slice(pkg.Functions, func(i, j int) bool { return pkg.Functions[i].Name < pkg.Functions[j].Name })
 
-		// Enhance methods with integration status
 		for idx := range pkg.Methods {
 			m := &pkg.Methods[idx]
 			s.matchRegisteredRunner(m, registeredMap)
@@ -234,7 +313,6 @@ func (s *ASTScanner) Scan() (*ASTScanResult, error) {
 		result.Packages = append(result.Packages, *pkg)
 	}
 
-	// Sort packages by path
 	sort.Slice(result.Packages, func(i, j int) bool {
 		return result.Packages[i].RelPath < result.Packages[j].RelPath
 	})
@@ -244,11 +322,15 @@ func (s *ASTScanner) Scan() (*ASTScanResult, error) {
 
 	// Generate summary
 	result.Summary.PackageCount = len(result.Packages)
-	result.Summary.FileCount = len(allFiles)
+	result.Summary.FileCount = len(goFiles) + len(pyFiles)
+	result.Summary.GoCount = len(goFiles)
+	result.Summary.PythonCount = len(pyFiles)
 	result.Summary.TypeCount = len(result.AllTypes)
+
 	for _, p := range result.Packages {
 		result.Summary.MethodCount += len(p.Methods)
 		result.Summary.FunctionCount += len(p.Functions)
+		result.Summary.Layers[p.Layer] += len(p.Methods) + len(p.Functions)
 	}
 	for _, m := range result.AllMethods {
 		if m.IsCallable {
@@ -275,7 +357,91 @@ func (s *ASTScanner) GetLastResult() (*ASTScanResult, error) {
 	return s.Scan()
 }
 
-func (s *ASTScanner) inspectGenDecl(fset *token.FileSet, decl *ast.GenDecl, filePath string, pkg *ASTPackage) {
+// StartHotWatcher runs a background watcher that checks for file changes every interval.
+// If any change is detected, it triggers a rescan, updates the registry, and broadcasts an SSE event.
+func (s *ASTScanner) StartHotWatcher(interval time.Duration) {
+	s.mu.Lock()
+	if s.watchCancel != nil {
+		s.watchCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.watchCancel = cancel
+	s.mu.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if s.hasDirectoryChanged() {
+					res, err := s.Scan()
+					if err == nil {
+						added := s.AutoRegisterDiscoveredModules(s.registry)
+						GlobalTelemetry.RecordGoLog(GoLogEntry{
+							Timestamp: time.Now(),
+							Level:     "INFO",
+							Source:    "HotDetector",
+							Message:   fmt.Sprintf("[HotDetection] Codebase change detected. Updated AST: %d packages, %d types, %d methods (+%d new).", res.Summary.PackageCount, res.Summary.TypeCount, res.Summary.MethodCount+res.Summary.FunctionCount, added),
+						})
+						GlobalTelemetry.BroadcastEvent("AST_RELOADED", res.Summary)
+					}
+				}
+			}
+		}
+	}()
+}
+
+// StopHotWatcher halts the background file watcher.
+func (s *ASTScanner) StopHotWatcher() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.watchCancel != nil {
+		s.watchCancel()
+		s.watchCancel = nil
+	}
+}
+
+func (s *ASTScanner) hasDirectoryChanged() bool {
+	s.mu.RLock()
+	currentTimes := s.fileModTimes
+	s.mu.RUnlock()
+
+	changed := false
+	scannedCount := 0
+
+	_ = filepath.Walk(s.rootDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || changed {
+			return nil
+		}
+		if info.IsDir() {
+			name := info.Name()
+			if strings.HasPrefix(name, ".") || name == "vendor" || name == "node_modules" || name == "__pycache__" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(path, ".go") || strings.HasSuffix(path, ".py") {
+			scannedCount++
+			oldTime, exists := currentTimes[path]
+			if !exists || !oldTime.Equal(info.ModTime()) {
+				changed = true
+			}
+		}
+		return nil
+	})
+
+	if !changed && scannedCount != len(currentTimes) {
+		changed = true
+	}
+
+	return changed
+}
+
+func (s *ASTScanner) inspectGoGenDecl(fset *token.FileSet, decl *ast.GenDecl, filePath string, pkg *ASTPackage) {
 	if decl.Tok != token.TYPE {
 		return
 	}
@@ -303,6 +469,8 @@ func (s *ASTScanner) inspectGenDecl(fset *token.FileSet, decl *ast.GenDecl, file
 		astType := ASTType{
 			Name:       typeName,
 			Package:    pkg.Name,
+			Layer:      pkg.Layer,
+			Language:   "go",
 			Doc:        tDoc,
 			FilePath:   filepath.ToSlash(filePath),
 			LineNumber: line,
@@ -334,7 +502,6 @@ func (s *ASTScanner) inspectGenDecl(fset *token.FileSet, decl *ast.GenDecl, file
 					}
 
 					if len(field.Names) == 0 {
-						// Embedded field
 						astType.Fields = append(astType.Fields, ASTField{
 							Name:       fType,
 							Type:       fType,
@@ -378,10 +545,10 @@ func (s *ASTScanner) inspectGenDecl(fset *token.FileSet, decl *ast.GenDecl, file
 	}
 }
 
-func (s *ASTScanner) inspectFuncDecl(fset *token.FileSet, decl *ast.FuncDecl, filePath string, pkg *ASTPackage) {
+func (s *ASTScanner) inspectGoFuncDecl(fset *token.FileSet, decl *ast.FuncDecl, filePath string, pkg *ASTPackage) {
 	name := decl.Name.Name
 	if !ast.IsExported(name) {
-		return // only scan exported functions and methods
+		return
 	}
 
 	docText := ""
@@ -398,7 +565,6 @@ func (s *ASTScanner) inspectFuncDecl(fset *token.FileSet, decl *ast.FuncDecl, fi
 		receiverRaw = strings.TrimPrefix(recvType, "*")
 	}
 
-	// Parse parameters
 	params := make([]ASTField, 0)
 	isCallable := false
 	if decl.Type.Params != nil {
@@ -427,7 +593,6 @@ func (s *ASTScanner) inspectFuncDecl(fset *token.FileSet, decl *ast.FuncDecl, fi
 		}
 	}
 
-	// Parse return values
 	returns := make([]string, 0)
 	if decl.Type.Results != nil {
 		for _, field := range decl.Type.Results.List {
@@ -439,7 +604,6 @@ func (s *ASTScanner) inspectFuncDecl(fset *token.FileSet, decl *ast.FuncDecl, fi
 		}
 	}
 
-	// Format signature
 	var sigBuilder strings.Builder
 	sigBuilder.WriteString("func ")
 	if receiver != "" {
@@ -468,6 +632,8 @@ func (s *ASTScanner) inspectFuncDecl(fset *token.FileSet, decl *ast.FuncDecl, fi
 		ID:          id,
 		Name:        name,
 		Package:     pkg.Name,
+		Layer:       pkg.Layer,
+		Language:    "go",
 		Receiver:    receiver,
 		ReceiverRaw: receiverRaw,
 		Signature:   sigBuilder.String(),
@@ -486,13 +652,196 @@ func (s *ASTScanner) inspectFuncDecl(fset *token.FileSet, decl *ast.FuncDecl, fi
 	}
 }
 
+// inspectPythonFile parses Python source files extracting classes, methods, docstrings, and type hints.
+var (
+	pyClassRegex = regexp.MustCompile(`^class\s+([A-Za-z0-9_]+)(?:\(([^)]*)\))?:`)
+	pyFuncRegex  = regexp.MustCompile(`^(?:async\s+)?def\s+([A-Za-z0-9_]+)\s*\(([\s\S]*?)\)(?:\s*->\s*([^:]+))?:`)
+)
+
+func splitPythonParams(raw string) []string {
+	var parts []string
+	depth := 0
+	start := 0
+	for i, ch := range raw {
+		switch ch {
+		case '[', '(', '{':
+			depth++
+		case ']', ')', '}':
+			depth--
+		case ',':
+			if depth == 0 {
+				p := strings.TrimSpace(raw[start:i])
+				if p != "" {
+					parts = append(parts, p)
+				}
+				start = i + 1
+			}
+		}
+	}
+	if start < len(raw) {
+		p := strings.TrimSpace(raw[start:])
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return parts
+}
+
+func (s *ASTScanner) inspectPythonFile(filePath string, pkg *ASTPackage) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return
+	}
+
+	lines := strings.Split(string(content), "\n")
+	lineNum := 0
+	var currentClass *ASTType
+	inDocstring := false
+	docstringBuf := strings.Builder{}
+
+	for lineNum < len(lines) {
+		line := lines[lineNum]
+		lineNum++
+		trimmed := strings.TrimSpace(line)
+
+		// Simple docstring collector
+		if strings.HasPrefix(trimmed, `"""`) || strings.HasPrefix(trimmed, `'''`) {
+			if inDocstring {
+				inDocstring = false
+			} else {
+				inDocstring = true
+				docstringBuf.Reset()
+				docstringBuf.WriteString(strings.Trim(trimmed, `"'`))
+				if strings.Count(trimmed, `"""`) >= 2 || strings.Count(trimmed, `'''`) >= 2 {
+					inDocstring = false
+				}
+				continue
+			}
+		} else if inDocstring {
+			docstringBuf.WriteString(" " + trimmed)
+			continue
+		}
+
+		// Class match
+		if match := pyClassRegex.FindStringSubmatch(trimmed); len(match) > 1 {
+			className := match[1]
+			isExported := !strings.HasPrefix(className, "_")
+			cDoc := strings.TrimSpace(docstringBuf.String())
+
+			pyType := ASTType{
+				Name:       className,
+				Package:    pkg.Name,
+				Layer:      pkg.Layer,
+				Language:   "python",
+				Kind:       "class",
+				Doc:        cDoc,
+				FilePath:   filepath.ToSlash(filePath),
+				LineNumber: lineNum,
+				IsExported: isExported,
+				Methods:    make([]string, 0),
+			}
+			pkg.Types = append(pkg.Types, pyType)
+			currentClass = &pkg.Types[len(pkg.Types)-1]
+			continue
+		}
+
+		// Function or method start (handle multiline function definitions)
+		if strings.HasPrefix(trimmed, "def ") || strings.HasPrefix(trimmed, "async def ") {
+			startLine := lineNum
+			isMethod := currentClass != nil && strings.HasPrefix(line, "    ")
+			fullDef := trimmed
+
+			for !strings.HasSuffix(strings.TrimSpace(fullDef), ":") && lineNum < len(lines) {
+				fullDef += " " + strings.TrimSpace(lines[lineNum])
+				lineNum++
+			}
+
+			if match := pyFuncRegex.FindStringSubmatch(fullDef); len(match) > 1 {
+				fnName := match[1]
+				if strings.HasPrefix(fnName, "__") && fnName != "__init__" {
+					continue
+				}
+
+				rawParams := strings.TrimSpace(match[2])
+				rawReturn := strings.TrimSpace(match[3])
+
+				params := make([]ASTField, 0)
+				if rawParams != "" {
+					parts := splitPythonParams(rawParams)
+					for _, part := range parts {
+						part = strings.TrimSpace(part)
+						if part == "" || part == "self" || part == "cls" {
+							continue
+						}
+						pTokens := strings.SplitN(part, ":", 2)
+						pName := strings.TrimSpace(pTokens[0])
+						pType := "Any"
+						if len(pTokens) > 1 {
+							// Strip default value if present
+							typeAndDef := strings.SplitN(pTokens[1], "=", 2)
+							pType = strings.TrimSpace(typeAndDef[0])
+						}
+						params = append(params, ASTField{
+							Name:       pName,
+							Type:       pType,
+							IsExported: true,
+							IsRequired: !strings.Contains(part, "="),
+						})
+					}
+				}
+
+				returns := []string{}
+				if rawReturn != "" {
+					returns = append(returns, rawReturn)
+				}
+
+				recv := ""
+				recvRaw := ""
+				id := fmt.Sprintf("%s.%s", pkg.Name, fnName)
+				if isMethod {
+					recv = currentClass.Name
+					recvRaw = currentClass.Name
+					id = fmt.Sprintf("%s.%s.%s", pkg.Name, recvRaw, fnName)
+					currentClass.Methods = append(currentClass.Methods, fnName)
+				}
+
+				sig := fmt.Sprintf("def %s(%s)", fnName, rawParams)
+				if rawReturn != "" {
+					sig += " -> " + rawReturn
+				}
+
+				method := ASTMethod{
+					ID:          id,
+					Name:        fnName,
+					Package:     pkg.Name,
+					Layer:       pkg.Layer,
+					Language:    "python",
+					Receiver:    recv,
+					ReceiverRaw: recvRaw,
+					Signature:   sig,
+					Doc:         strings.TrimSpace(docstringBuf.String()),
+					Params:      params,
+					Returns:     returns,
+					FilePath:    filepath.ToSlash(filePath),
+					LineNumber:  startLine,
+					IsCallable:  !strings.HasPrefix(fnName, "_"),
+				}
+
+				if isMethod {
+					pkg.Methods = append(pkg.Methods, method)
+				} else {
+					pkg.Functions = append(pkg.Functions, method)
+				}
+			}
+		}
+	}
+}
+
 func (s *ASTScanner) matchRegisteredRunner(m *ASTMethod, registeredMap map[string]string) {
-	// Try matching by exact ID or pattern
 	nameLower := strings.ToLower(m.Name)
 	recvLower := strings.ToLower(m.ReceiverRaw)
 	pkgLower := strings.ToLower(m.Package)
 
-	// Direct check
 	for key, regID := range registeredMap {
 		if strings.Contains(key, nameLower) && (recvLower == "" || strings.Contains(key, recvLower) || strings.Contains(key, pkgLower)) {
 			m.HasRegisteredRunner = true
@@ -502,7 +851,6 @@ func (s *ASTScanner) matchRegisteredRunner(m *ASTMethod, registeredMap map[strin
 	}
 }
 
-// exprToString converts an ast.Expr to its canonical Go type string.
 func exprToString(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
@@ -535,6 +883,28 @@ func exprToString(expr ast.Expr) string {
 	}
 }
 
+func layerToKey(layerStr string) string {
+	l := strings.ToLower(layerStr)
+	switch {
+	case strings.Contains(l, "layer 1"):
+		return "layer1"
+	case strings.Contains(l, "layer 2"):
+		return "layer2"
+	case strings.Contains(l, "layer 3"):
+		return "layer3"
+	case strings.Contains(l, "layer 4"):
+		return "layer4"
+	case strings.Contains(l, "layer 5"):
+		return "layer5"
+	case strings.Contains(l, "layer 6"):
+		return "layer6"
+	case strings.Contains(l, "layer 7"):
+		return "layer7"
+	default:
+		return "system"
+	}
+}
+
 // AutoRegisterDiscoveredModules generates workbench Module entries for AST-discovered callable methods.
 func (s *ASTScanner) AutoRegisterDiscoveredModules(reg *Registry) int {
 	res, err := s.GetLastResult()
@@ -544,8 +914,16 @@ func (s *ASTScanner) AutoRegisterDiscoveredModules(reg *Registry) int {
 
 	added := 0
 	for _, m := range res.AllMethods {
-		// Only auto-register methods that are callable and don't already have a manual runner
 		if !m.IsCallable || m.HasRegisteredRunner {
+			continue
+		}
+
+		// Filter out noisy internal methods and low-level CLI rendering helpers
+		nameLower := strings.ToLower(m.Name)
+		if strings.HasPrefix(m.Name, "_") ||
+			strings.Contains(nameLower, "render") ||
+			strings.Contains(nameLower, "repl") ||
+			strings.Contains(nameLower, "interactive") {
 			continue
 		}
 
@@ -554,7 +932,6 @@ func (s *ASTScanner) AutoRegisterDiscoveredModules(reg *Registry) int {
 			continue
 		}
 
-		// Build a FieldSchema list from parameters
 		fields := make([]FieldSchema, 0, len(m.Params))
 		for _, p := range m.Params {
 			if p.Type == "context.Context" {
@@ -570,13 +947,15 @@ func (s *ASTScanner) AutoRegisterDiscoveredModules(reg *Registry) int {
 
 		desc := m.Doc
 		if desc == "" {
-			desc = fmt.Sprintf("AST-discovered method %s from %s:%d", m.Signature, m.FilePath, m.LineNumber)
+			desc = fmt.Sprintf("[%s] %s discovered from %s:%d (%s)", strings.ToUpper(m.Language), m.Signature, m.FilePath, m.LineNumber, m.Layer)
 		}
 
 		mod := Module{
 			ID:          modID,
-			Name:        fmt.Sprintf("[AST] %s", m.ID),
-			Category:    fmt.Sprintf("AST: %s", m.Package),
+			Name:        fmt.Sprintf("[%s] %s", strings.ToUpper(m.Language), m.ID),
+			Tier:        "GRANULAR_AST",
+			Layer:       layerToKey(m.Layer),
+			Category:    fmt.Sprintf("AST: %s (%s)", m.Package, m.Layer),
 			Description: desc,
 			Schema: ModuleSchema{
 				TypeName: m.ID,
@@ -585,10 +964,10 @@ func (s *ASTScanner) AutoRegisterDiscoveredModules(reg *Registry) int {
 			Presets: []Preset{
 				{
 					ID:          "ast-default",
-					Name:        "AST Default Inspect",
-					Category:    "AST Inspection",
-					Description: "Default introspected payload",
-					Payload:     map[string]any{"_ast_method": m.Signature, "_file": m.FilePath, "_line": m.LineNumber},
+					Name:        fmt.Sprintf("AST Inspect: %s", m.Name),
+					Category:    "AST Introspection",
+					Description: fmt.Sprintf("Parameters and signature for %s", m.Signature),
+					Payload:     map[string]any{"_language": m.Language, "_layer": m.Layer, "_signature": m.Signature, "_file": m.FilePath, "_line": m.LineNumber},
 				},
 			},
 			Execute: func(ctx context.Context, inputRaw json.RawMessage, stream chan<- StreamEvent) (any, error) {
@@ -598,7 +977,9 @@ func (s *ASTScanner) AutoRegisterDiscoveredModules(reg *Registry) int {
 					Type:      "AST_INSPECT",
 					AgentName: "ASTScanner",
 					Payload: map[string]any{
-						"method":    m.Signature,
+						"language":  m.Language,
+						"layer":     m.Layer,
+						"signature": m.Signature,
 						"file":      m.FilePath,
 						"line":      m.LineNumber,
 						"doc":       m.Doc,
@@ -609,7 +990,9 @@ func (s *ASTScanner) AutoRegisterDiscoveredModules(reg *Registry) int {
 				}
 				return map[string]any{
 					"status":             "AST_VERIFIED",
-					"message":            fmt.Sprintf("Method %s is detected via AST at %s:%d", m.Signature, m.FilePath, m.LineNumber),
+					"language":           m.Language,
+					"layer":              m.Layer,
+					"message":            fmt.Sprintf("[%s] %s verified at %s:%d", strings.ToUpper(m.Language), m.Signature, m.FilePath, m.LineNumber),
 					"callable_signature": m.Signature,
 					"input_received":     json.RawMessage(inputRaw),
 				}, nil

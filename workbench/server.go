@@ -71,16 +71,21 @@ func Start(port int, historyDir string) error {
 	// Register All Core Modules & Pipelines
 	modules.RegisterLayer1Gateway(registry, supervisor)
 	modules.RegisterLayer2Orchestrator(registry, supervisor)
+	modules.RegisterLayer3Tools(registry)
+	modules.RegisterLayer4Bridge(registry)
+	modules.RegisterLayer6Agent(registry)
 	modules.RegisterSafetyGatekeeper(registry)
 	modules.RegisterSessionStore(registry)
 	modules.RegisterE2EPipeline(registry, supervisor)
 
-	// Initialize AST Codebase Scanner
+	// Initialize AST Codebase Scanner & Hot File Watcher
 	srcRoot := engine.FindSourceRoot()
 	scanner := engine.NewASTScanner(srcRoot, registry)
 	if _, err := scanner.Scan(); err == nil {
 		scanner.AutoRegisterDiscoveredModules(registry)
 	}
+	// Start real-time hot file watcher (detects new/modified Go & Python files continuously)
+	scanner.StartHotWatcher(1500 * time.Millisecond)
 
 	mux := http.NewServeMux()
 
@@ -429,6 +434,7 @@ func Start(port int, historyDir string) error {
 	<-stop
 
 	fmt.Println("\nGracefully shutting down workbench...")
+	scanner.StopHotWatcher()
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer shutdownCancel()
 	_ = server.Shutdown(shutdownCtx)

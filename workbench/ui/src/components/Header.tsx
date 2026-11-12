@@ -1,7 +1,7 @@
 import React from 'react';
-import { Layers, Rocket, History, Cpu, Network, Terminal, Circle } from 'lucide-react';
+import { Layers, Rocket, History, Cpu, Network, Terminal, Circle, FileCode2 } from 'lucide-react';
 
-export type WorkbenchMode = 'runner' | 'history' | 'telemetry' | 'apireqs' | 'gologs';
+export type WorkbenchMode = 'runner' | 'ast' | 'history' | 'telemetry' | 'apireqs' | 'gologs';
 
 interface HeaderProps {
   currentMode: WorkbenchMode;
@@ -10,6 +10,7 @@ interface HeaderProps {
   historyCount: number;
   apiCount: number;
   logCount: number;
+  astMethodCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -19,6 +20,7 @@ export const Header: React.FC<HeaderProps> = ({
   historyCount,
   apiCount,
   logCount,
+  astMethodCount = 0,
 }) => {
   return (
     <header className="app-header">
@@ -30,7 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span className="header-title">Module Workbench</span>
-            <span className="header-badge">v1.2 Ground Truth</span>
+            <span className="header-badge">v1.3 AST Autodiscovery</span>
           </div>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
             Visual Testbed &amp; Telemetry Flight Recorder
@@ -46,6 +48,15 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Rocket size={14} />
           <span>Runner &amp; Workbench</span>
+        </button>
+
+        <button
+          className={`nav-tab-btn ${currentMode === 'ast' ? 'active' : ''}`}
+          onClick={() => onSelectMode('ast')}
+        >
+          <FileCode2 size={14} />
+          <span>AST Codebase Scanner</span>
+          {astMethodCount > 0 && <span className="tab-badge" style={{ background: 'var(--accent-purple-bg)', color: 'var(--accent-purple)', borderColor: 'var(--accent-purple-border)' }}>{astMethodCount}</span>}
         </button>
 
         <button

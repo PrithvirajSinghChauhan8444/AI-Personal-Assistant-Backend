@@ -157,7 +157,9 @@ func RegisterLayer1Gateway(r *engine.Registry, sup *engine.Supervisor) {
 	r.Register(engine.Module{
 		ID:          "l1_gateway_submit_turn",
 		Name:        "Layer 1: Gateway (SubmitTurn - Isolated)",
-		Category:    "Isolated Module",
+		Tier:        "LAYER_BENCH",
+		Layer:       "layer1",
+		Category:    "Layer 1: Gateway",
 		Description: "Feeds an InboundTurnRequest directly into Gateway.SubmitTurn, normalizes it, and streams OutboundEvents from an isolated handler.",
 		InputType:   reflect.TypeOf(gateway.InboundTurnRequest{}),
 		Presets: []engine.Preset{
@@ -296,7 +298,9 @@ func RegisterLayer1Gateway(r *engine.Registry, sup *engine.Supervisor) {
 	r.Register(engine.Module{
 		ID:          "l1_gateway_normalize_inbound",
 		Name:        "Layer 1: Gateway (NormalizeInbound)",
-		Category:    "Isolated Module",
+		Tier:        "COMPONENT",
+		Layer:       "layer1",
+		Category:    "Layer 1: Gateway",
 		Description: "Tests direct Layer 1 input normalization, agent prefix extraction (@agent), UUID defaults, and capability validation.",
 		InputType:   reflect.TypeOf(gateway.InboundTurnRequest{}),
 		Presets: []engine.Preset{

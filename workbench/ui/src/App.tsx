@@ -8,6 +8,8 @@ import {
   APIRequestLog,
   GoLogEntry,
   SystemStats,
+  ASTScanResult,
+  ASTMethod,
 } from './types';
 import { Header, WorkbenchMode } from './components/Header';
 import { ModuleSelector } from './components/ModuleSelector';
@@ -22,6 +24,7 @@ import { FlightRecorderView } from './components/FlightRecorderView';
 import { SystemTelemetryViewer } from './components/SystemTelemetryViewer';
 import { ApiRequestsViewer } from './components/ApiRequestsViewer';
 import { GoLogsViewer } from './components/GoLogsViewer';
+import { AstInspectorView } from './components/AstInspectorView';
 import { ResultViewer } from './components/ResultViewer';
 import { HitlPrompt } from './components/HitlPrompt';
 import { SlidersHorizontal, Code } from 'lucide-react';
@@ -49,6 +52,10 @@ export const App: React.FC = () => {
   const [telemetryLoading, setTelemetryLoading] = useState<boolean>(false);
   const [streamViewMode, setStreamViewMode] = useState<'dashboard' | 'raw_feed'>('dashboard');
 
+  // AST Codebase Scanner State
+  const [scanResult, setScanResult] = useState<ASTScanResult | null>(null);
+  const [scanLoading, setScanLoading] = useState<boolean>(false);
+
   const parsedFormValues = useMemo(() => {
     try {
       return JSON.parse(inputPayload);
@@ -61,17 +68,74 @@ export const App: React.FC = () => {
     setInputPayload(JSON.stringify(newValues, null, 2));
   };
 
-  useEffect(() => {
-    fetch('/api/modules')
+  const loadModules = () => {
+    return fetch('/api/modules')
       .then((res) => res.json())
       .then((data: Module[]) => {
         setModules(data);
-        if (data.length > 0) {
+        if (data.length > 0 && !selectedModule) {
           handleSelectModule(data[0]);
         }
+        return data;
       })
       .catch((err) => console.error('Failed to load modules:', err));
+  };
 
+  const loadASTScan = () => {
+    setScanLoading(true);
+    fetch('/api/scanner/details')
+      .then((res) => res.json())
+      .then((data: ASTScanResult) => {
+        setScanResult(data);
+      })
+      .catch((err) => console.error('Failed to load AST scan:', err))
+      .finally(() => setScanLoading(false));
+  };
+
+  const handleRescanAST = () => {
+    setScanLoading(true);
+    fetch('/api/scanner/rescan', { method: 'POST' })
+      .then((res) => res.json())
+      .then((data: ASTScanResult) => {
+        setScanResult(data);
+        loadModules();
+      })
+      .catch((err) => console.error('Failed to rescan AST:', err))
+      .finally(() => setScanLoading(false));
+  };
+
+  const handleOpenInRunner = (method: ASTMethod) => {
+    // Check if matching module exists in modules
+    let targetMod: Module | undefined;
+
+    if (method.has_registered_runner && method.registered_module_id) {
+      targetMod = modules.find((m) => m.id === method.registered_module_id);
+    }
+
+    if (!targetMod) {
+      const astModId = `ast:${method.id.toLowerCase()}`;
+      targetMod = modules.find((m) => m.id.toLowerCase() === astModId);
+    }
+
+    if (!targetMod) {
+      targetMod = modules.find(
+        (m) =>
+          m.id.toLowerCase().includes(method.name.toLowerCase()) ||
+          m.name.toLowerCase().includes(method.name.toLowerCase())
+      );
+    }
+
+    if (targetMod) {
+      handleSelectModule(targetMod);
+    }
+
+    setCurrentMode('runner');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    loadModules();
+    loadASTScan();
     loadHistory();
     loadTelemetry();
 
@@ -83,6 +147,9 @@ export const App: React.FC = () => {
           setApiRequests((prev) => [item.data, ...prev.slice(0, 99)]);
         } else if (item.type === 'GO_LOG') {
           setGoLogs((prev) => [item.data, ...prev.slice(0, 199)]);
+        } else if (item.type === 'AST_RELOADED') {
+          loadModules();
+          loadASTScan();
         }
       } catch (err) {
         console.error('Error parsing telemetry stream event:', err);
@@ -263,6 +330,7 @@ export const App: React.FC = () => {
         historyCount={history.length}
         apiCount={apiRequests.length}
         logCount={goLogs.length}
+        astMethodCount={scanResult ? (scanResult.summary.method_count + scanResult.summary.function_count) : 0}
       />
 
       <main className="page-body">
@@ -395,6 +463,17 @@ export const App: React.FC = () => {
               <ResultViewer record={latestRecord} />
             </div>
           </div>
+        )}
+
+        {/* MODE: AST CODEBASE SCANNER */}
+        {currentMode === 'ast' && (
+          <AstInspectorView
+            scanResult={scanResult}
+            loading={scanLoading}
+            onRescan={handleRescanAST}
+            onOpenInRunner={handleOpenInRunner}
+            modules={modules}
+          />
         )}
 
         {/* MODE 2: FLIGHT RECORDER */}

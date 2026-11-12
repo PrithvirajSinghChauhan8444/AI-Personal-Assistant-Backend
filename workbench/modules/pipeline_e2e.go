@@ -17,6 +17,8 @@ func RegisterE2EPipeline(r *engine.Registry, sup *engine.Supervisor) {
 	r.Register(engine.Module{
 		ID:          "pipeline_l1_l2_e2e",
 		Name:        "Pipeline: Layer 1 Gateway -> Layer 2 Orchestrator",
+		Tier:        "LAYER_BENCH",
+		Layer:       "pipeline",
 		Category:    "Pipeline",
 		Description: "Runs the complete live pipeline: Ingress validation & normalization (Layer 1) wired directly to Planner, Safety Gatekeeper, and SQLite Session Store (Layer 2).",
 		InputType:   reflect.TypeOf(gateway.InboundTurnRequest{}),

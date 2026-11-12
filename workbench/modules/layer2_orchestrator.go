@@ -58,7 +58,9 @@ func RegisterLayer2Orchestrator(r *engine.Registry, sup *engine.Supervisor) {
 	r.Register(engine.Module{
 		ID:          "l2_orchestrator_execute_turn",
 		Name:        "Layer 2: Orchestrator (ExecuteTurn - Isolated)",
-		Category:    "Isolated Module",
+		Tier:        "LAYER_BENCH",
+		Layer:       "layer2",
+		Category:    "Layer 2: Orchestrator",
 		Description: "Feeds an InboundTurnRequest directly into Layer 2 Orchestrator.ExecuteTurn, bypassing Layer 1 normalization.",
 		InputType:   reflect.TypeOf(gateway.InboundTurnRequest{}),
 		Presets: []engine.Preset{
