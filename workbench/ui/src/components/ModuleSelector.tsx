@@ -67,7 +67,18 @@ export const ModuleSelector: React.FC<ModuleSelectorProps> = ({ modules, selecte
     return Array.from(new Set(filteredModules.map((m) => m.category)));
   }, [filteredModules]);
 
-  const layerBenchCount = modules.filter((m) => m.tier === 'LAYER_BENCH' || (!m.category.startsWith('AST:') && (m.id.startsWith('pipeline') || m.id.startsWith('l1_') || m.id.startsWith('l2_') || m.id.startsWith('l3_') || m.id.startsWith('l6_')))).length;
+  const layerBenchCount = useMemo(() => {
+    return modules.filter((m) => m.tier === 'LAYER_BENCH' || (!m.category.startsWith('AST:') && (
+      m.id.startsWith('pipeline') ||
+      m.id.startsWith('l1_') ||
+      m.id.startsWith('l2_') ||
+      m.id.startsWith('l3_') ||
+      m.id.startsWith('l4_') ||
+      m.id.startsWith('l5_') ||
+      m.id.startsWith('l6_') ||
+      m.id.startsWith('l7_')
+    ))).length;
+  }, [modules]);
   const granularCount = modules.filter((m) => m.tier === 'GRANULAR_AST' || m.category.startsWith('AST:')).length;
 
   return (
@@ -75,9 +86,14 @@ export const ModuleSelector: React.FC<ModuleSelectorProps> = ({ modules, selecte
       {/* Layer Navigation Tabs */}
       <div style={{ marginBottom: '10px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-          <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
-            System Layer Filter
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
+              System Layers (7 Architecture Layers)
+            </span>
+            <span className="badge badge-sky" style={{ fontSize: '10.5px' }}>
+              {layerBenchCount} Test Benches
+            </span>
+          </div>
           <button
             type="button"
             onClick={() => setShowGranularAST(!showGranularAST)}
@@ -117,7 +133,7 @@ export const ModuleSelector: React.FC<ModuleSelectorProps> = ({ modules, selecte
               fontWeight: selectedLayer === 'all' ? 700 : 500,
             }}
           >
-            ⭐ All Layers ({layerBenchCount})
+            ⭐ All Modules ({layerBenchCount})
           </button>
           <button
             type="button"
@@ -134,7 +150,7 @@ export const ModuleSelector: React.FC<ModuleSelectorProps> = ({ modules, selecte
               fontWeight: selectedLayer === 'pipeline' ? 700 : 500,
             }}
           >
-            E2E Pipeline
+            E2E Pipeline (main.go)
           </button>
           <button
             type="button"
