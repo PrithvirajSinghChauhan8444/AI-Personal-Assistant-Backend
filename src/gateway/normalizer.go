@@ -260,7 +260,11 @@ func normalizeCapabilities(trigger TriggerType, caps []string) ([]string, error)
 func parseAgentTargeting(prompt string, existingTarget string) (string, string, error) {
 	// If agent token appears inside inline code quotes, preserve as regular text
 	if isEnclosedInCode(prompt) {
-		return defaultTarget(existingTarget), prompt, nil
+		target, err := validateDirectTarget(existingTarget)
+		if err != nil {
+			return "", "", err
+		}
+		return target, prompt, nil
 	}
 
 	if strings.HasPrefix(prompt, "@") {
@@ -271,14 +275,25 @@ func parseAgentTargeting(prompt string, existingTarget string) (string, string, 
 		return parseFlagSyntax(prompt)
 	}
 
-	return defaultTarget(existingTarget), prompt, nil
+	target, err := validateDirectTarget(existingTarget)
+	if err != nil {
+		return "", "", err
+	}
+	return target, prompt, nil
 }
 
-func defaultTarget(existing string) string {
-	if existing != "" {
-		return strings.ToLower(existing)
+func validateDirectTarget(existing string) (string, error) {
+	trimmed := strings.ToLower(strings.TrimSpace(existing))
+	if trimmed == "" || trimmed == "auto" {
+		return "auto", nil
 	}
-	return "auto"
+	if !slices.Contains(validAgents, trimmed) {
+		return "", &GatewayError{
+			Code:    "ERR_UNKNOWN_AGENT",
+			Message: fmt.Sprintf("Target agent '%s' is not recognized. Valid agents: system, browser, research, productivity.", trimmed),
+		}
+	}
+	return trimmed, nil
 }
 
 func isEnclosedInCode(prompt string) bool {

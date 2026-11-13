@@ -128,6 +128,11 @@ func (a *WebAdapter) handleTurn(w http.ResponseWriter, r *http.Request) {
 
 	eventCh, normalizedReq, err := a.gw.SubmitTurn(r.Context(), inbound)
 	if err != nil {
+		var gwErr *gateway.GatewayError
+		if errors.As(err, &gwErr) {
+			http.Error(w, fmt.Sprintf("%s: %s", gwErr.Code, gwErr.Message), http.StatusBadRequest)
+			return
+		}
 		http.Error(w, fmt.Sprintf("failed to submit turn: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -245,6 +250,8 @@ func (a *WebAdapter) handleSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
 
 	ch := make(chan gateway.OutboundEvent, a.maxBufSize)
 	a.registerSSEClient(sessionID, ch)
@@ -415,7 +422,14 @@ func (a *WebAdapter) handleIncomingWSMessage(ctx context.Context, payload []byte
 				Channel:   gateway.ClientTypeWeb,
 				Prompt:    prompt,
 			}
-			_, _, _ = a.gw.SubmitTurn(ctx, req)
+			eventCh, _, err := a.gw.SubmitTurn(ctx, req)
+			if err == nil {
+				go func() {
+					for range eventCh {
+						// Draining eventCh to prevent deadlock on burst events (>64 events)
+					}
+				}()
+			}
 		}
 
 	case "hitl", "approval":

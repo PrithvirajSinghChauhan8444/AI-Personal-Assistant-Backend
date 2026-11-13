@@ -249,3 +249,11 @@ type TurnMetrics struct {
 	TimeToFirstByteMs int64  `json:"ttft_ms"`
 	TotalDurationMs   int64  `json:"total_duration_ms"`
 }
+
+// TTFTMs returns TimeToFirstByteMs for developer ergonomics and compatibility.
+func (m *TurnMetrics) TTFTMs() int64 {
+	if m == nil {
+		return 0
+	}
+	return m.TimeToFirstByteMs
+}

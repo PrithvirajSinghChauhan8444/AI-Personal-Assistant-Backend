@@ -53,9 +53,19 @@ func (g *Gateway) GetSnapshot(sessionID string) (*TurnSnapshot, error) {
 	return g.hub.GetSnapshot(sessionID)
 }
 
-// GetActiveSnapshots returns current snapshots for all active sessions.
+// GetActiveSnapshots returns current snapshots for in-flight active sessions.
 func (g *Gateway) GetActiveSnapshots() []*TurnSnapshot {
 	return g.hub.GetActiveSnapshots()
+}
+
+// GetAllSnapshots returns snapshots for all sessions, including completed and failed turns.
+func (g *Gateway) GetAllSnapshots() []*TurnSnapshot {
+	return g.hub.GetAllSnapshots()
+}
+
+// SetPersistentStore attaches a database store to persist logs beyond RAM retention.
+func (g *Gateway) SetPersistentStore(store PersistentObserverStore) {
+	g.hub.SetPersistentStore(store)
 }
 
 // GetTurnLogs retrieves collected operational logs and diagnostic traces for a turn.

@@ -19,7 +19,17 @@ const (
 	DefaultMaxRecentLogs = 50
 	// DefaultMaxTurnLogs defines the maximum logs retained per historical turn.
 	DefaultMaxTurnLogs = 500
+	// DefaultMaxActiveSnapshots defines the maximum concurrent session snapshots retained in RAM.
+	DefaultMaxActiveSnapshots = 200
+	// DefaultMaxHistoricalTurns defines the maximum turns retained in memory before FIFO eviction.
+	DefaultMaxHistoricalTurns = 100
 )
+
+// PersistentObserverStore defines database storage for completed turn snapshots and logs.
+type PersistentObserverStore interface {
+	SaveTurnLog(ctx context.Context, entry LogEntry) error
+	GetHistoricalTurnLogs(ctx context.Context, turnID string) ([]LogEntry, error)
+}
 
 // ExecutionObserver defines the unified contract for adapters and telemetry listeners.
 type ExecutionObserver interface {
@@ -36,23 +46,39 @@ func (f ObserverFunc) OnEvent(ctx context.Context, ev OutboundEvent) {
 
 // ObserverHub coordinates observer subscription, real-time snapshot tracking, and log indexing.
 type ObserverHub struct {
-	mu            sync.RWMutex
-	observers     map[string]ExecutionObserver
-	snapshots     map[string]*TurnSnapshot // Keyed by session_id
-	turnLogs      map[string][]LogEntry    // Keyed by turn_id
-	maxRecentLogs int
-	maxTurnLogs   int
+	mu                 sync.RWMutex
+	observers          map[string]ExecutionObserver
+	snapshots          map[string]*TurnSnapshot // Keyed by session_id
+	turnLogs           map[string][]LogEntry    // Keyed by turn_id
+	sessionOrder       []string                 // FIFO tracking for snapshot eviction
+	turnOrder          []string                 // FIFO tracking for log eviction
+	maxRecentLogs      int
+	maxTurnLogs        int
+	maxActiveSnapshots int
+	maxHistoricalTurns int
+	persistentStore    PersistentObserverStore
 }
 
 // NewObserverHub creates an initialized ObserverHub.
 func NewObserverHub() *ObserverHub {
 	return &ObserverHub{
-		observers:     make(map[string]ExecutionObserver),
-		snapshots:     make(map[string]*TurnSnapshot),
-		turnLogs:      make(map[string][]LogEntry),
-		maxRecentLogs: DefaultMaxRecentLogs,
-		maxTurnLogs:   DefaultMaxTurnLogs,
+		observers:          make(map[string]ExecutionObserver),
+		snapshots:          make(map[string]*TurnSnapshot),
+		turnLogs:           make(map[string][]LogEntry),
+		sessionOrder:       make([]string, 0),
+		turnOrder:          make([]string, 0),
+		maxRecentLogs:      DefaultMaxRecentLogs,
+		maxTurnLogs:        DefaultMaxTurnLogs,
+		maxActiveSnapshots: DefaultMaxActiveSnapshots,
+		maxHistoricalTurns: DefaultMaxHistoricalTurns,
 	}
+}
+
+// SetPersistentStore attaches a database store for historical logs and diagnostics.
+func (h *ObserverHub) SetPersistentStore(store PersistentObserverStore) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.persistentStore = store
 }
 
 // RegisterObserver registers an observer with a unique identifier.
@@ -93,8 +119,22 @@ func (h *ObserverHub) GetSnapshot(sessionID string) (*TurnSnapshot, error) {
 	return h.cloneSnapshot(snap), nil
 }
 
-// GetActiveSnapshots returns clones of all currently tracked session snapshots.
+// GetActiveSnapshots returns clones of all currently in-flight turns (PLANNING, EXECUTING, WAITING_APPROVAL).
 func (h *ObserverHub) GetActiveSnapshots() []*TurnSnapshot {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	list := make([]*TurnSnapshot, 0)
+	for _, s := range h.snapshots {
+		if s.Phase == PhasePlanning || s.Phase == PhaseExecuting || s.Phase == PhaseWaitingApproval {
+			list = append(list, h.cloneSnapshot(s))
+		}
+	}
+	return list
+}
+
+// GetAllSnapshots returns clones of all tracked session snapshots, including completed and failed turns.
+func (h *ObserverHub) GetAllSnapshots() []*TurnSnapshot {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
@@ -108,16 +148,21 @@ func (h *ObserverHub) GetActiveSnapshots() []*TurnSnapshot {
 // GetTurnLogs retrieves the collected operational logs and diagnostic trace for a specific turn.
 func (h *ObserverHub) GetTurnLogs(turnID string) ([]LogEntry, error) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
 	logs, exists := h.turnLogs[turnID]
-	if !exists {
-		return []LogEntry{}, nil
+	store := h.persistentStore
+	h.mu.RUnlock()
+
+	if exists && len(logs) > 0 {
+		copied := make([]LogEntry, len(logs))
+		copy(copied, logs)
+		return copied, nil
 	}
 
-	copied := make([]LogEntry, len(logs))
-	copy(copied, logs)
-	return copied, nil
+	if store != nil {
+		return store.GetHistoricalTurnLogs(context.Background(), turnID)
+	}
+
+	return []LogEntry{}, nil
 }
 
 // ProcessEvent updates internal snapshot state, records telemetry, and notifies all observers.
@@ -142,6 +187,10 @@ func (h *ObserverHub) updateSnapshotAndLogs(ev OutboundEvent) {
 func (h *ObserverHub) resolveOrCreateSnapshot(ev OutboundEvent) *TurnSnapshot {
 	snap, exists := h.snapshots[ev.SessionID]
 	if !exists {
+		if len(h.snapshots) >= h.maxActiveSnapshots {
+			h.evictOldestSnapshot()
+		}
+
 		now := ev.Timestamp
 		snap = &TurnSnapshot{
 			SessionID:   ev.SessionID,
@@ -154,6 +203,7 @@ func (h *ObserverHub) resolveOrCreateSnapshot(ev OutboundEvent) *TurnSnapshot {
 			RecentLogs:  make([]LogEntry, 0, h.maxRecentLogs),
 		}
 		h.snapshots[ev.SessionID] = snap
+		h.sessionOrder = append(h.sessionOrder, ev.SessionID)
 	}
 	snap.UpdatedAt = ev.Timestamp
 	if ev.TurnID != "" {
@@ -166,6 +216,29 @@ func (h *ObserverHub) resolveOrCreateSnapshot(ev OutboundEvent) *TurnSnapshot {
 		snap.ActiveAgent = ev.AgentName
 	}
 	return snap
+}
+
+func (h *ObserverHub) evictOldestSnapshot() {
+	for i, sessID := range h.sessionOrder {
+		if s, ok := h.snapshots[sessID]; ok && (s.Phase == PhaseCompleted || s.Phase == PhaseFailed) {
+			delete(h.snapshots, sessID)
+			h.sessionOrder = append(h.sessionOrder[:i], h.sessionOrder[i+1:]...)
+			return
+		}
+	}
+	if len(h.sessionOrder) > 0 {
+		oldest := h.sessionOrder[0]
+		delete(h.snapshots, oldest)
+		h.sessionOrder = h.sessionOrder[1:]
+	}
+}
+
+func (h *ObserverHub) evictOldestTurnLog() {
+	if len(h.turnOrder) > 0 {
+		oldest := h.turnOrder[0]
+		delete(h.turnLogs, oldest)
+		h.turnOrder = h.turnOrder[1:]
+	}
 }
 
 func (h *ObserverHub) applyEventToSnapshot(snap *TurnSnapshot, ev OutboundEvent) {
@@ -353,10 +426,23 @@ func (h *ObserverHub) recordLogEntry(snap *TurnSnapshot, ev OutboundEvent) {
 
 	// Append to historical turn logs index
 	if snap.TurnID != "" {
-		turnList := h.turnLogs[snap.TurnID]
+		turnList, exists := h.turnLogs[snap.TurnID]
+		if !exists {
+			if len(h.turnLogs) >= h.maxHistoricalTurns {
+				h.evictOldestTurnLog()
+			}
+			h.turnOrder = append(h.turnOrder, snap.TurnID)
+		}
 		if len(turnList) < h.maxTurnLogs {
 			h.turnLogs[snap.TurnID] = append(turnList, entry)
 		}
+	}
+
+	// Persist log if database store attached
+	if h.persistentStore != nil {
+		go func(e LogEntry) {
+			_ = h.persistentStore.SaveTurnLog(context.Background(), e)
+		}(entry)
 	}
 }
 

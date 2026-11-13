@@ -61,11 +61,15 @@ Given an initialized Gateway instance `gw := stack.Gateway`:
   * Returns the live state of an active or recent session without needing to replay the stream from the start.
   * Returns `gateway.ErrSnapshotNotFound` if the session does not exist.
 * **`gw.GetActiveSnapshots() []*gateway.TurnSnapshot`**
-  * Returns snapshots for all currently active turns across all sessions.
+  * Returns snapshots for all currently active (in-flight) turns across all sessions (Phase: `PLANNING`, `EXECUTING`, `WAITING_APPROVAL`).
+* **`gw.GetAllSnapshots() []*gateway.TurnSnapshot`**
+  * Returns snapshots for all tracked sessions, including completed and failed turns.
 
 ### C. Historical Logs & Diagnostics
 * **`gw.GetTurnLogs(turnID string) ([]gateway.LogEntry, error)`**
   * Returns the complete diagnostic log trace for any given turn ID.
+* **`gw.SetPersistentStore(store gateway.PersistentObserverStore)`**
+  * Plugs in a persistent database store (e.g. SQLite, PostgreSQL) to archive operational turn logs beyond RAM limits.
 
 ### D. Observer Subscriptions (Multi-Adapter Fan-Out)
 * **`gw.RegisterObserver(id string, obs gateway.ExecutionObserver) error`**
@@ -137,7 +141,7 @@ Every event delivered to `OnEvent` or the stream channel contains:
 | `EventTokenChunk` | `ev.TextDelta` | Real-time conversational response text tokens. |
 | `EventHITLRequest` | `ev.HITL` (`*gateway.HITLApprovalPrompt`) | Execution paused awaiting human clearance. Contains `RequestID`, `ToolName`, `Reason`, `ArgumentsJSON`. |
 | `EventSystemLog` | `ev.Log` (`*gateway.LogEntry`) | Live operational log with `Severity` (`DEBUG`, `INFO`, `WARN`, `ERROR`), `Component`, `Message`. |
-| `EventTurnComplete` | `ev.Metrics` (`*gateway.TurnMetrics`) | Turn concluded. Contains `PromptTokens`, `CompletionTokens`, `TotalDurationMs`, `TTFTMs`. |
+| `EventTurnComplete` | `ev.Metrics` (`*gateway.TurnMetrics`) | Turn concluded. Contains `PromptTokens`, `CompletionTokens`, `TotalDurationMs`, `TimeToFirstByteMs` (or helper `ev.Metrics.TTFTMs()`). |
 | `EventTurnError` | `ev.Error` | Fatal turn execution failure. |
 
 ---
@@ -163,6 +167,21 @@ type TurnSnapshot struct {
     StartedAt      time.Time           // Turn start timestamp
     UpdatedAt      time.Time           // Latest state update timestamp
 }
+```
+
+### Persistent Storage Extension (`PersistentObserverStore`)
+
+By default, operational logs and snapshots are held in bounded in-memory ring buffers (`DefaultMaxActiveSnapshots = 200`, `DefaultMaxHistoricalTurns = 100`, `DefaultMaxTurnLogs = 500`) to guarantee zero disk I/O latency on high-frequency streaming events. To persist operational audit logs into SQLite, PostgreSQL, or ClickHouse, implement:
+
+```go
+type PersistentObserverStore interface {
+    SaveTurnLog(ctx context.Context, entry LogEntry) error
+    GetHistoricalTurnLogs(ctx context.Context, turnID string) ([]LogEntry, error)
+}
+```
+And attach it during initialization without modifying the core pipeline:
+```go
+gw.SetPersistentStore(mySqliteStore)
 ```
 
 ---
