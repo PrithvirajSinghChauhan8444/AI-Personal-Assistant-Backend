@@ -334,3 +334,168 @@ func RenderError(errText string) string {
 	msg := ErrorStyle.Render(fmt.Sprintf("Error: %s", errText))
 	return fmt.Sprintf("\n%s %s\n", glyph, msg)
 }
+
+// RenderPlanCreated formats a decomposed execution plan DAG into a structured box.
+func RenderPlanCreated(plan *gateway.PlanInfo) string {
+	if plan == nil {
+		return ""
+	}
+
+	var b strings.Builder
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#F59E0B"))
+	goalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F1F5F9"))
+	subtaskIDStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#38BDF8"))
+	depStyle := lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("#64748B"))
+	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#CBD5E1"))
+
+	b.WriteString(titleStyle.Render("📋 TASK EXECUTION PLAN"))
+	if plan.PrimaryGoal != "" {
+		b.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8")).Render("Goal: ") + goalStyle.Render(plan.PrimaryGoal))
+	}
+	b.WriteString("\n\n" + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#94A3B8")).Render("Subtasks:"))
+
+	for i, st := range plan.SubTasks {
+		num := fmt.Sprintf(" %d. ", i+1)
+		workerBadge := AgentBadge(st.AssignedWorker)
+		depText := ""
+		if len(st.DependsOn) > 0 {
+			depText = depStyle.Render(fmt.Sprintf(" (after %s)", strings.Join(st.DependsOn, ", ")))
+		}
+
+		b.WriteString(fmt.Sprintf("\n%s%s %s %s%s",
+			num,
+			subtaskIDStyle.Render(st.ID),
+			workerBadge,
+			descStyle.Render(st.Description),
+			depText,
+		))
+	}
+
+	return "\n" + BoxBorder.BorderForeground(lipgloss.Color("#818CF8")).Render(b.String()) + "\n"
+}
+
+// RenderPlanDiagnostic formats planner diagnostics or fallback notifications.
+func RenderPlanDiagnostic(diag *gateway.PlanDiagnosticInfo) string {
+	if diag == nil {
+		return ""
+	}
+	var b strings.Builder
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#F59E0B")).Render("⚠️  PLANNING DIAGNOSTIC")
+	b.WriteString(title + "\n")
+	b.WriteString(fmt.Sprintf("Reason: %s\n", diag.Reason))
+	if diag.FallbackTriggered {
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#38BDF8")).Render("Fallback: Autonomous fallback strategy activated.\n"))
+	}
+	if diag.Error != "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Render(fmt.Sprintf("Error: %s\n", diag.Error)))
+	}
+	return "\n" + BoxBorder.BorderForeground(lipgloss.Color("#F59E0B")).Render(b.String()) + "\n"
+}
+
+// RenderSubtaskStart formats a subtask start notification.
+func RenderSubtaskStart(subtask *gateway.SubtaskEventInfo) string {
+	if subtask == nil {
+		return ""
+	}
+	icon := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#38BDF8")).Render("➜")
+	badge := AgentBadge(subtask.Worker)
+	timeStr := ThoughtStyle.Render(time.Now().Format("15:04:05"))
+	idStr := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#38BDF8")).Render(subtask.SubtaskID)
+	return fmt.Sprintf("%s %s %s Starting subtask %s: %s\n", icon, timeStr, badge, idStr, subtask.Description)
+}
+
+// RenderSubtaskComplete formats subtask completion details.
+func RenderSubtaskComplete(subtask *gateway.SubtaskEventInfo) string {
+	if subtask == nil {
+		return ""
+	}
+	icon := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#34D399")).Render("✔")
+	badge := AgentBadge(subtask.Worker)
+	timeStr := ThoughtStyle.Render(time.Now().Format("15:04:05"))
+	idStr := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#34D399")).Render(subtask.SubtaskID)
+	durationStr := fmt.Sprintf("(%dms)", subtask.DurationMs)
+
+	res := fmt.Sprintf("%s %s %s Subtask %s completed %s\n", icon, timeStr, badge, idStr, ThoughtStyle.Render(durationStr))
+	if subtask.ArtifactPath != "" {
+		res += fmt.Sprintf("   %s %s\n",
+			lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")).Render("📁 Artifact:"),
+			subtask.ArtifactPath,
+		)
+	}
+	return res
+}
+
+// RenderSubtaskFailed formats subtask failure details.
+func RenderSubtaskFailed(subtask *gateway.SubtaskEventInfo) string {
+	if subtask == nil {
+		return ""
+	}
+	icon := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#EF4444")).Render("✖")
+	badge := AgentBadge(subtask.Worker)
+	timeStr := ThoughtStyle.Render(time.Now().Format("15:04:05"))
+	idStr := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#EF4444")).Render(subtask.SubtaskID)
+	return fmt.Sprintf("%s %s %s Subtask %s failed: %s\n", icon, timeStr, badge, idStr, subtask.Error)
+}
+
+// RenderThoughtComplete formats a subtle boundary marker when reasoning finishes.
+func RenderThoughtComplete(agent, statusMsg string) string {
+	badge := AgentBadge(agent)
+	msg := statusMsg
+	if msg == "" {
+		msg = "Reasoning concluded. Beginning action."
+	}
+	return fmt.Sprintf("%s %s %s\n",
+		ThoughtStyle.Render("💭"),
+		badge,
+		ThoughtStyle.Render(msg),
+	)
+}
+
+// RenderPhaseChange formats an execution phase transition banner.
+func RenderPhaseChange(phase gateway.ExecutionPhase, agent, statusMsg string) string {
+	var phaseColor lipgloss.Color
+	switch phase {
+	case gateway.PhasePlanning:
+		phaseColor = lipgloss.Color("#A855F7") // Purple
+	case gateway.PhaseExecuting:
+		phaseColor = lipgloss.Color("#38BDF8") // Cyan
+	case gateway.PhaseWaitingApproval:
+		phaseColor = lipgloss.Color("#F59E0B") // Amber
+	case gateway.PhaseCompleted:
+		phaseColor = lipgloss.Color("#34D399") // Emerald
+	case gateway.PhaseFailed:
+		phaseColor = lipgloss.Color("#EF4444") // Red
+	default:
+		phaseColor = lipgloss.Color("#94A3B8")
+	}
+
+	badge := lipgloss.NewStyle().Bold(true).Foreground(phaseColor).Render(fmt.Sprintf("[%s]", phase))
+	timeStr := ThoughtStyle.Render(time.Now().Format("15:04:05"))
+	msg := statusMsg
+	if msg == "" {
+		msg = fmt.Sprintf("Phase transitioned to %s", phase)
+	}
+	return fmt.Sprintf("%s %s %s %s\n", StatusStyle.Render("✦"), timeStr, badge, msg)
+}
+
+// RenderSystemLog formats an operational log message.
+func RenderSystemLog(log *gateway.LogEntry) string {
+	if log == nil {
+		return ""
+	}
+	var sevColor lipgloss.Color
+	switch log.Severity {
+	case gateway.LogSeverityError:
+		sevColor = lipgloss.Color("#EF4444")
+	case gateway.LogSeverityWarn:
+		sevColor = lipgloss.Color("#F59E0B")
+	case gateway.LogSeverityDebug:
+		sevColor = lipgloss.Color("#64748B")
+	default:
+		sevColor = lipgloss.Color("#38BDF8")
+	}
+	sevBadge := lipgloss.NewStyle().Bold(true).Foreground(sevColor).Render(fmt.Sprintf("[%s]", log.Severity))
+	compBadge := lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8")).Render(fmt.Sprintf("[%s]", log.Component))
+	timeStr := ThoughtStyle.Render(log.Timestamp.Format("15:04:05"))
+	return fmt.Sprintf("%s %s %s %s\n", timeStr, sevBadge, compBadge, log.Message)
+}

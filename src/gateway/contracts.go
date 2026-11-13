@@ -43,19 +43,134 @@ type InboundTurnRequest struct {
 	Prompt string `json:"prompt"` // Cleaned user prompt (stripped of @agent prefix)
 }
 
+// ExecutionPhase represents the active operational stage of the cognitive core.
+type ExecutionPhase string
+
+const (
+	PhaseIdle            ExecutionPhase = "IDLE"
+	PhasePlanning        ExecutionPhase = "PLANNING"
+	PhaseExecuting       ExecutionPhase = "EXECUTING"
+	PhaseWaitingApproval ExecutionPhase = "WAITING_APPROVAL"
+	PhaseCompleted       ExecutionPhase = "COMPLETED"
+	PhaseFailed          ExecutionPhase = "FAILED"
+)
+
 // EventType defines streaming event categories sent back to Layer 1.
 type EventType string
 
 const (
-	EventTokenChunk   EventType = "TOKEN_CHUNK"   // Text to display live
-	EventThoughtChunk EventType = "THOUGHT_CHUNK" // Agent reasoning or internal monologue
-	EventStatusUpdate EventType = "STATUS_UPDATE" // Operational status (e.g. "Running tool...")
-	EventToolCall     EventType = "TOOL_CALL"     // Tool execution start
-	EventToolResult   EventType = "TOOL_RESULT"   // Tool execution result
-	EventHITLRequest  EventType = "HITL_REQUEST"  // Interactive human approval prompt
-	EventTurnComplete EventType = "TURN_COMPLETE" // Final completion
-	EventTurnError    EventType = "TURN_ERROR"    // Failure event
+	EventTokenChunk      EventType = "TOKEN_CHUNK"      // Text to display live
+	EventThoughtChunk    EventType = "THOUGHT_CHUNK"    // Agent reasoning or internal monologue
+	EventThoughtComplete EventType = "THOUGHT_COMPLETE" // Thought reasoning concluded; action/answer begun
+	EventStatusUpdate    EventType = "STATUS_UPDATE"    // Operational status (e.g. "Running tool...")
+	EventPhaseChange     EventType = "PHASE_CHANGE"     // Core execution phase transition
+	EventPlanCreated     EventType = "PLAN_CREATED"     // Decomposed DAG plan emitted by planner
+	EventPlanDiagnostic  EventType = "PLAN_DIAGNOSTIC"  // Planning failure or fallback diagnostic
+	EventSubtaskStart    EventType = "SUBTASK_START"    // Subtask execution initiation
+	EventSubtaskProgress EventType = "SUBTASK_PROGRESS" // Subtask lifecycle progress update
+	EventSubtaskComplete EventType = "SUBTASK_COMPLETE" // Subtask finished successfully
+	EventSubtaskFailed   EventType = "SUBTASK_FAILED"   // Subtask execution failed
+	EventToolCall        EventType = "TOOL_CALL"        // Tool execution start
+	EventToolResult      EventType = "TOOL_RESULT"      // Tool execution result
+	EventSystemLog       EventType = "SYSTEM_LOG"       // Live operational log entry
+	EventHITLRequest     EventType = "HITL_REQUEST"     // Interactive human approval prompt
+	EventTurnComplete    EventType = "TURN_COMPLETE"    // Final completion
+	EventTurnError       EventType = "TURN_ERROR"       // Failure event
 )
+
+// LogSeverity defines log level categories for operational diagnostics.
+type LogSeverity string
+
+const (
+	LogSeverityDebug LogSeverity = "DEBUG"
+	LogSeverityInfo  LogSeverity = "INFO"
+	LogSeverityWarn  LogSeverity = "WARN"
+	LogSeverityError LogSeverity = "ERROR"
+)
+
+// LogEntry encapsulates a structured operational log item.
+type LogEntry struct {
+	Timestamp time.Time   `json:"timestamp"`
+	Severity  LogSeverity `json:"severity"`
+	Component string      `json:"component"`
+	Message   string      `json:"message"`
+	TurnID    string      `json:"turn_id,omitempty"`
+}
+
+// SubtaskItemInfo represents an individual subtask specification within a DAG plan.
+type SubtaskItemInfo struct {
+	ID               string                 `json:"id"`
+	Description      string                 `json:"description"`
+	AssignedWorker   string                 `json:"assigned_worker"`
+	DependsOn        []string               `json:"depends_on"`
+	Status           string                 `json:"status"` // PENDING, IN_PROGRESS, COMPLETED, FAILED
+	ConfidenceScore  float64                `json:"confidence_score,omitempty"`
+	ConfidenceReason string                 `json:"confidence_reason,omitempty"`
+	InputContext     map[string]interface{} `json:"input_context,omitempty"`
+	Output           string                 `json:"output,omitempty"`
+	Error            string                 `json:"error,omitempty"`
+	ArtifactPath     string                 `json:"artifact_path,omitempty"`
+	DurationMs       int64                  `json:"duration_ms,omitempty"`
+}
+
+// PlanInfo encapsulates a decomposed execution plan DAG.
+type PlanInfo struct {
+	PlanID      string            `json:"plan_id,omitempty"`
+	PrimaryGoal string            `json:"primary_goal"`
+	SubTasks    []SubtaskItemInfo `json:"subtasks"`
+}
+
+// PlanDiagnosticInfo provides root cause telemetry when planning fails or falls back.
+type PlanDiagnosticInfo struct {
+	Goal              string `json:"goal"`
+	Reason            string `json:"reason"`
+	FallbackTriggered bool   `json:"fallback_triggered"`
+	Error             string `json:"error,omitempty"`
+}
+
+// SubtaskEventInfo encapsulates detailed telemetry for subtask lifecycle events.
+type SubtaskEventInfo struct {
+	SubtaskID    string                 `json:"subtask_id"`
+	Worker       string                 `json:"worker"`
+	Description  string                 `json:"description"`
+	Status       string                 `json:"status"`
+	DependsOn    []string               `json:"depends_on,omitempty"`
+	InputPrompt  string                 `json:"input_prompt,omitempty"`
+	InputContext map[string]interface{} `json:"input_context,omitempty"`
+	Output       string                 `json:"output,omitempty"`
+	ArtifactPath string                 `json:"artifact_path,omitempty"`
+	DurationMs   int64                  `json:"duration_ms,omitempty"`
+	Error        string                 `json:"error,omitempty"`
+}
+
+// ActiveActionInfo describes a tool or subtask currently running in-flight.
+type ActiveActionInfo struct {
+	Type      string         `json:"type"` // "TOOL" or "SUBTASK"
+	Name      string         `json:"name"` // Tool name or worker agent
+	CallID    string         `json:"call_id,omitempty"`
+	SubtaskID string         `json:"subtask_id,omitempty"`
+	Arguments map[string]any `json:"arguments,omitempty"`
+	StartedAt time.Time      `json:"started_at"`
+	ElapsedMs int64          `json:"elapsed_ms"`
+}
+
+// TurnSnapshot provides a complete, point-in-time snapshot of the execution state.
+type TurnSnapshot struct {
+	SessionID      string              `json:"session_id"`
+	TurnID         string              `json:"turn_id"`
+	TraceID        string              `json:"trace_id"`
+	Phase          ExecutionPhase      `json:"phase"`
+	ActiveAgent    string              `json:"active_agent"`
+	ActiveAction   *ActiveActionInfo   `json:"active_action,omitempty"`
+	Plan           *PlanInfo           `json:"plan,omitempty"`
+	Subtasks       []SubtaskItemInfo   `json:"subtasks,omitempty"`
+	PendingHITL    *HITLApprovalPrompt `json:"pending_hitl,omitempty"`
+	ThoughtsBuffer string              `json:"thoughts_buffer,omitempty"`
+	AnswerBuffer   string              `json:"answer_buffer,omitempty"`
+	RecentLogs     []LogEntry          `json:"recent_logs,omitempty"`
+	StartedAt      time.Time           `json:"started_at"`
+	UpdatedAt      time.Time           `json:"updated_at"`
+}
 
 // ToolCallInfo provides structured details when an agent invokes a tool.
 type ToolCallInfo struct {
@@ -79,9 +194,12 @@ type ToolResultInfo struct {
 
 // OutboundEvent is streamed from Layer 2 back to Layer 1 for live rendering.
 type OutboundEvent struct {
-	SessionID string    `json:"session_id"`
-	TraceID   string    `json:"trace_id"`
-	Type      EventType `json:"type"`
+	SessionID string         `json:"session_id"`
+	TurnID    string         `json:"turn_id,omitempty"`
+	TraceID   string         `json:"trace_id"`
+	Type      EventType      `json:"type"`
+	Phase     ExecutionPhase `json:"phase,omitempty"`
+	Timestamp time.Time      `json:"timestamp"`
 
 	// Agent Attribution (User always knows WHO is acting or speaking)
 	AgentName string `json:"agent_name"` // "Orchestrator", "SystemAgent", "BrowserAgent", etc.
@@ -96,6 +214,12 @@ type OutboundEvent struct {
 	// Tool execution fields
 	ToolCall   *ToolCallInfo   `json:"tool_call,omitempty"`   // Populated when Type == EventToolCall
 	ToolResult *ToolResultInfo `json:"tool_result,omitempty"` // Populated when Type == EventToolResult
+
+	// Observer Lifecycle & Telemetry Fields
+	Plan       *PlanInfo           `json:"plan,omitempty"`       // Populated when Type == EventPlanCreated
+	Diagnostic *PlanDiagnosticInfo `json:"diagnostic,omitempty"` // Populated when Type == EventPlanDiagnostic
+	Subtask    *SubtaskEventInfo   `json:"subtask,omitempty"`    // Populated for Subtask events
+	Log        *LogEntry           `json:"log,omitempty"`        // Populated when Type == EventSystemLog
 }
 
 // HITLApprovalPrompt is sent when human approval is required before executing a high-risk tool.

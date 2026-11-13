@@ -95,22 +95,100 @@ func (c *Controller) Orchestrate(
 ) (string, error) {
 	startTime := time.Now()
 
-	// 1. Emit planning start notification
+	// 1. Transition to Planning phase and emit planning start notification
 	eventCh <- gateway.OutboundEvent{
 		SessionID: turn.SessionID,
+		TurnID:    turn.TurnID,
+		TraceID:   turn.TraceID,
+		Type:      gateway.EventPhaseChange,
+		Phase:     gateway.PhasePlanning,
+		AgentName: "Manager",
+		Timestamp: startTime,
+		StatusMsg: "Entering Planning phase. Decomposing user request...",
+	}
+
+	eventCh <- gateway.OutboundEvent{
+		SessionID: turn.SessionID,
+		TurnID:    turn.TurnID,
 		TraceID:   turn.TraceID,
 		Type:      gateway.EventStatusUpdate,
 		AgentName: "Manager",
+		Timestamp: startTime,
 		StatusMsg: "Decomposing user request into actionable TaskPlan DAG...",
 	}
 
 	// 2. LLM Cognitive Planning via Manager Agent
 	plan, err := c.planTurn(ctx, turn)
 	if err != nil {
+		eventCh <- gateway.OutboundEvent{
+			SessionID: turn.SessionID,
+			TurnID:    turn.TurnID,
+			TraceID:   turn.TraceID,
+			Type:      gateway.EventPlanDiagnostic,
+			AgentName: "Manager",
+			Timestamp: time.Now().UTC(),
+			StatusMsg: fmt.Sprintf("Planning diagnostic: %v", err),
+			Diagnostic: &gateway.PlanDiagnosticInfo{
+				Goal:              turn.Prompt,
+				Reason:            fmt.Sprintf("Manager planning failed: %v", err),
+				FallbackTriggered: false,
+				Error:             err.Error(),
+			},
+		}
+		eventCh <- gateway.OutboundEvent{
+			SessionID: turn.SessionID,
+			TurnID:    turn.TurnID,
+			TraceID:   turn.TraceID,
+			Type:      gateway.EventPhaseChange,
+			Phase:     gateway.PhaseFailed,
+			AgentName: "Manager",
+			Timestamp: time.Now().UTC(),
+			StatusMsg: "Planning failed.",
+		}
 		return "", fmt.Errorf("manager planning failed: %w", err)
 	}
 
+	// Emit structured PlanCreated event
+	subtaskItems := make([]gateway.SubtaskItemInfo, len(plan.SubTasks))
+	for i, st := range plan.SubTasks {
+		subtaskItems[i] = gateway.SubtaskItemInfo{
+			ID:               st.ID,
+			Description:      st.Description,
+			AssignedWorker:   st.GetWorker(),
+			DependsOn:        st.DependsOn,
+			Status:           string(st.Status),
+			ConfidenceScore:  st.ConfidenceScore,
+			ConfidenceReason: st.ConfidenceReason,
+			InputContext:     st.InputContext,
+		}
+	}
+
+	eventCh <- gateway.OutboundEvent{
+		SessionID: turn.SessionID,
+		TurnID:    turn.TurnID,
+		TraceID:   turn.TraceID,
+		Type:      gateway.EventPlanCreated,
+		AgentName: "Manager",
+		Timestamp: time.Now().UTC(),
+		Plan: &gateway.PlanInfo{
+			PlanID:      plan.PlanID,
+			PrimaryGoal: plan.PrimaryGoal,
+			SubTasks:    subtaskItems,
+		},
+	}
+
 	c.emitPlanThought(turn.SessionID, turn.TraceID, plan, eventCh)
+
+	// Emit thought completion boundary for the planning phase
+	eventCh <- gateway.OutboundEvent{
+		SessionID: turn.SessionID,
+		TurnID:    turn.TurnID,
+		TraceID:   turn.TraceID,
+		Type:      gateway.EventThoughtComplete,
+		AgentName: "Manager",
+		Timestamp: time.Now().UTC(),
+		StatusMsg: "Manager planning completed. Beginning task execution.",
+	}
 
 	// 3. Task Scheduler walks the DAG
 	sched := scheduler.NewTaskScheduler(plan, scheduler.Config{
@@ -121,9 +199,22 @@ func (c *Controller) Orchestrate(
 
 	eventCh <- gateway.OutboundEvent{
 		SessionID: turn.SessionID,
+		TurnID:    turn.TurnID,
+		TraceID:   turn.TraceID,
+		Type:      gateway.EventPhaseChange,
+		Phase:     gateway.PhaseExecuting,
+		AgentName: "Scheduler",
+		Timestamp: time.Now().UTC(),
+		StatusMsg: fmt.Sprintf("Walking DAG and dispatching %d subtask(s)...", len(plan.SubTasks)),
+	}
+
+	eventCh <- gateway.OutboundEvent{
+		SessionID: turn.SessionID,
+		TurnID:    turn.TurnID,
 		TraceID:   turn.TraceID,
 		Type:      gateway.EventStatusUpdate,
 		AgentName: "Scheduler",
+		Timestamp: time.Now().UTC(),
 		StatusMsg: fmt.Sprintf("Walking DAG and dispatching %d subtask(s)...", len(plan.SubTasks)),
 	}
 
@@ -132,11 +223,25 @@ func (c *Controller) Orchestrate(
 
 	// 4. Emit final turn completion event with telemetry
 	duration := time.Since(startTime).Milliseconds()
+
 	eventCh <- gateway.OutboundEvent{
 		SessionID: turn.SessionID,
+		TurnID:    turn.TurnID,
+		TraceID:   turn.TraceID,
+		Type:      gateway.EventPhaseChange,
+		Phase:     gateway.PhaseCompleted,
+		AgentName: "Orchestrator",
+		Timestamp: time.Now().UTC(),
+		StatusMsg: "Turn completed successfully.",
+	}
+
+	eventCh <- gateway.OutboundEvent{
+		SessionID: turn.SessionID,
+		TurnID:    turn.TurnID,
 		TraceID:   turn.TraceID,
 		Type:      gateway.EventTurnComplete,
 		AgentName: "Orchestrator",
+		Timestamp: time.Now().UTC(),
 		Metrics: &gateway.TurnMetrics{
 			ModelName:        "layer2-orchestrator",
 			PromptTokens:     int32(len(turn.Prompt) / 4),
@@ -211,8 +316,14 @@ func (c *Controller) executeSubTask(
 	accumulator *stringAccumulator,
 	eventCh chan<- gateway.OutboundEvent,
 ) {
+	subtaskStart := time.Now()
 	_ = sched.MarkInProgress(t.ID)
 	targetWorker := t.GetWorker()
+
+	subtaskTurnID := turn.TurnID
+	if t.ID != "" {
+		subtaskTurnID = fmt.Sprintf("%s_%s", turn.TurnID, t.ID)
+	}
 
 	// Safety Gatekeeper check
 	eval := c.gatekeeper.Evaluate(targetWorker, turn.Trigger, turn.AllowedCapabilities)
@@ -220,20 +331,46 @@ func (c *Controller) executeSubTask(
 		_ = sched.MarkFailed(t.ID, eval.Reason)
 		eventCh <- gateway.OutboundEvent{
 			SessionID: turn.SessionID,
+			TurnID:    subtaskTurnID,
+			TraceID:   turn.TraceID,
+			Type:      gateway.EventSubtaskFailed,
+			AgentName: targetWorker,
+			Timestamp: time.Now().UTC(),
+			StatusMsg: fmt.Sprintf("Subtask %s denied by safety gatekeeper: %s", t.ID, eval.Reason),
+			Error:     eval.Reason,
+			Subtask: &gateway.SubtaskEventInfo{
+				SubtaskID:   t.ID,
+				Worker:      targetWorker,
+				Description: t.Description,
+				Status:      "FAILED",
+				Error:       eval.Reason,
+			},
+		}
+		eventCh <- gateway.OutboundEvent{
+			SessionID: turn.SessionID,
+			TurnID:    subtaskTurnID,
+			TraceID:   turn.TraceID,
 			Type:      gateway.EventTurnError,
 			AgentName: targetWorker,
+			Timestamp: time.Now().UTC(),
 			Error:     eval.Reason,
 		}
 		return
 	}
 
-	subtaskTurnID := turn.TurnID
-	if t.ID != "" {
-		subtaskTurnID = fmt.Sprintf("%s_%s", turn.TurnID, t.ID)
-	}
-
 	// Human-In-The-Loop check if required
 	if eval.RequiresHITL && c.hitlRequester != nil {
+		eventCh <- gateway.OutboundEvent{
+			SessionID: turn.SessionID,
+			TurnID:    subtaskTurnID,
+			TraceID:   turn.TraceID,
+			Type:      gateway.EventPhaseChange,
+			Phase:     gateway.PhaseWaitingApproval,
+			AgentName: targetWorker,
+			Timestamp: time.Now().UTC(),
+			StatusMsg: fmt.Sprintf("Pausing execution. Subtask %s requires human approval.", t.ID),
+		}
+
 		hitlReq := HITLRequest{
 			SessionID: turn.SessionID,
 			TurnID:    subtaskTurnID,
@@ -244,16 +381,35 @@ func (c *Controller) executeSubTask(
 		approved, err := c.hitlRequester.RequestHITL(ctx, hitlReq)
 		if err != nil || !approved {
 			_ = sched.MarkFailed(t.ID, "subtask execution rejected by user or cancelled")
+			eventCh <- gateway.OutboundEvent{
+				SessionID: turn.SessionID,
+				TurnID:    subtaskTurnID,
+				TraceID:   turn.TraceID,
+				Type:      gateway.EventSubtaskFailed,
+				AgentName: targetWorker,
+				Timestamp: time.Now().UTC(),
+				StatusMsg: fmt.Sprintf("Subtask %s rejected or cancelled.", t.ID),
+				Subtask: &gateway.SubtaskEventInfo{
+					SubtaskID:   t.ID,
+					Worker:      targetWorker,
+					Description: t.Description,
+					Status:      "FAILED",
+					Error:       "subtask execution rejected by user or cancelled",
+				},
+			}
 			return
 		}
-	}
 
-	eventCh <- gateway.OutboundEvent{
-		SessionID: turn.SessionID,
-		TraceID:   turn.TraceID,
-		Type:      gateway.EventStatusUpdate,
-		AgentName: targetWorker,
-		StatusMsg: fmt.Sprintf("Executing subtask %s: %s", t.ID, t.Description),
+		eventCh <- gateway.OutboundEvent{
+			SessionID: turn.SessionID,
+			TurnID:    subtaskTurnID,
+			TraceID:   turn.TraceID,
+			Type:      gateway.EventPhaseChange,
+			Phase:     gateway.PhaseExecuting,
+			AgentName: targetWorker,
+			Timestamp: time.Now().UTC(),
+			StatusMsg: fmt.Sprintf("Human approval granted. Resuming execution of subtask %s.", t.ID),
+		}
 	}
 
 	taskPrompt := c.buildTaskPrompt(t, sched)
@@ -261,6 +417,35 @@ func (c *Controller) executeSubTask(
 		Type:        router.RouteFastPath,
 		TargetAgent: targetWorker,
 		Prompt:      taskPrompt,
+	}
+
+	eventCh <- gateway.OutboundEvent{
+		SessionID: turn.SessionID,
+		TurnID:    subtaskTurnID,
+		TraceID:   turn.TraceID,
+		Type:      gateway.EventSubtaskStart,
+		AgentName: targetWorker,
+		Timestamp: time.Now().UTC(),
+		StatusMsg: fmt.Sprintf("Executing subtask %s: %s", t.ID, t.Description),
+		Subtask: &gateway.SubtaskEventInfo{
+			SubtaskID:    t.ID,
+			Worker:       targetWorker,
+			Description:  t.Description,
+			Status:       "IN_PROGRESS",
+			DependsOn:    t.DependsOn,
+			InputPrompt:  taskPrompt,
+			InputContext: t.InputContext,
+		},
+	}
+
+	eventCh <- gateway.OutboundEvent{
+		SessionID: turn.SessionID,
+		TurnID:    subtaskTurnID,
+		TraceID:   turn.TraceID,
+		Type:      gateway.EventStatusUpdate,
+		AgentName: targetWorker,
+		Timestamp: time.Now().UTC(),
+		StatusMsg: fmt.Sprintf("Executing subtask %s: %s", t.ID, t.Description),
 	}
 
 	subtaskOutput := &stringAccumulator{}
@@ -271,6 +456,9 @@ func (c *Controller) executeSubTask(
 	go func() {
 		defer forwardWg.Done()
 		for ev := range interceptorCh {
+			if ev.TurnID == "" {
+				ev.TurnID = subtaskTurnID
+			}
 			if ev.Type == gateway.EventTokenChunk && ev.TextDelta != "" {
 				subtaskOutput.WriteString(ev.TextDelta)
 				accumulator.WriteString(ev.TextDelta)
@@ -294,12 +482,32 @@ func (c *Controller) executeSubTask(
 	close(interceptorCh)
 	forwardWg.Wait()
 
+	durationMs := time.Since(subtaskStart).Milliseconds()
+
 	if err != nil {
 		_ = sched.MarkFailed(t.ID, err.Error())
+		eventCh <- gateway.OutboundEvent{
+			SessionID: turn.SessionID,
+			TurnID:    subtaskTurnID,
+			TraceID:   turn.TraceID,
+			Type:      gateway.EventSubtaskFailed,
+			AgentName: targetWorker,
+			Timestamp: time.Now().UTC(),
+			StatusMsg: fmt.Sprintf("Subtask %s failed: %v", t.ID, err),
+			Error:     err.Error(),
+			Subtask: &gateway.SubtaskEventInfo{
+				SubtaskID:   t.ID,
+				Worker:      targetWorker,
+				Description: t.Description,
+				Status:      "FAILED",
+				DurationMs:  durationMs,
+				Error:       err.Error(),
+			},
+		}
 		return
 	}
 
-	c.finalizeSubTaskOutput(t, subtaskOutput.String(), sched, eventCh, turn.SessionID)
+	c.finalizeSubTaskOutput(t, subtaskOutput.String(), sched, eventCh, turn.SessionID, subtaskTurnID, durationMs)
 }
 
 func (c *Controller) buildTaskPrompt(t *planner.SubTask, sched *scheduler.TaskScheduler) string {
@@ -322,17 +530,38 @@ func (c *Controller) finalizeSubTaskOutput(
 	sched *scheduler.TaskScheduler,
 	eventCh chan<- gateway.OutboundEvent,
 	sessionID string,
+	subtaskTurnID string,
+	durationMs int64,
 ) {
 	targetWorker := t.GetWorker()
 	finalOutput, artifactPath, spilled, spillErr := c.spillover.Process(rawOutput)
 	if spillErr == nil && spilled {
 		eventCh <- gateway.OutboundEvent{
 			SessionID: sessionID,
+			TurnID:    subtaskTurnID,
 			Type:      gateway.EventStatusUpdate,
 			AgentName: targetWorker,
+			Timestamp: time.Now().UTC(),
 			StatusMsg: fmt.Sprintf("Subtask output spilled to artifact pointer: %s", artifactPath),
 		}
 		_ = sched.MarkCompleted(t.ID, finalOutput)
+		eventCh <- gateway.OutboundEvent{
+			SessionID: sessionID,
+			TurnID:    subtaskTurnID,
+			Type:      gateway.EventSubtaskComplete,
+			AgentName: targetWorker,
+			Timestamp: time.Now().UTC(),
+			StatusMsg: fmt.Sprintf("Subtask %s completed (spilled to artifact).", t.ID),
+			Subtask: &gateway.SubtaskEventInfo{
+				SubtaskID:    t.ID,
+				Worker:       targetWorker,
+				Description:  t.Description,
+				Status:       "COMPLETED",
+				Output:       finalOutput,
+				ArtifactPath: artifactPath,
+				DurationMs:   durationMs,
+			},
+		}
 		return
 	}
 
@@ -340,10 +569,30 @@ func (c *Controller) finalizeSubTaskOutput(
 		rawOutput = "completed successfully"
 	}
 	_ = sched.MarkCompleted(t.ID, rawOutput)
+
 	eventCh <- gateway.OutboundEvent{
 		SessionID: sessionID,
+		TurnID:    subtaskTurnID,
+		Type:      gateway.EventSubtaskComplete,
+		AgentName: targetWorker,
+		Timestamp: time.Now().UTC(),
+		StatusMsg: fmt.Sprintf("Subtask %s completed successfully.", t.ID),
+		Subtask: &gateway.SubtaskEventInfo{
+			SubtaskID:   t.ID,
+			Worker:      targetWorker,
+			Description: t.Description,
+			Status:      "COMPLETED",
+			Output:      rawOutput,
+			DurationMs:  durationMs,
+		},
+	}
+
+	eventCh <- gateway.OutboundEvent{
+		SessionID: sessionID,
+		TurnID:    subtaskTurnID,
 		Type:      gateway.EventStatusUpdate,
 		AgentName: targetWorker,
+		Timestamp: time.Now().UTC(),
 		StatusMsg: fmt.Sprintf("Subtask %s completed successfully.", t.ID),
 	}
 }

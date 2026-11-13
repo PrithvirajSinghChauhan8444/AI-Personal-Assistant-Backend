@@ -15,17 +15,52 @@ var (
 )
 
 // Gateway acts as the central ingress and egress boundary for Layer 1.
-// It normalizes incoming client traffic and multiplexes outbound streaming events.
+// It normalizes incoming client traffic, multiplexes outbound streaming events,
+// and coordinates the execution observer telemetry hub.
 type Gateway struct {
 	handler TurnHandler
+	hub     *ObserverHub
 }
 
-// NewGateway creates a verified Gateway backed by a downstream TurnHandler.
+// NewGateway creates a verified Gateway backed by a downstream TurnHandler and an ObserverHub.
 func NewGateway(handler TurnHandler) (*Gateway, error) {
 	if handler == nil {
 		return nil, ErrNilHandler
 	}
-	return &Gateway{handler: handler}, nil
+	return &Gateway{
+		handler: handler,
+		hub:     NewObserverHub(),
+	}, nil
+}
+
+// ObserverHub returns the gateway's execution observer hub.
+func (g *Gateway) ObserverHub() *ObserverHub {
+	return g.hub
+}
+
+// RegisterObserver registers a telemetry or client adapter observer with the gateway.
+func (g *Gateway) RegisterObserver(id string, obs ExecutionObserver) error {
+	return g.hub.RegisterObserver(id, obs)
+}
+
+// UnregisterObserver removes a registered observer by identifier.
+func (g *Gateway) UnregisterObserver(id string) {
+	g.hub.UnregisterObserver(id)
+}
+
+// GetSnapshot retrieves the current point-in-time execution snapshot for a session.
+func (g *Gateway) GetSnapshot(sessionID string) (*TurnSnapshot, error) {
+	return g.hub.GetSnapshot(sessionID)
+}
+
+// GetActiveSnapshots returns current snapshots for all active sessions.
+func (g *Gateway) GetActiveSnapshots() []*TurnSnapshot {
+	return g.hub.GetActiveSnapshots()
+}
+
+// GetTurnLogs retrieves collected operational logs and diagnostic traces for a turn.
+func (g *Gateway) GetTurnLogs(turnID string) ([]LogEntry, error) {
+	return g.hub.GetTurnLogs(turnID)
 }
 
 // SubmitTurn normalizes an incoming turn and begins streaming outbound events.
@@ -52,21 +87,35 @@ func (g *Gateway) RespondHITL(ctx context.Context, resp HITLResponse) error {
 	return g.handler.SubmitHITLResponse(ctx, resp)
 }
 
-func (g *Gateway) runTurnPipeline(ctx context.Context, req InboundTurnRequest, eventCh chan OutboundEvent) {
-	defer close(eventCh)
+func (g *Gateway) runTurnPipeline(ctx context.Context, req InboundTurnRequest, clientEventCh chan OutboundEvent) {
+	defer close(clientEventCh)
 
-	err := g.handler.ExecuteTurn(ctx, req, eventCh)
-	if err != nil {
-		g.emitTurnError(eventCh, req, err)
+	internalEventCh := make(chan OutboundEvent, 64)
+	go func() {
+		defer close(internalEventCh)
+		err := g.handler.ExecuteTurn(ctx, req, internalEventCh)
+		if err != nil {
+			g.emitTurnError(internalEventCh, req, err)
+		}
+	}()
+
+	for ev := range internalEventCh {
+		if ev.Timestamp.IsZero() {
+			ev.Timestamp = time.Now().UTC()
+		}
+		g.hub.ProcessEvent(ctx, ev)
+		clientEventCh <- ev
 	}
 }
 
-func (g *Gateway) emitTurnError(eventCh chan OutboundEvent, req InboundTurnRequest, err error) {
+func (g *Gateway) emitTurnError(eventCh chan<- OutboundEvent, req InboundTurnRequest, err error) {
 	eventCh <- OutboundEvent{
 		SessionID: req.SessionID,
 		TraceID:   req.TraceID,
 		Type:      EventTurnError,
+		Phase:     PhaseFailed,
 		AgentName: req.TargetAgent,
+		Timestamp: time.Now().UTC(),
 		Error:     err.Error(),
 	}
 }

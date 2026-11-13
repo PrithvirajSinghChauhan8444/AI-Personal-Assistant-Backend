@@ -44,12 +44,30 @@ func (r *StreamRenderer) RenderEvent(ev gateway.OutboundEvent) {
 		r.renderTokenChunk(ev)
 	case gateway.EventThoughtChunk:
 		r.renderThoughtChunk(ev)
+	case gateway.EventThoughtComplete:
+		r.renderThoughtComplete(ev)
 	case gateway.EventStatusUpdate:
 		r.renderStatusUpdate(ev)
+	case gateway.EventPhaseChange:
+		r.renderPhaseChange(ev)
+	case gateway.EventPlanCreated:
+		r.renderPlanCreated(ev)
+	case gateway.EventPlanDiagnostic:
+		r.renderPlanDiagnostic(ev)
+	case gateway.EventSubtaskStart:
+		r.renderSubtaskStart(ev)
+	case gateway.EventSubtaskProgress:
+		r.renderSubtaskProgress(ev)
+	case gateway.EventSubtaskComplete:
+		r.renderSubtaskComplete(ev)
+	case gateway.EventSubtaskFailed:
+		r.renderSubtaskFailed(ev)
 	case gateway.EventToolCall:
 		r.renderToolCall(ev)
 	case gateway.EventToolResult:
 		r.renderToolResult(ev)
+	case gateway.EventSystemLog:
+		r.renderSystemLog(ev)
 	case gateway.EventHITLRequest:
 		r.renderHITLRequest(ev)
 	case gateway.EventTurnComplete:
@@ -206,5 +224,61 @@ func (r *StreamRenderer) renderTurnComplete(ev gateway.OutboundEvent) {
 func (r *StreamRenderer) renderTurnError(ev gateway.OutboundEvent) {
 	r.ensureCleanLine()
 	fmt.Fprint(r.out, RenderError(ev.Error))
+	r.tokenEndsNewline = true
+}
+
+func (r *StreamRenderer) renderPhaseChange(ev gateway.OutboundEvent) {
+	r.ensureCleanLine()
+	fmt.Fprint(r.out, RenderPhaseChange(ev.Phase, ev.AgentName, ev.StatusMsg))
+	r.tokenEndsNewline = true
+}
+
+func (r *StreamRenderer) renderPlanCreated(ev gateway.OutboundEvent) {
+	r.ensureCleanLine()
+	fmt.Fprint(r.out, RenderPlanCreated(ev.Plan))
+	r.tokenEndsNewline = true
+}
+
+func (r *StreamRenderer) renderPlanDiagnostic(ev gateway.OutboundEvent) {
+	r.ensureCleanLine()
+	fmt.Fprint(r.out, RenderPlanDiagnostic(ev.Diagnostic))
+	r.tokenEndsNewline = true
+}
+
+func (r *StreamRenderer) renderSubtaskStart(ev gateway.OutboundEvent) {
+	r.ensureCleanLine()
+	fmt.Fprint(r.out, RenderSubtaskStart(ev.Subtask))
+	r.tokenEndsNewline = true
+}
+
+func (r *StreamRenderer) renderSubtaskProgress(ev gateway.OutboundEvent) {
+	r.ensureCleanLine()
+	if ev.StatusMsg != "" {
+		fmt.Fprint(r.out, RenderStatus(ev.AgentName, ev.StatusMsg))
+	}
+	r.tokenEndsNewline = true
+}
+
+func (r *StreamRenderer) renderSubtaskComplete(ev gateway.OutboundEvent) {
+	r.ensureCleanLine()
+	fmt.Fprint(r.out, RenderSubtaskComplete(ev.Subtask))
+	r.tokenEndsNewline = true
+}
+
+func (r *StreamRenderer) renderSubtaskFailed(ev gateway.OutboundEvent) {
+	r.ensureCleanLine()
+	fmt.Fprint(r.out, RenderSubtaskFailed(ev.Subtask))
+	r.tokenEndsNewline = true
+}
+
+func (r *StreamRenderer) renderThoughtComplete(ev gateway.OutboundEvent) {
+	r.ensureCleanLine()
+	fmt.Fprint(r.out, RenderThoughtComplete(ev.AgentName, ev.StatusMsg))
+	r.tokenEndsNewline = true
+}
+
+func (r *StreamRenderer) renderSystemLog(ev gateway.OutboundEvent) {
+	r.ensureCleanLine()
+	fmt.Fprint(r.out, RenderSystemLog(ev.Log))
 	r.tokenEndsNewline = true
 }
