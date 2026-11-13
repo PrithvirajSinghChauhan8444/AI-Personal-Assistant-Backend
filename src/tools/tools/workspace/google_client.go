@@ -148,6 +148,7 @@ func (gc *GoogleClient) loadTokenFromDisk(accountKey string) (*OAuthToken, error
 	}
 
 	var raw struct {
+		Token        string `json:"token"`
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
 		Expiry       string `json:"expiry"`
@@ -159,8 +160,13 @@ func (gc *GoogleClient) loadTokenFromDisk(accountKey string) (*OAuthToken, error
 		return nil, fmt.Errorf("failed parsing token JSON from %s: %w", loadedPath, err)
 	}
 
+	accessToken := raw.AccessToken
+	if accessToken == "" {
+		accessToken = raw.Token
+	}
+
 	token := &OAuthToken{
-		AccessToken:  raw.AccessToken,
+		AccessToken:  accessToken,
 		RefreshToken: raw.RefreshToken,
 		TokenType:    raw.TokenType,
 	}

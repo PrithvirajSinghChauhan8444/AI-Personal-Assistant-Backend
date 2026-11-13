@@ -25,6 +25,19 @@ func RegisterAllTools(registry *tools.ToolRegistry, configDir string) error {
 		sys.NewSysExecTool(),
 		sys.NewSysPsTool(),
 		sys.NewSysKillTool(),
+		sys.NewSysVolumeGetTool(),
+		sys.NewSysVolumeSetTool(),
+		sys.NewSysVolumeMuteTool(),
+		sys.NewSysBrightnessGetTool(),
+		sys.NewSysBrightnessSetTool(),
+		sys.NewSysLockTool(),
+		sys.NewSysSuspendTool(),
+		sys.NewSysHealthTool(),
+		sys.NewSysClipboardCopyTool(),
+		sys.NewSysClipboardPasteTool(),
+		sys.NewSysLaunchAppTool(),
+		sys.NewSysGetTimeTool(),
+		sys.NewSysExecPythonTool(),
 
 		// Filesystem Category
 		fs.NewFsReadTool(),
@@ -41,12 +54,22 @@ func RegisterAllTools(registry *tools.ToolRegistry, configDir string) error {
 		// Net Category
 		net.NewNetFetchTool(),
 		net.NewNetSearchTool(),
+		net.NewNetWeatherTool(),
 
 		// Workspace Category
 		workspace.NewGmailListTool(googleClient),
 		workspace.NewGmailReadTool(googleClient),
 		workspace.NewGmailSendDraftTool(googleClient),
+		workspace.NewGmailSendTool(googleClient),
+		workspace.NewGmailReplyTool(googleClient),
+		workspace.NewGmailCheckUnreadTool(googleClient),
 		workspace.NewCalendarListTool(googleClient),
+		workspace.NewCalendarCreateEventTool(googleClient),
+		workspace.NewCalendarEditEventTool(googleClient),
+		workspace.NewCalendarDeleteEventTool(googleClient),
+		workspace.NewTasksListTool(googleClient),
+		workspace.NewTasksCreateTool(googleClient),
+		workspace.NewGoogleAuthLoginTool(configDir),
 	}
 
 	allTools = append(allTools, browser.GetAllBrowserTools(nil)...)

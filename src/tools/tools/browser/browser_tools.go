@@ -253,6 +253,40 @@ func NewBrowserCloseTool(client *PlaywrightMCPClient) tools.Tool {
 	}
 }
 
+// NewBrowserScrollTool registers browser_scroll.
+func NewBrowserScrollTool(client *PlaywrightMCPClient) tools.Tool {
+	if client == nil {
+		client = GetDefaultClient()
+	}
+	return &BaseBrowserTool{
+		client:      client,
+		name:        "browser_scroll",
+		mcpToolName: "browser_scroll",
+		description: "Scrolls the browser viewport up or down to reveal lazy-loaded content.",
+		schema:      `{"type":"object","properties":{"direction":{"type":"string","enum":["down","up"],"description":"Scroll direction (default: down)"},"amount":{"type":"integer","description":"Pixels to scroll (default: 600)"}}}`,
+		tip:         "Use browser_scroll to reveal content below the fold.",
+		risk:        tools.RiskLow,
+		capability:  "browser:interact",
+	}
+}
+
+// NewBrowserGetDomMapTool registers browser_get_dom_map.
+func NewBrowserGetDomMapTool(client *PlaywrightMCPClient) tools.Tool {
+	if client == nil {
+		client = GetDefaultClient()
+	}
+	return &BaseBrowserTool{
+		client:      client,
+		name:        "browser_get_dom_map",
+		mcpToolName: "browser_get_dom_map",
+		description: "Returns an indexed map of interactive DOM elements and their accessibility roles.",
+		schema:      `{"type":"object","properties":{"max_elements":{"type":"integer","description":"Maximum interactive elements to map (default: 50)"}}}`,
+		tip:         "Use browser_get_dom_map to discover exact element selectors and indices on complex pages.",
+		risk:        tools.RiskLow,
+		capability:  "browser:read",
+	}
+}
+
 // GetAllBrowserTools returns all browser tools wired to the Playwright MCP client.
 func GetAllBrowserTools(client *PlaywrightMCPClient) []tools.Tool {
 	if client == nil {
@@ -270,5 +304,7 @@ func GetAllBrowserTools(client *PlaywrightMCPClient) []tools.Tool {
 		NewBrowserWaitForTool(client),
 		NewBrowserNavigateBackTool(client),
 		NewBrowserCloseTool(client),
+		NewBrowserScrollTool(client),
+		NewBrowserGetDomMapTool(client),
 	}
 }

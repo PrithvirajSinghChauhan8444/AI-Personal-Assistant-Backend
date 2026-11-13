@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,8 +27,11 @@ type PlaywrightMCPClient struct {
 	reqCounter uint64
 	started    bool
 
+	browserType    string
+	profileName    string
 	executablePath string
 	userDataDir    string
+	attachCDP      bool
 	cdpURL         string
 	viewportSize   string
 	headless       bool
@@ -38,19 +42,156 @@ var (
 	defaultClientOnce sync.Once
 )
 
+// tryLoadDotEnv attempts to parse key-value pairs from .env files if not already exported.
+func tryLoadDotEnv() {
+	paths := []string{".env", "config/.env", "../config/.env", "../../config/.env"}
+	for _, p := range paths {
+		if data, err := os.ReadFile(p); err == nil {
+			lines := strings.Split(string(data), "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "#") {
+					continue
+				}
+				parts := strings.SplitN(line, "=", 2)
+				if len(parts) == 2 {
+					key := strings.TrimSpace(parts[0])
+					val := strings.TrimSpace(parts[1])
+					val = strings.Trim(val, `"'`)
+					if os.Getenv(key) == "" {
+						_ = os.Setenv(key, val)
+					}
+				}
+			}
+			return
+		}
+	}
+}
+
+// resolveBrowser detects and validates executable paths for brave, chrome, or chromium.
+func resolveBrowser(browserType string) (resolvedType string, executablePath string) {
+	bType := strings.ToLower(strings.TrimSpace(browserType))
+	if bType == "" {
+		bType = "auto"
+	}
+
+	searchCandidates := map[string][]string{
+		"brave": {
+			"brave",
+			"brave-browser",
+			"/usr/bin/brave",
+			"/usr/bin/brave-browser",
+			"/opt/brave.com/brave/brave-browser",
+			"/snap/bin/brave",
+		},
+		"chrome": {
+			"google-chrome-stable",
+			"google-chrome",
+			"chrome",
+			"/usr/bin/google-chrome-stable",
+			"/usr/bin/google-chrome",
+			"/opt/google/chrome/google-chrome",
+		},
+		"chromium": {
+			"chromium",
+			"chromium-browser",
+			"/usr/bin/chromium",
+			"/usr/lib/chromium/chromium",
+			"/usr/bin/chromium-browser",
+			"/snap/bin/chromium",
+		},
+	}
+
+	findExe := func(candidates []string) string {
+		for _, cand := range candidates {
+			if strings.Contains(cand, "/") {
+				if info, err := os.Stat(cand); err == nil && !info.IsDir() {
+					return cand
+				}
+			} else {
+				if p, err := exec.LookPath(cand); err == nil {
+					return p
+				}
+			}
+		}
+		return ""
+	}
+
+	switch bType {
+	case "brave":
+		exe := findExe(searchCandidates["brave"])
+		if exe != "" {
+			return "brave", exe
+		}
+		return "brave", "/usr/bin/brave"
+	case "chrome", "google-chrome":
+		exe := findExe(searchCandidates["chrome"])
+		if exe != "" {
+			return "chrome", exe
+		}
+		return "chrome", "/usr/bin/google-chrome"
+	case "chromium":
+		exe := findExe(searchCandidates["chromium"])
+		if exe != "" {
+			return "chromium", exe
+		}
+		return "chromium", "/usr/bin/chromium"
+	case "auto":
+		fallthrough
+	default:
+		// Check in priority order: brave -> chrome -> chromium
+		for _, typ := range []string{"brave", "chrome", "chromium"} {
+			if exe := findExe(searchCandidates[typ]); exe != "" {
+				return typ, exe
+			}
+		}
+		// Fallback default
+		return "chromium", "/usr/bin/chromium"
+	}
+}
+
+// resolveUserDataDir computes the persistent profile directory path for the assistant.
+func resolveUserDataDir(browserType, profileName, explicitDir string) string {
+	if explicitDir != "" {
+		return expandHome(explicitDir)
+	}
+
+	pName := strings.TrimSpace(profileName)
+	if pName == "" {
+		pName = "assistant-profile"
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+
+	// Produces e.g. ~/.config/brave-assistant-profile or ~/.config/chrome-assistant-profile
+	folderName := fmt.Sprintf("%s-%s", browserType, pName)
+	return filepath.Join(home, ".config", folderName)
+}
+
 // GetDefaultClient returns the singleton Playwright MCP client initialized from environment settings.
 func GetDefaultClient() *PlaywrightMCPClient {
 	defaultClientOnce.Do(func() {
+		tryLoadDotEnv()
+
+		browserType := os.Getenv("BROWSER_TYPE")
+		resolvedType, autoExecPath := resolveBrowser(browserType)
+
 		execPath := os.Getenv("BROWSER_EXECUTABLE_PATH")
 		if execPath == "" {
-			execPath = "/usr/bin/brave"
+			execPath = autoExecPath
 		}
 
-		userDir := os.Getenv("BROWSER_USER_DATA_DIR")
-		if userDir == "" {
-			userDir = "~/.config/brave-assistant-profile"
+		profileName := os.Getenv("BROWSER_PROFILE_NAME")
+		if profileName == "" {
+			profileName = "assistant-profile"
 		}
 
+		userDir := resolveUserDataDir(resolvedType, profileName, os.Getenv("BROWSER_USER_DATA_DIR"))
+
+		attachCDP := strings.ToLower(os.Getenv("BROWSER_ATTACH_CDP")) == "true"
 		cdpURL := os.Getenv("BROWSER_CDP_URL")
 		if cdpURL == "" {
 			cdpURL = "http://localhost:9222"
@@ -64,8 +205,11 @@ func GetDefaultClient() *PlaywrightMCPClient {
 		headless := strings.ToLower(os.Getenv("BROWSER_HEADLESS")) == "true"
 
 		defaultClient = &PlaywrightMCPClient{
+			browserType:    resolvedType,
+			profileName:    profileName,
 			executablePath: expandHome(execPath),
 			userDataDir:    expandHome(userDir),
+			attachCDP:      attachCDP,
 			cdpURL:         cdpURL,
 			viewportSize:   viewport,
 			headless:       headless,
@@ -107,11 +251,11 @@ func (c *PlaywrightMCPClient) ensureStartedLocked() error {
 
 	args := []string{"-y", "@playwright/mcp@latest"}
 
-	// Prefer CDP connection if port 9222 is currently listening
-	if c.cdpURL != "" && isCDPOpen(c.cdpURL) {
+	// Attach via CDP only if explicitly enabled by user and port is open
+	if c.attachCDP && c.cdpURL != "" && isCDPOpen(c.cdpURL) {
 		args = append(args, fmt.Sprintf("--cdp-endpoint=%s", c.cdpURL))
 	} else {
-		// Launch Brave browser directly with user profile
+		// Launch dedicated browser instance with persistent user profile directory
 		if c.executablePath != "" {
 			if _, err := os.Stat(c.executablePath); err == nil {
 				args = append(args, fmt.Sprintf("--executable-path=%s", c.executablePath))
