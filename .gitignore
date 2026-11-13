@@ -37,6 +37,30 @@ go/assistant
 go/gateway
 *.test
 
+# Tests, test suites, and test artifacts
+test/
+tests/
+*_test.go
+test_*.py
+*_test.py
+*.test
+*.actual.json
+*.test.log
+coverage.out
+coverage.html
+coverage.txt
+profile.out
+
+# Python test caches & coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
 
 # Workbench
 workbench/ui/node_modules/
