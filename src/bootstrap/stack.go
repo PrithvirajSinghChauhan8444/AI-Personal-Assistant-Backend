@@ -10,11 +10,13 @@ import (
 
 	"assistant/src/bridge/supervisor"
 	"assistant/src/gateway"
+	"assistant/src/gateway/watchers/gmail"
 	"assistant/src/orchestrator"
 	"assistant/src/orchestrator/safety"
 	"assistant/src/orchestrator/session"
 	"assistant/src/tools"
 	"assistant/src/tools/dispatcher"
+	"assistant/src/tools/tools/workspace"
 )
 
 // Config defines the unified runtime configuration for the assistant application.
@@ -30,6 +32,7 @@ type Config struct {
 	ArtifactSpilloverThreshold int64    `json:"artifact_spillover_threshold_bytes"`
 	ConfigDir                  string   `json:"config_dir"`
 	Standalone                 bool     `json:"standalone"`
+	EnableMailWatcher          bool     `json:"enable_mail_watcher"`
 	ReadyTimeout               time.Duration
 	GracePeriod                time.Duration
 }
@@ -44,6 +47,7 @@ type Stack struct {
 	TurnExecutor orchestrator.TurnExecutor
 	Orchestrator *orchestrator.Orchestrator
 	Gateway      *gateway.Gateway
+	MailWatcher  *gmail.WatcherManager
 }
 
 // DefaultConfig returns production default configurations.
@@ -58,6 +62,7 @@ func DefaultConfig() Config {
 		LogLevel:           "INFO",
 		MaxTurnIterations:  10,
 		ConfigDir:          "config",
+		EnableMailWatcher:  true,
 		ReadyTimeout:       15 * time.Second,
 		GracePeriod:        3 * time.Second,
 	}
@@ -174,6 +179,21 @@ func BuildStack(ctx context.Context, cfg Config) (*Stack, func(), error) {
 		return nil, nil, fmt.Errorf("failed to initialize gateway: %w", err)
 	}
 
+	// 7. Initialize proactive Gmail Watcher if enabled
+	var mailWatcher *gmail.WatcherManager
+	if cfg.EnableMailWatcher {
+		googleClient := workspace.NewGoogleClient(cfg.ConfigDir)
+		mailWatcher = gmail.NewWatcherManager(gmail.ManagerConfig{
+			ConfigDir:    cfg.ConfigDir,
+			Gateway:      gw,
+			GoogleClient: googleClient,
+			WatcherCfg:   gmail.DefaultWatcherConfig(),
+		})
+		if err := mailWatcher.Start(ctx); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to start mail watcher: %v\n", err)
+		}
+	}
+
 	stack := &Stack{
 		Config:       cfg,
 		Store:        store,
@@ -183,9 +203,13 @@ func BuildStack(ctx context.Context, cfg Config) (*Stack, func(), error) {
 		TurnExecutor: turnExecutor,
 		Orchestrator: orch,
 		Gateway:      gw,
+		MailWatcher:  mailWatcher,
 	}
 
 	cleanup := func() {
+		if mailWatcher != nil {
+			_ = mailWatcher.Stop()
+		}
 		if bridgeSup != nil {
 			_ = bridgeSup.Stop()
 		}

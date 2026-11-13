@@ -24,12 +24,18 @@ func main() {
 	workspaceDir := flag.String("workspace", sysCfg.WorkspaceDir, "Path to agent workspace directory")
 	dbPath := flag.String("db", sysCfg.DatabasePath, "Path to SQLite session database")
 	artifactsDir := flag.String("artifacts", sysCfg.ArtifactsDir, "Path to artifacts directory")
+	watchMail := flag.Bool("watch-mail", true, "Enable proactive background Gmail watcher daemon")
 	flag.Parse()
 
 	sysCfg.WorkspaceDir = *workspaceDir
 	sysCfg.DatabasePath = *dbPath
 	sysCfg.ArtifactsDir = *artifactsDir
 	sysCfg.Standalone = *standalone
+	if *prompt != "" {
+		sysCfg.EnableMailWatcher = false
+	} else {
+		sysCfg.EnableMailWatcher = *watchMail
+	}
 
 	ctx := context.Background()
 

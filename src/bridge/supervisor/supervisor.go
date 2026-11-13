@@ -49,6 +49,7 @@ type Supervisor struct {
 	readyCh     chan struct{}
 	readyOnce   sync.Once
 	started     bool
+	startedOnce bool
 	startMu     sync.Mutex
 }
 
@@ -73,9 +74,27 @@ func (s *Supervisor) Start(ctx context.Context) error {
 	s.startMu.Lock()
 	defer s.startMu.Unlock()
 
-	if s.started {
+	if s.started && s.processMgr.IsRunning() && s.multiplexer != nil && !s.multiplexer.IsClosed() {
 		return nil
 	}
+
+	return s.startLocked(ctx)
+}
+
+func (s *Supervisor) startLocked(ctx context.Context) error {
+	s.startedOnce = true
+
+	// Clean up any lingering multiplexer or process
+	if s.multiplexer != nil {
+		s.multiplexer.Close()
+		s.multiplexer = nil
+	}
+	if s.processMgr.IsRunning() {
+		_ = s.processMgr.Stop(s.cfg.GracePeriod)
+	}
+
+	s.readyCh = make(chan struct{})
+	s.readyOnce = sync.Once{}
 
 	if err := s.processMgr.Start(ctx); err != nil {
 		return fmt.Errorf("supervisor failed to start process: %w", err)
@@ -83,10 +102,13 @@ func (s *Supervisor) Start(ctx context.Context) error {
 
 	s.pipeStderr(s.processMgr.Stderr())
 
-	s.multiplexer = NewMultiplexer(s.processMgr.Stdout(), s.processMgr.Stdin())
+	mux := NewMultiplexer(s.processMgr.Stdout(), s.processMgr.Stdin())
+	s.multiplexer = mux
 	s.registerFrameHandlers()
 
-	s.multiplexer.StartReadLoop(ctx, s.handleDisconnect)
+	s.multiplexer.StartReadLoop(ctx, func(err error) {
+		s.handleDisconnect(mux, err)
+	})
 
 	select {
 	case <-s.readyCh:
@@ -99,6 +121,24 @@ func (s *Supervisor) Start(ctx context.Context) error {
 		_ = s.processMgr.Stop(s.cfg.GracePeriod)
 		return ctx.Err()
 	}
+}
+
+// EnsureHealthy verifies that the daemon and multiplexer are operational, automatically restarting if needed.
+func (s *Supervisor) EnsureHealthy(ctx context.Context) error {
+	s.startMu.Lock()
+	defer s.startMu.Unlock()
+
+	if !s.startedOnce {
+		return ErrSupervisorNotStarted
+	}
+
+	if s.started && s.processMgr.IsRunning() && s.multiplexer != nil && !s.multiplexer.IsClosed() {
+		return nil
+	}
+
+	// Daemon or multiplexer is not healthy, auto-restart
+	s.failAllActiveTurns(errors.New("restarting disconnected daemon"))
+	return s.startLocked(ctx)
 }
 
 // Stop cleanly shuts down the child daemon and closes all active turn streams.
@@ -123,8 +163,8 @@ func (s *Supervisor) Stop() error {
 
 // StartTurn initiates a reasoning turn in the Python cognitive daemon.
 func (s *Supervisor) StartTurn(ctx context.Context, sessionID, turnID string, payload *protocol.StartTurnPayload) (*TurnHandle, error) {
-	if !s.IsRunning() {
-		return nil, ErrSupervisorNotStarted
+	if err := s.EnsureHealthy(ctx); err != nil {
+		return nil, err
 	}
 
 	handle := NewTurnHandle(sessionID, turnID)
@@ -150,7 +190,7 @@ func (s *Supervisor) StartTurn(ctx context.Context, sessionID, turnID string, pa
 func (s *Supervisor) IsRunning() bool {
 	s.startMu.Lock()
 	defer s.startMu.Unlock()
-	return s.started && s.processMgr.IsRunning()
+	return s.started && s.processMgr.IsRunning() && s.multiplexer != nil && !s.multiplexer.IsClosed()
 }
 
 func (s *Supervisor) registerFrameHandlers() {
@@ -312,7 +352,15 @@ func (s *Supervisor) watchTurnCancellation(ctx context.Context, sessionID, turnI
 	}
 }
 
-func (s *Supervisor) handleDisconnect(err error) {
+func (s *Supervisor) handleDisconnect(mux *Multiplexer, err error) {
+	s.startMu.Lock()
+	if s.multiplexer != mux {
+		s.startMu.Unlock()
+		return
+	}
+	s.started = false
+	s.startMu.Unlock()
+
 	errMsg := "bridge disconnected"
 	if err != nil {
 		errMsg = fmt.Sprintf("bridge disconnected: %v", err)

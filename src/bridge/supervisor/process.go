@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -36,6 +37,7 @@ type ProcessManager struct {
 	stdout  io.ReadCloser
 	stderr  io.ReadCloser
 	running bool
+	exitCh  chan error
 }
 
 // NewProcessManager constructs a ProcessManager with discovered or provided configurations.
@@ -77,6 +79,11 @@ func (p *ProcessManager) Start(ctx context.Context) error {
 		cmd.Dir = p.cfg.WorkingDir
 	}
 
+	// Detach process group so CLI terminal signals (Ctrl+C) do not kill the daemon
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+
 	env := os.Environ()
 	if p.cfg.WorkingDir != "" {
 		env = append(env, "PYTHONPATH="+p.cfg.WorkingDir)
@@ -116,6 +123,16 @@ func (p *ProcessManager) Start(ctx context.Context) error {
 	p.stdout = stdoutPipe
 	p.stderr = stderrPipe
 	p.running = true
+	p.exitCh = make(chan error, 1)
+
+	// Monitor child process exit asynchronously to update running state
+	go func(c *exec.Cmd, ch chan error) {
+		err := c.Wait()
+		p.mu.Lock()
+		p.running = false
+		p.mu.Unlock()
+		ch <- err
+	}(cmd, p.exitCh)
 
 	return nil
 }
@@ -161,25 +178,28 @@ func (p *ProcessManager) Stop(gracePeriod time.Duration) error {
 		_ = p.stdin.Close()
 	}
 	cmd := p.cmd
+	exitCh := p.exitCh
 	p.mu.Unlock()
 
-	// Wait for clean exit within grace period
-	done := make(chan error, 1)
-	go func() {
-		done <- cmd.Wait()
-	}()
-
 	select {
-	case err := <-done:
+	case err := <-exitCh:
 		p.markStopped()
 		return err
 	case <-time.After(gracePeriod):
-		// Force kill if child did not exit cleanly
+		// Force kill process and entire process group if child did not exit cleanly
 		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 			_ = cmd.Process.Kill()
 		}
-		<-done
+		var err error
+		select {
+		case err = <-exitCh:
+		case <-time.After(500 * time.Millisecond):
+		}
 		p.markStopped()
+		if err != nil {
+			return err
+		}
 		return errors.New("process killed after grace period expired")
 	}
 }

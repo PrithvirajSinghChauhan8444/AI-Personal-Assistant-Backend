@@ -115,6 +115,13 @@ func (m *Multiplexer) Close() {
 	m.closed = true
 }
 
+// IsClosed returns true if the multiplexer has closed its I/O loop.
+func (m *Multiplexer) IsClosed() bool {
+	m.closeMu.Lock()
+	defer m.closeMu.Unlock()
+	return m.closed
+}
+
 func (m *Multiplexer) dispatch(frame *protocol.MasterFrame) {
 	m.subMu.RLock()
 	defer m.subMu.RUnlock()
