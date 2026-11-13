@@ -23,6 +23,14 @@ RULES & WORKFLOW FOR SPECIALIZED TASKS:
      - Instead, decompose the tasks to save/store the content in a local workspace file (e.g., a markdown draft or JSON file under `workspace/artifacts/` or local directory) using system.
      - Pass only the reference file path (e.g., `file_path: "workspace/artifacts/output.json"`) between workers in the description.
      - Instruct subsequent workers to read, modify, or publish directly from that file path.
+6. **Resolving Context and Follow-up Requests from Conversation History**:
+   - When the user's prompt is a short follow-up, acknowledgment, confirmation, or continuation (e.g. "done", "now do it", "check it", "proceed", "continue", "go ahead", "yes", "what about my request?"):
+     - You MUST inspect the `Conversation History` to resolve what previous request or action was waiting to be completed.
+     - For example, if the previous turn requested checking emails, sending a message, or scheduling an event, and the assistant paused or provided an authorization link:
+       - DO NOT route to `system` to acknowledge or search files.
+       - DO NOT generate a vague acknowledgment task.
+       - Resume and execute the primary user action (e.g. subtask with `assigned_worker: "productivity"` to check unread emails).
+     - NEVER route tasks to `system` to search for tokens, credentials, or auth files across the filesystem. Dedicated domain workers manage their own authentication.
 
 CONFIDENCE SCORING RULES:
 For each task, assign a 'confidence_score' (from 0.0 to 1.0) and a 'confidence_reason' explaining your rating:

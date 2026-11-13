@@ -5,18 +5,21 @@ from typing import List
 from src.agents.contracts import ToolDefinition
 
 SYSTEM_TOOLS: List[ToolDefinition] = [
+    # Process & Execution
     ToolDefinition(
         name="sys_exec",
         category="system",
-        description="Executes an isolated Linux bash or shell command with a timeout deadline.",
+        description="Executes a Linux bash or shell command with a timeout deadline, or launches background/GUI processes detached.",
         risk="HIGH",
-        prompt_usage_tip="Use for terminal commands and running scripts. Specify cwd when executing within specific projects.",
+        prompt_usage_tip="Use for terminal commands and running scripts. For continuous services, daemons, or GUI apps (e.g. steam, browsers), set background=true so they run detached without blocking.",
         parameters={
             "type": "object",
             "properties": {
                 "command": {"type": "string", "description": "Bash or shell command to execute"},
                 "timeout_seconds": {"type": "integer", "description": "Timeout in seconds (default: 30)", "default": 30},
                 "cwd": {"type": "string", "description": "Working directory for the process"},
+                "background": {"type": "boolean", "description": "Set to true to run long-running daemons, services, or GUI apps detached in the background without waiting", "default": False},
+                "log_file": {"type": "string", "description": "Optional custom log file path for background command output"},
             },
             "required": ["command"],
         },
@@ -50,6 +53,156 @@ SYSTEM_TOOLS: List[ToolDefinition] = [
             "required": ["pid"],
         },
     ),
+    ToolDefinition(
+        name="sys_exec_python",
+        category="system",
+        description="Executes an ephemeral Python script safely in a subprocess and returns stdout/stderr.",
+        risk="HIGH",
+        prompt_usage_tip="Use for mathematical computation, data processing, or rapid verification.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Python source code to execute"},
+                "timeout_seconds": {"type": "integer", "description": "Timeout in seconds (default: 30)", "default": 30},
+            },
+            "required": ["code"],
+        },
+    ),
+
+    # Hardware & Audio Controls
+    ToolDefinition(
+        name="sys_volume_get",
+        category="system",
+        description="Gets the current system audio volume percentage and mute status.",
+        risk="LOW",
+        prompt_usage_tip="Use to inspect current audio volume and mute state.",
+        parameters={"type": "object", "properties": {}},
+    ),
+    ToolDefinition(
+        name="sys_volume_set",
+        category="system",
+        description="Sets the system audio volume to a specific percentage (0-100).",
+        risk="LOW",
+        prompt_usage_tip="Use to adjust speaker or headphone volume.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "level": {"type": "integer", "description": "Target volume percentage (0 to 100)"},
+            },
+            "required": ["level"],
+        },
+    ),
+    ToolDefinition(
+        name="sys_volume_mute",
+        category="system",
+        description="Toggles system audio mute state on or off.",
+        risk="LOW",
+        prompt_usage_tip="Use to silence or unsilence sound.",
+        parameters={"type": "object", "properties": {}},
+    ),
+
+    # Display Controls
+    ToolDefinition(
+        name="sys_brightness_get",
+        category="system",
+        description="Gets the current screen brightness percentage.",
+        risk="LOW",
+        prompt_usage_tip="Use to inspect display brightness level.",
+        parameters={"type": "object", "properties": {}},
+    ),
+    ToolDefinition(
+        name="sys_brightness_set",
+        category="system",
+        description="Sets the screen brightness to a specific percentage (1-100).",
+        risk="LOW",
+        prompt_usage_tip="Use to adjust screen backlight intensity.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "level": {"type": "integer", "description": "Target brightness percentage (1 to 100)"},
+            },
+            "required": ["level"],
+        },
+    ),
+
+    # Desktop State, Power & Diagnostics
+    ToolDefinition(
+        name="sys_lock",
+        category="system",
+        description="Locks the active desktop session using the desktop lock screen.",
+        risk="MEDIUM",
+        prompt_usage_tip="Use when the user requests locking the screen.",
+        parameters={"type": "object", "properties": {}},
+    ),
+    ToolDefinition(
+        name="sys_suspend",
+        category="system",
+        description="Suspends the system into low-power sleep state (suspend to RAM).",
+        risk="HIGH",
+        prompt_usage_tip="Requires explicit confirmation before putting the system to sleep.",
+        parameters={"type": "object", "properties": {}},
+    ),
+    ToolDefinition(
+        name="sys_health",
+        category="system",
+        description="Reports real-time system health including CPU usage, RAM utilization, root disk space, and battery status.",
+        risk="LOW",
+        prompt_usage_tip="Use to check resource utilization, memory limits, or battery level.",
+        parameters={"type": "object", "properties": {}},
+    ),
+
+    # Clipboard & Launcher
+    ToolDefinition(
+        name="sys_clipboard_copy",
+        category="system",
+        description="Copies text to the system clipboard using Wayland (wl-copy) or X11 (xclip/xsel).",
+        risk="LOW",
+        prompt_usage_tip="Use when asked to copy text, links, or code for the user.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "Text to place into system clipboard"},
+            },
+            "required": ["text"],
+        },
+    ),
+    ToolDefinition(
+        name="sys_clipboard_paste",
+        category="system",
+        description="Retrieves and returns text content from the system clipboard.",
+        risk="LOW",
+        prompt_usage_tip="Use to inspect what the user currently has copied.",
+        parameters={"type": "object", "properties": {}},
+    ),
+    ToolDefinition(
+        name="sys_launch_app",
+        category="system",
+        description="Launches an application, URI, or directory path detached on the desktop session.",
+        risk="MEDIUM",
+        prompt_usage_tip="Use to open GUI apps, browser, editor, or folder targets.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "app_name": {"type": "string", "description": "Application name or path (e.g. 'code', 'firefox', 'vlc', or directory)"},
+                "arguments": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional CLI arguments or file targets",
+                },
+            },
+            "required": ["app_name"],
+        },
+    ),
+    ToolDefinition(
+        name="sys_get_time",
+        category="system",
+        description="Returns the current system timestamp in both local time and UTC.",
+        risk="LOW",
+        prompt_usage_tip="Use to check exact date, time, weekday, or timezone.",
+        parameters={"type": "object", "properties": {}},
+    ),
+
+    # Filesystem Category
     ToolDefinition(
         name="fs_read",
         category="filesystem",
@@ -132,6 +285,8 @@ SYSTEM_TOOLS: List[ToolDefinition] = [
             "required": ["query"],
         },
     ),
+
+    # Git Category
     ToolDefinition(
         name="git_status",
         category="git",

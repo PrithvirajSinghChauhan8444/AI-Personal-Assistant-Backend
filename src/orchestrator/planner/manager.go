@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"assistant/src/orchestrator/session"
+
 	"github.com/google/uuid"
 )
 
@@ -42,7 +44,7 @@ func NewManagerAgent(llm LLMCaller, workers []WorkerCapability, promptFilePath s
 }
 
 // Plan decomposes a primary user goal into an actionable TaskPlan DAG.
-func (m *ManagerAgent) Plan(ctx context.Context, goal string, contextData map[string]interface{}) (*TaskPlan, error) {
+func (m *ManagerAgent) Plan(ctx context.Context, goal string, contextData map[string]interface{}, history ...[]session.ChatMessage) (*TaskPlan, error) {
 	goal = strings.TrimSpace(goal)
 	if goal == "" {
 		return nil, errors.New("cannot plan with an empty goal")
@@ -53,9 +55,14 @@ func (m *ManagerAgent) Plan(ctx context.Context, goal string, contextData map[st
 		return m.generateFallbackPlan(goal), nil
 	}
 
+	var chatHistory []session.ChatMessage
+	if len(history) > 0 {
+		chatHistory = history[0]
+	}
+
 	// Direct delegation if attached caller is the Python Manager Bridge
 	if bridge, ok := m.llm.(*PythonManagerBridge); ok {
-		plan, err := bridge.Plan(ctx, goal, contextData)
+		plan, err := bridge.Plan(ctx, goal, contextData, chatHistory)
 		if err == nil {
 			m.validateAndNormalizePlan(plan, goal)
 			return plan, nil
@@ -64,6 +71,18 @@ func (m *ManagerAgent) Plan(ctx context.Context, goal string, contextData map[st
 
 	sysPrompt := BuildPlannerSystemPrompt(m.workers, m.promptFilePath)
 	userPrompt := fmt.Sprintf("User Request: %s", goal)
+	if len(chatHistory) > 0 {
+		var histBuilder strings.Builder
+		histBuilder.WriteString("Conversation History:\n")
+		startIdx := 0
+		if len(chatHistory) > 10 {
+			startIdx = len(chatHistory) - 10
+		}
+		for _, msg := range chatHistory[startIdx:] {
+			histBuilder.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, msg.Content))
+		}
+		userPrompt = fmt.Sprintf("%s\n\n%s", histBuilder.String(), userPrompt)
+	}
 	if len(contextData) > 0 {
 		ctxBytes, _ := json.Marshal(contextData)
 		userPrompt = fmt.Sprintf("Context: %s\n\n%s", string(ctxBytes), userPrompt)

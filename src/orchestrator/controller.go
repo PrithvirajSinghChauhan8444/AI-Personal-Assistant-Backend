@@ -261,7 +261,7 @@ func (c *Controller) planTurn(ctx context.Context, turn TurnContext) (*planner.T
 		}
 	}
 
-	plan, err := c.manager.Plan(ctx, turn.Prompt, contextData)
+	plan, err := c.manager.Plan(ctx, turn.Prompt, contextData, turn.History)
 	if err != nil || plan == nil {
 		return nil, fmt.Errorf("manager returned nil or error: %w", err)
 	}

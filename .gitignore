@@ -17,6 +17,7 @@ Memory/
 *.db-shm
 *.db-wal
 workspace/data/*.db*
+workspace/logs/*.log
 .playwright-mcp/
 
 # Dynamically generated skills (already tracked core skills remain tracked)

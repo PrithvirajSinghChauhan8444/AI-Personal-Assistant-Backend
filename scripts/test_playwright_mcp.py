@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Test Playwright MCP with user configurations.
-Spawns @playwright/mcp@latest using Brave browser and the configured profile,
-and runs a test navigation and snapshot.
+Spawns @playwright/mcp@latest using the configured browser (Brave / Chrome / Chromium)
+and profile directory, and runs a test navigation and snapshot.
 """
 
 import json
@@ -11,17 +11,31 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.agents.browser.mcp_bridge import (
+    resolve_browser,
+    resolve_user_data_dir,
+    try_load_dotenv,
+)
+
 def main():
-    executable_path = os.getenv("BROWSER_EXECUTABLE_PATH", "/usr/bin/brave")
-    user_data_dir = os.getenv("BROWSER_USER_DATA_DIR", "/home/prit/.config/brave-assistant-profile")
-    user_data_dir = os.path.expanduser(user_data_dir)
-    viewport = "1280x720"
+    try_load_dotenv()
+
+    browser_type, auto_exe = resolve_browser()
+    executable_path = os.getenv("BROWSER_EXECUTABLE_PATH") or auto_exe
+    user_data_dir = resolve_user_data_dir(browser_type)
+    viewport = os.getenv("BROWSER_VIEWPORT", "1280x720")
+    headless = os.getenv("BROWSER_HEADLESS", "false").lower() == "true"
 
     print("🌐 Starting Playwright MCP Test...")
-    print(f"  • Executable: {executable_path}")
+    print(f"  • Browser Type:  {browser_type}")
+    print(f"  • Executable:    {executable_path}")
     print(f"  • User Data Dir: {user_data_dir}")
-    print(f"  • Viewport: {viewport}")
-    print(f"  • Headless: False (Headed)")
+    print(f"  • Viewport:      {viewport}")
+    print(f"  • Headless:      {headless}")
+
+    os.makedirs(user_data_dir, exist_ok=True)
 
     cmd = [
         "npx",
@@ -31,6 +45,8 @@ def main():
         f"--user-data-dir={user_data_dir}",
         f"--viewport-size={viewport}"
     ]
+    if headless:
+        cmd.append("--headless")
 
     proc = subprocess.Popen(
         cmd,

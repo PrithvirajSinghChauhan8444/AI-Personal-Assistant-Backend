@@ -275,9 +275,10 @@ class ManagerAgent:
         self,
         goal: str,
         context_data: Optional[Dict[str, Any]] = None,
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Synchronous wrapper for plan()."""
-        return asyncio.run(self.plan(goal, context_data))
+        return asyncio.run(self.plan(goal, context_data, conversation_history))
 
     def _extract_and_validate_json(self, raw_text: str, original_goal: str) -> Dict[str, Any]:
         """Strips markdown fences and parses raw JSON plan conforming to schema."""
@@ -407,12 +408,14 @@ def main() -> None:
 
     goal = args.goal
     ctx_data: Optional[Dict[str, Any]] = None
+    conv_history: Optional[List[Dict[str, Any]]] = None
 
     if not goal and not sys.stdin.isatty():
         try:
             stdin_data = json.load(sys.stdin)
             goal = stdin_data.get("goal") or stdin_data.get("prompt")
             ctx_data = stdin_data.get("context")
+            conv_history = stdin_data.get("history") or stdin_data.get("conversation_history")
         except Exception as err:
             sys.stderr.write(f"[Manager] Failed to read JSON from stdin: {err}\n")
 
@@ -430,7 +433,11 @@ def main() -> None:
         model_override=args.model,
         temperature_override=args.temperature,
     )
-    result = manager.plan_sync(goal=goal, context_data=ctx_data)
+    result = manager.plan_sync(
+        goal=goal,
+        context_data=ctx_data,
+        conversation_history=conv_history,
+    )
 
     sys.stdout.write(json.dumps(result, indent=2) + "\n")
     sys.stdout.flush()

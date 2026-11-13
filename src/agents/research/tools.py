@@ -39,6 +39,36 @@ RESEARCH_TOOLS: List[ToolDefinition] = [
         },
     ),
     ToolDefinition(
+        name="net_weather",
+        category="net",
+        description="Fetches current weather conditions and temperature for a given city or location.",
+        risk="LOW",
+        prompt_usage_tip="Use to answer queries about current weather, temperature, or forecasts.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "location": {"type": "string", "description": "City name or location (e.g. 'London', 'Agra', 'Tokyo')"},
+                "format": {"type": "string", "enum": ["summary", "detailed"], "description": "Format: 'summary' or 'detailed'", "default": "summary"},
+            },
+            "required": ["location"],
+        },
+    ),
+    ToolDefinition(
+        name="sys_exec_python",
+        category="system",
+        description="Executes an ephemeral Python script safely in a subprocess and returns stdout/stderr.",
+        risk="HIGH",
+        prompt_usage_tip="Use for computational analysis, scientific verification, or data parsing during research.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Python source code to execute"},
+                "timeout_seconds": {"type": "integer", "description": "Timeout in seconds (default: 30)", "default": 30},
+            },
+            "required": ["code"],
+        },
+    ),
+    ToolDefinition(
         name="memory_search",
         category="memory",
         description="Searches long-term episodic and semantic memory for relevant facts, profiles, and past answers.",

@@ -114,4 +114,17 @@ BROWSER_TOOLS: List[ToolDefinition] = [
             },
         },
     ),
+    ToolDefinition(
+        name="browser_get_dom_map",
+        category="browser",
+        description="Returns an indexed map of interactive DOM elements and their accessibility roles.",
+        risk="LOW",
+        prompt_usage_tip="Use to discover exact element selectors and indices on complex pages.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "max_elements": {"type": "integer", "description": "Maximum interactive elements to map (default: 50)", "default": 50},
+            },
+        },
+    ),
 ]

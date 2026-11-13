@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"assistant/src/orchestrator/session"
 )
 
 // PythonManagerBridge delegates planning and reasoning to the Layer 2 Python Manager Agent.
@@ -67,7 +69,7 @@ func (p *PythonManagerBridge) Generate(ctx context.Context, systemPrompt, userPr
 }
 
 // Plan invokes the Python Manager directly to decompose the goal into an actionable TaskPlan DAG.
-func (p *PythonManagerBridge) Plan(ctx context.Context, goal string, contextData map[string]interface{}) (*TaskPlan, error) {
+func (p *PythonManagerBridge) Plan(ctx context.Context, goal string, contextData map[string]interface{}, history ...[]session.ChatMessage) (*TaskPlan, error) {
 	if p.pythonBinary == "" {
 		return nil, errors.New("python runtime binary not found on system")
 	}
@@ -79,9 +81,26 @@ func (p *PythonManagerBridge) Plan(ctx context.Context, goal string, contextData
 	env = append(env, "PYTHONPATH="+root)
 	cmd.Env = env
 
+	var historyMaps []map[string]interface{}
+	if len(history) > 0 && len(history[0]) > 0 {
+		chatHistory := history[0]
+		startIdx := 0
+		if len(chatHistory) > 10 {
+			startIdx = len(chatHistory) - 10
+		}
+		for _, msg := range chatHistory[startIdx:] {
+			historyMaps = append(historyMaps, map[string]interface{}{
+				"role":    msg.Role,
+				"content": msg.Content,
+				"agent":   msg.AgentName,
+			})
+		}
+	}
+
 	payload := map[string]interface{}{
 		"goal":    goal,
 		"context": contextData,
+		"history": historyMaps,
 	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {

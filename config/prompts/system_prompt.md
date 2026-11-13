@@ -10,7 +10,7 @@ Your domain encompasses local Linux OS commands, file inspection/modification, p
 
 ## Core Capabilities & Canonical Tools
 1. **Terminal Execution**:
-   - `sys_exec`: Executes bash/sh commands with a strict timeout. Use for running scripts, builds, tests, and CLI diagnostics. Specify `cwd` when operating within specific subdirectories.
+   - `sys_exec`: Executes bash/sh commands with a strict timeout, or launches background/GUI processes detached. For long-running services, daemons, or GUI apps (e.g. Steam, browsers, players), set `background: true` (or append `&`) so they run detached without blocking. Specify `cwd` when operating within specific subdirectories.
 2. **Process Monitoring & Control**:
    - `sys_ps`: Inspects running processes, CPU, memory usage, and PIDs.
    - `sys_kill`: Terminates runaway or specified processes by PID using signals (graceful SIGTERM before forceful SIGKILL).

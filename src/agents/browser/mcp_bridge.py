@@ -1,19 +1,140 @@
 """Playwright MCP Bridge for Layer 6 BrowserAgent.
 
-Connects the Python Cognitive Layer to an isolated Playwright MCP Server
-spawning the user-configured browser (e.g. Brave) over stdio JSON-RPC.
+Connects the Python Cognitive Layer to an isolated or persistent Playwright MCP Server
+spawning the user-configured browser (e.g. Brave, Chrome, Chromium) over stdio JSON-RPC.
 """
 
 import asyncio
 import json
 import logging
 import os
+import shutil
+import socket
 import subprocess
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.agents.contracts import PipeReaderProtocol, ToolCallIntent, ToolCallResult
 
 logger = logging.getLogger(__name__)
+
+
+def try_load_dotenv() -> None:
+    """Attempts to load .env key-value pairs if not already present in os.environ."""
+    candidates = [".env", "config/.env", "../config/.env", "../../config/.env"]
+    for path in candidates:
+        if os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#"):
+                            continue
+                        if "=" in line:
+                            key, val = line.split("=", 1)
+                            key = key.strip()
+                            val = val.strip().strip("'\"")
+                            if key not in os.environ:
+                                os.environ[key] = val
+                return
+            except Exception:
+                pass
+
+
+def resolve_browser(browser_type: Optional[str] = None) -> Tuple[str, str]:
+    """Resolves browser binary for brave, chrome, or chromium."""
+    b_type = (browser_type or os.getenv("BROWSER_TYPE", "auto")).lower().strip()
+    if not b_type:
+        b_type = "auto"
+
+    search_candidates = {
+        "brave": [
+            "brave",
+            "brave-browser",
+            "/usr/bin/brave",
+            "/usr/bin/brave-browser",
+            "/opt/brave.com/brave/brave-browser",
+            "/snap/bin/brave",
+        ],
+        "chrome": [
+            "google-chrome-stable",
+            "google-chrome",
+            "chrome",
+            "/usr/bin/google-chrome-stable",
+            "/usr/bin/google-chrome",
+            "/opt/google/chrome/google-chrome",
+        ],
+        "chromium": [
+            "chromium",
+            "chromium-browser",
+            "/usr/bin/chromium",
+            "/usr/lib/chromium/chromium",
+            "/usr/bin/chromium-browser",
+            "/snap/bin/chromium",
+        ],
+    }
+
+    def find_exe(candidates: List[str]) -> Optional[str]:
+        for cand in candidates:
+            if "/" in cand:
+                if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                    return cand
+            else:
+                found = shutil.which(cand)
+                if found:
+                    return found
+        return None
+
+    if b_type == "brave":
+        return "brave", find_exe(search_candidates["brave"]) or "/usr/bin/brave"
+    if b_type in ("chrome", "google-chrome"):
+        return "chrome", find_exe(search_candidates["chrome"]) or "/usr/bin/google-chrome"
+    if b_type == "chromium":
+        return "chromium", find_exe(search_candidates["chromium"]) or "/usr/bin/chromium"
+
+    # auto mode: check in priority order
+    for typ in ["brave", "chrome", "chromium"]:
+        exe = find_exe(search_candidates[typ])
+        if exe:
+            return typ, exe
+
+    return "chromium", "/usr/bin/chromium"
+
+
+def resolve_user_data_dir(
+    browser_type: str,
+    profile_name: Optional[str] = None,
+    explicit_dir: Optional[str] = None,
+) -> str:
+    """Computes the persistent profile directory path for the assistant."""
+    if explicit_dir:
+        return os.path.expanduser(explicit_dir)
+
+    p_name = (profile_name or os.getenv("BROWSER_PROFILE_NAME", "assistant-profile")).strip()
+    if not p_name:
+        p_name = "assistant-profile"
+
+    home = os.path.expanduser("~")
+    folder_name = f"{browser_type}-{p_name}"
+    return os.path.join(home, ".config", folder_name)
+
+
+def is_cdp_open(cdp_url: str) -> bool:
+    """Checks if CDP remote debugging port is open."""
+    host = "127.0.0.1"
+    port = 9222
+    if "://" in cdp_url:
+        parts = cdp_url.split("://", 1)[1].rstrip("/").split(":")
+        host = parts[0]
+        if len(parts) > 1:
+            try:
+                port = int(parts[1])
+            except ValueError:
+                port = 9222
+    try:
+        with socket.create_connection((host, port), timeout=0.5):
+            return True
+    except (OSError, socket.timeout):
+        return False
 
 
 class PlaywrightMCPBridge(PipeReaderProtocol):
@@ -23,15 +144,39 @@ class PlaywrightMCPBridge(PipeReaderProtocol):
         self,
         executable_path: Optional[str] = None,
         user_data_dir: Optional[str] = None,
-        viewport_size: str = "1280x720",
-        isolated: bool = True,
-        headless: bool = False,
+        viewport_size: Optional[str] = None,
+        isolated: Optional[bool] = None,
+        headless: Optional[bool] = None,
+        browser_type: Optional[str] = None,
+        profile_name: Optional[str] = None,
     ) -> None:
-        self.executable_path = executable_path or os.getenv("BROWSER_EXECUTABLE_PATH", "/usr/bin/brave")
-        self.user_data_dir = user_data_dir or os.getenv("BROWSER_USER_DATA_DIR", "")
-        self.viewport_size = viewport_size
-        self.isolated = isolated
-        self.headless = headless
+        try_load_dotenv()
+
+        resolved_type, auto_exe = resolve_browser(browser_type)
+        self.browser_type = resolved_type
+        self.executable_path = executable_path or os.getenv("BROWSER_EXECUTABLE_PATH") or auto_exe
+
+        self.profile_name = profile_name or os.getenv("BROWSER_PROFILE_NAME", "assistant-profile")
+        self.user_data_dir = resolve_user_data_dir(
+            self.browser_type,
+            self.profile_name,
+            user_data_dir or os.getenv("BROWSER_USER_DATA_DIR"),
+        )
+
+        self.viewport_size = viewport_size or os.getenv("BROWSER_VIEWPORT", "1280x720")
+
+        if isolated is not None:
+            self.isolated = isolated
+        else:
+            self.isolated = os.getenv("BROWSER_ISOLATED", "false").lower() == "true"
+
+        if headless is not None:
+            self.headless = headless
+        else:
+            self.headless = os.getenv("BROWSER_HEADLESS", "false").lower() == "true"
+
+        self.attach_cdp = os.getenv("BROWSER_ATTACH_CDP", "false").lower() == "true"
+        self.cdp_url = os.getenv("BROWSER_CDP_URL", "http://localhost:9222")
 
         self._proc: Optional[subprocess.Popen] = None
         self._req_id = 0
@@ -45,19 +190,25 @@ class PlaywrightMCPBridge(PipeReaderProtocol):
 
         cmd = ["npx", "-y", "@playwright/mcp@latest"]
 
-        if self.executable_path:
-            cmd.append(f"--executable-path={os.path.expanduser(self.executable_path)}")
+        # CDP mode if user explicitly enabled it and port is active
+        if self.attach_cdp and self.cdp_url and is_cdp_open(self.cdp_url):
+            cmd.append(f"--cdp-endpoint={self.cdp_url}")
+        else:
+            if self.executable_path:
+                cmd.append(f"--executable-path={os.path.expanduser(self.executable_path)}")
 
-        if self.isolated:
-            cmd.append("--isolated")
-        elif self.user_data_dir:
-            cmd.append(f"--user-data-dir={os.path.expanduser(self.user_data_dir)}")
+            if self.isolated:
+                cmd.append("--isolated")
+            elif self.user_data_dir:
+                resolved_dir = os.path.expanduser(self.user_data_dir)
+                os.makedirs(resolved_dir, exist_ok=True)
+                cmd.append(f"--user-data-dir={resolved_dir}")
 
-        if self.viewport_size:
-            cmd.append(f"--viewport-size={self.viewport_size}")
+            if self.viewport_size:
+                cmd.append(f"--viewport-size={self.viewport_size}")
 
-        if self.headless:
-            cmd.append("--headless")
+            if self.headless:
+                cmd.append("--headless")
 
         self._proc = subprocess.Popen(
             cmd,

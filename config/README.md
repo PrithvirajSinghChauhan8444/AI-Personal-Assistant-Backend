@@ -20,8 +20,15 @@ The master configuration for API keys, model selections, and external ports:
 | `SYSTEM_PASSWORD` | Password required to authorize destructive system actions. | `1234` |
 | `TELEGRAM_BOT_TOKEN` | Token for Telegram Bot integration. | `8897267617:...` |
 | `TELEGRAM_ALLOWED_USER_IDS` | Comma-separated list of Telegram User IDs allowed to access the bot. | `1909188006` |
-| `BROWSER_CDP_URL` | Chrome DevTools Protocol port to attach to existing browser. | `http://localhost:9222` |
-| `BROWSER_HEADLESS` | Whether browser runs headlessly. | `false` |
+| `BROWSER_TYPE` | Browser executable to use: `brave`, `chrome`, `chromium`, or `auto`. | `brave` |
+| `BROWSER_PROFILE_NAME` | Dedicated assistant profile name (saved under `~/.config/{browser}-{name}`). | `assistant-profile` |
+| `BROWSER_HEADLESS` | Whether browser runs headlessly (`true`) or headed with GUI (`false`). | `false` |
+| `BROWSER_VIEWPORT` | Browser window dimensions. | `1280x720` |
+| `BROWSER_ISOLATED` | Ephemeral guest mode (`true`) or persistent logins saved (`false`). | `false` |
+| `BROWSER_USER_DATA_DIR` | Optional direct override for profile directory path. | `~/.config/brave-assistant-profile` |
+| `BROWSER_EXECUTABLE_PATH`| Optional direct override for browser executable binary. | `/usr/bin/brave` |
+| `BROWSER_ATTACH_CDP` | Attach to existing browser session via CDP debug port (`true`/`false`). | `false` |
+| `BROWSER_CDP_URL` | Chrome DevTools Protocol port to attach to if `BROWSER_ATTACH_CDP=true`. | `http://localhost:9222` |
 
 ---
 
