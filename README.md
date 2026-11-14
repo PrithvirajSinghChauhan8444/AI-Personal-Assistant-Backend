@@ -1,278 +1,132 @@
-# 🤖 AI Personal Assistant (Polyglot Backend)
+<h1 align="center">🤖 Me2: Intelligent Personal Assistant</h1>
 
-> **High-Performance, Secure, Local-First Personal Assistant with Polyglot Multi-Agent Architecture**  
-> *Go Control Plane & Tool Engine + Pure Async Python Cognitive Plane*
+<p align="center">
+  <b>An autonomous desktop assistant that helps you organize files, manage communications, research the web, and accomplish everyday computer tasks—with complete user control and safety.</b>
+</p>
 
-[![Go Version](https://img.shields.io/badge/Go-1.23%2B-00ADD8?style=flat&logo=go)](https://golang.org)
-[![Python Version](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat&logo=python)](https://python.org)
-[![Architecture](https://img.shields.io/badge/Architecture-7--Layer%20Polyglot-blueviolet?style=flat)](#-system-architecture)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](#-license)
-[![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)](#)
+<p align="center">
+  <a href="#-quickstart"><img src="https://img.shields.io/badge/Quickstart-Get%20Started-FFD700?style=for-the-badge" alt="Quickstart"></a>
+  <a href="#-documentation"><img src="https://img.shields.io/badge/Docs-Architecture%20%26%20Guides-5865F2?style=for-the-badge" alt="Documentation"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/Go-1.23%2B-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go">
+  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-555555?style=for-the-badge" alt="Platform">
+</p>
+
+**Me2 is an intelligent personal assistant designed to run directly on your computer alongside you.** It transforms your everyday requests into completed actions—helping you manage your files, search the web, review calendar events, and triage emails through simple, natural conversation. Unlike standard chat assistants that remain confined to a web browser tab, Me2 collaborates directly with your desktop environment.
+
+Use any AI model you prefer—Google Gemini, Anthropic Claude, OpenAI, or run 100% offline and private on your own hardware using Ollama. Switch configurations anytime with a single setting—no code changes, no vendor lock-in.
+
+<table>
+<tr><td><b>Direct workstation execution</b></td><td>Interacts directly with your local workspace—search files, inspect code, organize directories, monitor system activity, and run desktop utilities without switching windows.</td></tr>
+<tr><td><b>Intelligent goal planning</b></td><td>Breaks complex, multi-step requests into clear, orderly action plans and coordinates specialized helpers to execute each step.</td></tr>
+<tr><td><b>Safe and supervised (Zero-Trust)</b></td><td>Read-only actions run instantly. Destructive operations (deleting files, running system commands, sending emails) automatically pause for your explicit approval before taking action.</td></tr>
+<tr><td><b>Email and calendar triage</b></td><td>Connects with your Google Workspace accounts to search messages, summarize upcoming events, and stage draft replies ready for your final review.</td></tr>
+<tr><td><b>Web research and browsing</b></td><td>Conducts live web searches, retrieves online documentation, and navigates web pages using browser automation to gather information.</td></tr>
+<tr><td><b>Private and model-agnostic</b></td><td>Supports leading cloud AI providers (Gemini, Claude, OpenAI) or fully offline, private local models via Ollama with zero external telemetry.</td></tr>
+<tr><td><b>Developer workbench</b></td><td>Includes a built-in web testbench and flight recorder with live event streaming and interactive approval testing.</td></tr>
+</table>
 
 ---
 
-## 🌟 Executive Overview
+## 💡 Why Me2?
 
-The **AI Personal Assistant Backend** is a modular, high-throughput, and secure personal assistant engine designed to manage your digital environment, automate browser workflows, synthesize complex research, and handle communications—all with zero external telemetry and strict local data governance.
+Modern work often suffers from **digital fragmentation**:
 
-### Why Polyglot?
+* **Trapped in Chat Windows**: Conventional AI assistants are isolated text generators. They cannot see your files, organize project folders, check your local calendar, or assist with everyday computer workflows.
+* **Constant App Switching**: Finishing even a simple project requires constantly bouncing between email inboxes, file browsers, search tabs, calendar views, and text editors.
+* **Uncertainty with Automation**: Traditional automated scripts and macros break easily when formats change, while unmonitored automation can take unintended actions without warning.
+* **Loss of Oversight**: Entrusting automated software with your computer can feel concerning without clear visibility into what the assistant is doing and an easy way to approve or decline actions.
 
-Traditional AI agent stacks built entirely on heavy, monolithic Python frameworks (e.g., LangChain, LangGraph) suffer from severe limitations: **GIL execution bottlenecks**, **slow OS and file I/O operations**, **token bloat from shared contexts**, and **insecure tool execution paths**.
-
-This project resolves these architectural bottlenecks by splitting responsibilities cleanly across two runtimes:
-
-1. **Go Control Plane (Layers 1–4):** Handles client ingress/egress, high-concurrency WebSocket/CLI streaming, SQLite session management, Human-In-The-Loop (HITL) checkpoints, sub-millisecond native OS/filesystem/network tool execution, and DAG task scheduling.
-2. **Python Cognitive Plane (Layers 5–7):** Houses the solitary Layer 2 Manager Agent (DAG decomposition), semantic memory injection (FAISS vector search), independent Specialist Worker Agents (pure async ReAct loops with zero monolithic framework dependencies), and multi-provider model routing.
-3. **Anonymous Stdio Bridge:** Inter-process communication operates strictly via anonymous kernel pipes (`stdin`/`stdout`) using Newline-Delimited JSON (NDJSON) frames. No open network ports, zero SSL cert overhead, and guaranteed cascade process cleanup on exit.
+Me2 resolves this by combining proactive planning, specialized task helpers, and a transparent review process that keeps you in complete control.
 
 ---
 
-## 🏗️ System Architecture
+## 🚀 How It Works
 
-The backend is strictly divided into **7 decoupled layers** with unidirectional dependencies, explicit data contracts, and strong boundary isolation.
+Instead of requiring you to micro-manage every subtask, you provide Me2 with a high-level goal in natural language:
+
+1. **State Your Goal**: Tell Me2 what you want to achieve in plain, everyday language.
+2. **Organize the Steps**: Me2 breaks down your objective into an organized, step-by-step checklist.
+3. **Specialized Helpers**: Dedicated helper modules handle specific parts of the plan, such as finding a document, reading an inbox, or searching for recent information online.
+4. **Human Review & Approval**: Safe lookup tasks happen instantly. Any action that creates, alters, or removes important data pauses for your direct sign-off before proceeding.
 
 ```mermaid
-flowchart TD
-    subgraph L1 ["Layer 1: Client Adapters & Standard Gateway (Go)"]
-        CLI["CLI Adapter (Bubbletea / TUI)"]
-        TG["Telegram Adapter (Bot API Batcher)"]
-        Web["Web Adapter (REST / WS / SSE)"]
-        GW["Standard Gateway Core (Normalizer & Egress Dispatcher)"]
-    end
-
-    subgraph L2 ["Layer 2: Orchestrator Subsystems (Go + Python)"]
-        subgraph L2_Part1 ["Part 1: Host Session Governor (Go)"]
-            Host["Host Governor (SQLite Sessions, Turn Timeline, Checkpoints)"]
-        end
-        subgraph L2_Part2 ["Part 2: Orchestrator Controller (Go + Python)"]
-            Controller["Controller (DAG Coordinator, Inter-task Context)"]
-            ManagerAgent["Manager Agent (Layer 2 Cognitive Planner)"]
-            Scheduler["Topological Task Scheduler (Parallel Goroutines)"]
-            Gatekeeper["Safety Gatekeeper (HITL Risk Evaluation)"]
-            Spillover["Artifact Spillover Engine (>100KB to Disk)"]
-        end
-    end
-
-    subgraph L3 ["Layer 3: Tool Engine (Go)"]
-        NativeTools["Native OS, Filesystem, Git, Net & Workspace Tools (<5ms)"]
-    end
-
-    subgraph L4 ["Layer 4: Anonymous Stdio Bridge"]
-        Pipes["Anonymous Kernel Pipes (NDJSON RPC / MCP Model)"]
-    end
-
-    subgraph L5 ["Layer 5: Memory Layer (Python)"]
-        Memory["Grounding, User Profiles, Account Aliases & Background Reflection"]
-    end
-
-    subgraph L6 ["Layer 6: Specialist Worker Agents (Python)"]
-        SystemWorker["@system Worker (OS, Shell, Files, Git)"]
-        BrowserWorker["@browser Worker (Playwright MCP, DOM, Visuals)"]
-        ResearchWorker["@research Worker (Web Search, Docs, Memory)"]
-        ProdWorker["@productivity Worker (Gmail, Calendar, Tasks)"]
-        DiscoveredWorkers["Dynamically Auto-Discovered Workers"]
-    end
-
-    subgraph L7 ["Layer 7: Model Engine (Python)"]
-        ModelFactory["Multi-Provider LLM Engine (Gemini, Claude, OpenAI, Ollama)"]
-        AudioEngine["Neural Voice Engine (Kokoro ONNX / Piper TTS)"]
-    end
-
-    CLI & TG & Web --> GW
-    GW --> Host --> Controller
-    Controller --> ManagerAgent
-    ManagerAgent --> Scheduler
-    Scheduler --> Gatekeeper
-    Gatekeeper --> NativeTools
-    Gatekeeper --> Pipes --> Memory --> L6
-    L6 --> ModelFactory
+flowchart LR
+    Goal["🎯 Your Goal<br/>'Review project emails & summarize deadlines'"] --> Plan["1. Plan Steps<br/>Break down the objective"]
+    Plan --> Read["2. Check Inbox<br/>Find relevant emails"]
+    Read --> Extract["3. Summarize<br/>Extract key dates & notes"]
+    Extract --> Draft["4. Prepare Response<br/>Stage email draft"]
+    Draft --> Gate{"5. Human Review<br/>Approve draft creation?"}
+    Gate -->|Approved| Done["✅ Draft Saved in Gmail"]
 ```
 
 ---
 
-## 🔬 Layer-by-Layer Concrete Responsibilities
+## 💻 Example Walkthrough
 
-### [Layer 1: Client Adapters & Standard Gateway (Go)](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/gateway)
-- **Adapters (`src/gateway/adapters/`):** Translate transport-specific protocols into normalized gateway contracts:
-  - **CLI Adapter (`cli/`):** High-responsiveness interactive terminal built on Bubbletea, supporting ANSI styling and raw keypresses.
-  - **Telegram Adapter (`telegram/`):** Long-polling bot adapter with 500ms message editing rate-limit batchers.
-  - **Web Adapter (`web/`):** REST endpoints, WebSockets, and Server-Sent Events (SSE).
-- **Standard Gateway Core (`gateway.go`):** Ingestion normalizer into `InboundMessage` structs, streaming egress dispatcher, backpressure regulation, immediate user feedback logging, and 2-second heartbeat tickers for long-running remote LLM operations.
-
-### [Layer 2: Orchestrator Subsystems (Go + Python)](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/orchestrator)
-Decoupled into two distinct subsystems:
-- **Part 1: Host Session Governor (`host.go`):** Exclusively manages persistent SQLite tables (`sessions`, `messages`, `checkpoints`, `tool_audit_log`). Reconstructs conversation history, enforces sliding context windows, and manages Human-In-The-Loop (HITL) turn pause and resume states.
-- **Part 2: Orchestrator Controller (`controller.go`):**
-  - **Manager Agent (`src/orchestrator/manager/`):** The **sole cognitive planning agent** of Layer 2. Possesses **zero leaf tools** (cannot run shell commands or write files). Evaluates user goals, inspects configured/discovered workers, and synthesizes an actionable Directed Acyclic Graph (DAG) `TaskPlan`.
-  - **Topological Task Scheduler (`scheduler/`):** Traverses the DAG, executes independent tasks concurrently via Goroutines, injects prerequisite subtask outputs forward (`[task_X Result]`), and auto-heals dependency deadlocks.
-  - **Safety Gatekeeper (`safety/`):** Validates capability risks against user execution mode (Interactive vs Autonomous) and safety policy rules (`config/safety_policies.json`).
-  - **Artifact Spillover Engine (`spillover.go`):** Transparently offloads subtask outputs exceeding 100KB to `workspace/artifacts/<artifact_id>.txt`, substituting lightweight pointer references to prevent LLM context exhaustion.
-
-### [Layer 3: Tool Engine (Go)](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/tools)
-- High-speed, native Go implementations executing with sub-millisecond overhead:
-  - **System:** `sys_exec`, `sys_ps`, `sys_kill`.
-  - **Filesystem:** `fs_read`, `fs_write`, `fs_delete`, `fs_list`, `fs_ripgrep`.
-  - **Git Operations:** `git_status`, `git_diff`, `git_commit`.
-  - **Networking:** `net_fetch`, `net_search`.
-  - **Workspace & Google APIs:** Fernet-encrypted token handling, `gmail_list`, `gmail_read`, `gmail_send_draft`, `calendar_list`.
-
-### [Layer 4: Anonymous Stdio Bridge](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/bridge)
-- High-efficiency inter-process communication using OS anonymous pipes (`stdin`/`stdout`).
-- Newline-Delimited JSON (NDJSON) framing based on MCP/LSP design principles.
-- Sub-millisecond IPC latency with zero open network ports and automatic cascade process termination.
-
-### [Layer 5: Memory Layer (Python)](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/memory)
-- User preference profiling (`Memory/user_info.json`).
-- Account alias resolution (e.g. distinguishing personal vs work/university Gmail accounts).
-- Active tool prompt synchronization and context budget enforcement.
-- Semantic vector storage and fast-path recall via FAISS (`all-MiniLM-L6-v2`).
-- Asynchronous post-turn reflection and passive fact learning.
-
-### [Layer 6: Specialist Worker Agents (Python)](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/agents)
-- Pure async Python functions executing standardized ReAct loops (Reasoning + Action, bounded to max 10 iterations).
-- **Zero Monolithic Frameworks:** Completely free of LangChain/LangGraph runtime dependencies.
-- **Strict Specialization (Contains ONLY Leaf Workers):**
-  - `@system`: Local Linux OS operations, shell scripts, file manipulation, and git version control.
-  - `@browser`: Interactive web automation via Playwright MCP, CDP session attachment, dynamic DOM map navigation, form filling, and screenshots.
-  - `@research`: Web queries, documentation fetching, multi-source fact-checking, and memory retrieval.
-  - `@productivity`: Personal communications, Gmail search/reading/drafting, Google Calendar scheduling, and task management.
-  - **Dynamic Worker Auto-Discovery:** Any new worker folder added under `src/agents/<name>` is automatically discovered and registered by `factory.py` and made available to the Manager Agent.
-
-### [Layer 7: Model Engine (Python)](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/src/models)
-- Unified multi-provider LLM interface supporting Google Gemini, Anthropic Claude, OpenAI, and local Ollama models.
-- **Gemini KV-Cache Prefix Pinning:** Canonical prompt ordering preserves prompt prefix cache hits, reducing token costs by 75–90% and accelerating TTFT by up to 10x.
-- **Neural Voice Synthesis:** Integrated Kokoro ONNX and Piper TTS engines supporting English and Hindi voice generation with zero cloud latency.
-
----
-
-## ⚡ Architectural Invariants
-
-| Dimension | Layer 2 Manager Agent (`src/orchestrator/manager/`) | Layer 6 Specialist Workers (`src/agents/`) |
-| :--- | :--- | :--- |
-| **Location** | `src/orchestrator/manager/manager.py` | `src/agents/<worker_name>/agent.py` |
-| **Primary Role** | Cognitive planning, goal decomposition & DAG generation | Atomic task execution using assigned leaf tools |
-| **Leaf Tools** | **None** (No shell execution, no file writes, no browser actions) | Full leaf access (shell, files, browser, Gmail, calendar) |
-| **Output Type** | Structured `TaskPlan` JSON (SubTasks + Dependencies) | Task response text, tool calls, token usage metadata |
-| **Execution Loop** | Single-turn cognitive decomposition | Multi-turn async ReAct loop (max 10 iterations) |
-| **Addressing** | Default auto-planner for unrouted turns (`"auto"`) | Direct addressing via `@system`, `@browser`, `@research`, `@productivity` |
-
----
-
-## 🚀 Key Features
-
-- **🎯 Autonomous DAG Decomposition:** Converts complex, multi-step natural language instructions into an executable task graph with explicit dependency tracking and parallel branch execution.
-- **🔒 Zero-Trust Security Gatekeeper:** Every tool execution is evaluated against strict safety policies (`config/safety_policies.json`). Destructive operations (`fs_delete`, `sys_exec`, `git_commit`) automatically trigger Human-In-The-Loop approval checkpoints.
-- **⚡ Sub-Millisecond Native Tools:** Filesystem searches (`fs_ripgrep`), shell commands, and git operations execute in compiled Go with direct OS syscalls, eliminating Python subprocess overhead.
-- **🌐 Browser Automation (Playwright MCP):** Connects to live Chrome sessions via CDP (`http://localhost:9222`) or headless instances, navigates dynamic web apps, clicks interactive elements, and takes screenshots.
-- **📧 Full Workspace & Communications Hub:** Search Gmail via sender/subject/date metadata, read email threads, generate drafts, schedule Google Calendar events, and synchronize Google Tasks.
-- **🧠 Continuous Memory & Reflection:** Automatically extracts user preferences and facts across conversation turns, persisting them to structured profiles and local FAISS vector embeddings.
-- **💾 Artifact Spillover Protection:** Payloads over 100KB are automatically written to disk (`workspace/artifacts/`), ensuring the LLM context window is never choked by massive tool responses.
-- **🖥️ Developer Module Workbench:** Web-based developer dashboard with zero external dependencies (`go run ./cmd/bench-ui`), featuring live Server-Sent Events (SSE) streaming, interactive HITL testing, runtime profiling, and flight recording.
-
----
-
-## 📂 Directory Structure
+Here is an actual interactive terminal session showing how Me2 breaks down a request and requests your permission before creating a draft:
 
 ```text
-AI-Personal-Assistant-Backend/
-├── ARCHITECTURE.md             # Detailed System Architecture Specification
-├── README.md                   # Project documentation & reference
-├── go.mod                      # Go module definitions (v1.23+)
-├── go.sum                      # Go dependency checksums
-├── pytest.ini                  # Python test suite configuration
-├── cmd/
-│   ├── assistant/              # Main application CLI entry point (Go)
-│   ├── bench-ui/               # Visual developer module workbench server (Go)
-│   └── bench/tools/            # Native tool performance benchmarking CLI
-├── config/
-│   ├── .env.example            # Template for environment variables and secrets
-│   ├── .env                    # Active environment configuration
-│   ├── agents.json             # Agent toggles, models, temperatures, and concurrency
-│   ├── safety_policies.json    # Tool risk classifications and HITL thresholds
-│   ├── system.json             # System-level parameters (user identity, timezone, limits)
-│   ├── speech.json             # Voice synthesizer configuration (Kokoro / Piper)
-│   └── prompts/                # Master system prompts for Manager and Workers
-├── src/
-│   ├── gateway/                # Layer 1: Client Adapters & Gateway Core (Go)
-│   │   ├── adapters/           # CLI (Bubbletea), Telegram, Web adapters
-│   │   ├── contracts.go        # Unified Inbound/Outbound streaming interfaces
-│   │   └── gateway.go          # Gateway Core normalizer and event dispatcher
-│   ├── orchestrator/           # Layer 2: Orchestrator Subsystems
-│   │   ├── host.go             # Part 1: Host Session Governor (SQLite, HITL)
-│   │   ├── controller.go       # Part 2: Controller & worker coordinator
-│   │   ├── manager/            # Solitary Layer 2 Manager Agent (Python DAG planner)
-│   │   ├── planner/            # Go Manager Agent bridge & worker discovery
-│   │   ├── scheduler/          # Topological DAG task scheduler & dependency runner
-│   │   ├── safety/             # Safety Gatekeeper & risk policy evaluator
-│   │   ├── session/            # SQLite store implementation & DDL migrations
-│   │   └── spillover.go        # Artifact spillover engine (>100KB to disk)
-│   ├── tools/                  # Layer 3: Native Go tool implementations
-│   │   ├── dispatcher/         # Tool registry dispatcher
-│   │   ├── tools/              # Native tool implementations (sys, fs, git, net, workspace)
-│   │   ├── registry.go         # Global tool catalog and schema generator
-│   │   └── spillover.go        # Tool-level disk offloading
-│   ├── bridge/                 # Layer 4: Anonymous Stdio NDJSON IPC Bridge
-│   │   ├── protocol/           # Message types, codec, and serialization contracts
-│   │   ├── supervisor/         # Go-side process manager and pipe supervisor
-│   │   └── daemon/             # Python-side async pipe reader and event emitter
-│   ├── memory/                 # Layer 5: Memory Layer (Python)
-│   │   ├── grounding/          # User context and account alias injector
-│   │   ├── profiles/           # Structured user preference profiles
-│   │   └── storage/            # FAISS vector store & semantic search
-│   ├── agents/                 # Layer 6: Specialist Worker Agents ONLY (Python)
-│   │   ├── engine/             # Lightweight async ReAct execution engine
-│   │   ├── system/             # @system worker (OS, shell, files, git)
-│   │   ├── browser/            # @browser worker (Playwright MCP)
-│   │   ├── research/           # @research worker (Web search, docs, synthesis)
-│   │   ├── productivity/       # @productivity worker (Gmail, Calendar, Tasks)
-│   │   └── factory.py          # Dynamic worker registry & instantiator
-│   └── models/                 # Layer 7: Model Engine (Python)
-│       ├── providers/          # Multi-provider clients (Google, OpenAI, Claude, Ollama)
-│       ├── cache/              # Gemini KV-cache prefix optimization manager
-│       └── audio/              # Kokoro ONNX / Piper TTS neural voice synthesizer
-├── test/                       # Comprehensive test suites
-│   ├── gateway/                # Go Layer 1 Gateway unit and simulation tests
-│   ├── orchestrator/           # Go Layer 2 Orchestrator tests
-│   ├── tools/                  # Go Layer 3 Tool Engine tests
-│   ├── agents/                 # Python Layer 6 Worker Agent tests (pytest)
-│   └── bridge/                 # Layer 4 IPC Bridge integration tests
-├── workbench/                  # Visual developer testbench web application
-└── workspace/                  # Local runtime data (Git-ignored)
-    ├── data/                   # SQLite database (sessions.db)
-    └── artifacts/              # Large payload spillover files
+user@workstation:~$ go run ./cmd/assistant
+
+> Check unread emails from college, summarize pending tasks, and draft a reply
+
+✦ [Me2 Orchestrator] Decomposing goal into 3-stage plan:
+  ├── Task 1: [@productivity] Fetch unread Gmail threads from domain "college.edu"
+  ├── Task 2: [@research]     Cross-reference assignment deadlines with course syllabus
+  └── Task 3: [@productivity] Generate reply draft with submission confirmation
+
+✓ Task 1 complete: Found 2 unread emails from Prof. Miller (Subject: Final Project Submissions)
+✓ Task 2 complete: Extracted deadline: Friday, 11:59 PM. Verified zip attachment requirements.
+
+════════════════════════════════════════════════════════════════════════════════
+🛡️ [HUMAN-IN-THE-LOOP APPROVAL REQUIRED]
+Worker '@productivity' requested action: gmail_send_draft
+Target Account: college | Recipient: miller@college.edu
+Subject: Re: Final Project Submissions
+Staged Action: Create a new draft in Gmail
+Approve this draft creation? [Y/n]: Y
+════════════════════════════════════════════════════════════════════════════════
+
+✓ Draft created successfully in Gmail.
+
+Summary:
+• Retrieved 2 emails from Prof. Miller regarding your project submission.
+• Extracted submission deadline: Friday, 11:59 PM.
+• Staged a confirmation draft in Gmail ready for your final review.
+
+✨ Turn complete in 2.84s (Model: gemini-3.5-flash-lite).
 ```
 
 ---
 
-## 🛠️ Getting Started
+## ⚡ Quickstart
 
 ### Prerequisites
 
-- **Go:** `1.23` or newer
-- **Python:** `3.10` or newer (virtual environment recommended)
-- **SQLite3:** Embedded via modern Go driver (`modernc.org/sqlite`, zero CGO required)
-- **Git:** Installed on system path
-- **Node.js & Playwright (Optional):** Required for `@browser` web automation
+* **Go**: `1.23` or higher ([Download Go](https://golang.org/dl/))
+* **Python**: `3.10` or higher ([Download Python](https://www.python.org/downloads/))
+* **Git**: Installed on system path
+* **AI Model Credentials**: Google Gemini (recommended: `gemini-3.5-flash-lite`), OpenAI, Anthropic, or local [Ollama](https://ollama.ai)
 
 ---
 
 ### 1. Installation
 
-Clone the repository and set up both Go and Python environments:
-
 ```bash
-# 1. Clone the repository
-git clone https://github.com/yourusername/AI-Personal-Assistant-Backend.git
-cd AI-Personal-Assistant-Backend
+# Clone the repository
+git clone https://github.com/yourusername/Me2.git
+cd Me2
 
-# 2. Install Go dependencies
+# Download Go module dependencies
 go mod download
 
-# 3. Set up Python virtual environment
+# Set up Python virtual environment
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# 4. Install Python dependencies
+# Install Python dependencies
 pip install -r requirements.txt
 
 # (Optional) Install Playwright browser binaries for web automation
@@ -281,118 +135,211 @@ playwright install chromium
 
 ---
 
-### 2. Configuration
+### 2. Configure Credentials
 
-Create your environment file by copying the template:
+Copy the template environment file:
 
 ```bash
 cp config/.env.example config/.env
 ```
 
-Edit [config/.env](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/config/.env) with your preferred model provider keys and settings:
+Open [config/.env](config/.env) and set your preferred model configuration:
 
 ```ini
-# Primary Model Configuration
+# Default Model Configuration
 DEFAULT_MODEL=google:gemini-3.5-flash-lite
-GEMINI_API_KEY=AIzaSy...
+GEMINI_API_KEY=your_gemini_api_key_here
 
-# Optional Secondary Providers
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
+# Optional: Secondary Providers
+OPENAI_API_KEY=your_openai_key
+ANTHROPIC_API_KEY=your_anthropic_key
 
-# Local Offline Execution (Optional)
+# Optional: 100% Offline Local Model via Ollama
 OLLAMA_HOST=http://localhost:11434
 OLLAMA_MODEL=llama3.2
 
-# System Authorization Password for High-Risk HITL Actions
-SYSTEM_PASSWORD=your_secure_password_here
-
-# User Timezone
-USER_TIMEZONE=Asia/Kolkata
+# Password required for authorizing high-risk tools (HITL)
+SYSTEM_PASSWORD=your_secure_password
 ```
 
 ---
 
-### 3. Running the Assistant
-
-#### A. Interactive CLI REPL Mode (Default)
-Launch the full interactive terminal interface with real-time token streaming and status updates:
+### 3. Run Me2
 
 ```bash
-go run ./cmd/assistant
+go run ./cmd/assistant                                                # Interactive terminal conversation
+go run ./cmd/assistant --prompt "Summarize recent git changes"        # Single instruction execution
+go run ./cmd/assistant --plan-only --prompt "Draft weekly report"     # Inspect task plan without executing
+go run ./cmd/bench-ui                                                 # Web developer testbench (http://localhost:8080)
 ```
 
-#### B. Single-Prompt Execution Mode
-Run a single command non-interactively and exit upon completion:
+---
 
-```bash
-go run ./cmd/assistant --prompt "Summarize the latest 3 git commits in this repository"
+## 🧭 Interface & Modes Reference
+
+Me2 offers multiple entry points depending on how you want to interact:
+
+| Mode | Command | Best For | Behavior |
+| :--- | :--- | :--- | :--- |
+| **Interactive CLI** | `go run ./cmd/assistant` | Everyday work & conversations | Interactive multi-turn conversation with real-time streaming and status updates |
+| **Single-Prompt** | `go run ./cmd/assistant --prompt "..."` | Quick scripts & automation | Executes a specific goal non-interactively and exits when finished |
+| **Plan Preview** | `go run ./cmd/assistant --plan-only --prompt "..."` | Dry-runs & plan audits | Shows how the planner breaks down a request into subtasks without running tools |
+| **Developer Workbench** | `go run ./cmd/bench-ui` | Development, testing & inspection | Web interface (`http://localhost:8080`) with live event streaming and flight recording |
+
+---
+
+## 🏗️ System Architecture
+
+For developers and contributors, Me2 is engineered as a clean two-engine system that separates high-speed system operations from cognitive planning:
+
+```mermaid
+flowchart TD
+    subgraph ClientLayer ["Client Ingress (Go)"]
+        CLI["💻 CLI Terminal Adapter (Bubbletea REPL & Single-Prompt)"]
+    end
+
+    subgraph GoPlane ["Control Plane & Native Tools (Go)"]
+        Host["🏛️ Host Session Governor (SQLite sessions.db & Checkpoints)"]
+        Scheduler["⚡ Task Scheduler (Topological DAG & Parallel Goroutines)"]
+        Gatekeeper["🛡️ Safety Gatekeeper (Risk Policies)"]
+        Tools["🔧 Native Tool Engine (Sub-Millisecond System Calls)"]
+        Spillover["💾 Artifact Spillover Engine (>100KB to Disk)"]
+    end
+
+    subgraph BridgeLayer ["Inter-Process Bridge"]
+        Pipes["🔌 Anonymous Kernel Pipes (stdin/stdout via NDJSON Frames)"]
+    end
+
+    subgraph PyPlane ["Cognitive Plane (Python)"]
+        Manager["🧠 Manager Agent (Goal Planner - No Direct Tools)"]
+        Workers["🤖 Specialist Worker Agents (ReAct Execution Loops)"]
+        Models["🌐 Multi-Provider Engine (Gemini, Claude, OpenAI, Ollama)"]
+    end
+
+    CLI --> Host --> Scheduler --> Gatekeeper
+    Gatekeeper -->|Safe Native Call| Tools
+    Gatekeeper -->|Cognitive Delegation| Pipes --> Manager --> Workers --> Models
 ```
 
-#### C. Plan-Only Mode
-Inspect the Layer 2 Manager Agent's cognitive decomposition without executing worker tools:
+### Specialist Worker Agents
 
-```bash
-go run ./cmd/assistant --plan-only --prompt "Search for recent papers on LLM caching and email a summary to me"
+To maintain clean context windows and avoid agent confusion, worker agents have focused responsibilities:
+
+| Agent | Scope | Assigned Capabilities |
+| :--- | :--- | :--- |
+| **`@manager`** | Planning | Evaluates goals and produces structured task plans. Operates with **zero leaf tools** to prevent accidental actions during planning. |
+| **`@system`** | Workstation | Shell execution (`sys_exec`), process manager (`sys_ps`, `sys_kill`), file management & `ripgrep`, and git operations. |
+| **`@browser`** | Web Automation | Playwright browser driver: page navigation, accessible text inspection, element interaction, and screenshots. |
+| **`@research`** | Web Search | Live web search (`net_search`) and HTTP data retrieval (`net_fetch`). |
+| **`@productivity`**| Workspace | Gmail inbox listing & reading, email draft staging, and Google Calendar event lookup. |
+
+---
+
+## 🛡️ Safety & Human-in-the-Loop (HITL)
+
+Security and trust are enforced at the architectural level through the **Safety Gatekeeper** in Go ([src/orchestrator/safety/policy.go](src/orchestrator/safety/policy.go)), configured by [config/safety_policies.json](config/safety_policies.json).
+
+```text
+  Tool Invocation Request
+            │
+            ▼
+┌─────────────────────────┐
+│    Safety Gatekeeper    │
+└───────────┬─────────────┘
+            │
+            ├─► 🟢 LOW Risk     ──────► Execute Instantly (<5ms)
+            │                         (fs_read, fs_ripgrep, git_status, net_search, gmail_list)
+            │
+            ├─► 🟡 MEDIUM Risk  ──────► Verify Capabilities & Execute
+            │                         (fs_write, gmail_send_draft, browser_click)
+            │
+            └─► 🔴 HIGH Risk    ──────► ⏸️ PAUSE Turn & Save Checkpoint in SQLite
+                                      Display interactive approval prompt to user CLI
+                                      (sys_exec, sys_kill, fs_delete, git_commit)
 ```
 
-#### D. Visual Developer Workbench
-Launch the embedded web-based testbench and flight recorder:
+> 🛡️ **Zero-Trust Principle**: Destructive or externally visible operations (`sys_exec`, `fs_delete`, `git_commit`) will **never** execute automatically. Me2 pauses the turn, saves a checkpoint in SQLite, and prompts for your explicit approval (`[Y/n]`).
+
+---
+
+## 🔧 Available Tools
+
+All registered tools in the Go tool dispatcher ([src/tools/dispatcher/dispatcher.go](src/tools/dispatcher/dispatcher.go)):
+
+| Category | Tool | Description | Risk Level |
+| :--- | :--- | :--- | :---: |
+| **System** | `sys_exec` | Executes bash commands with working directory and timeout | 🔴 HIGH (HITL) |
+| **System** | `sys_ps` | Lists active processes, CPU, memory, and PIDs | 🟢 LOW |
+| **System** | `sys_kill` | Sends termination signals to a process by PID | 🔴 HIGH (HITL) |
+| **Filesystem** | `fs_read` | Reads file contents with optional start/end line offsets | 🟢 LOW |
+| **Filesystem** | `fs_write` | Writes text content to disk | 🟡 MEDIUM |
+| **Filesystem** | `fs_delete` | Deletes files or directories | 🔴 HIGH (HITL) |
+| **Filesystem** | `fs_list` | Lists files and directories at a given path | 🟢 LOW |
+| **Filesystem** | `fs_ripgrep` | Fast regex and keyword search across file trees | 🟢 LOW |
+| **Git** | `git_status` | Returns working tree status and branch info | 🟢 LOW |
+| **Git** | `git_diff` | Returns staged or unstaged diffs | 🟢 LOW |
+| **Git** | `git_commit` | Creates a git commit with a message | 🔴 HIGH (HITL) |
+| **Network** | `net_search` | Queries web search engine for snippets and URLs | 🟢 LOW |
+| **Network** | `net_fetch` | Performs HTTP requests with custom headers and methods | 🟢 LOW |
+| **Workspace** | `gmail_list` | Queries messages in inbox/unread matching a query | 🟢 LOW |
+| **Workspace** | `gmail_read` | Fetches headers and body of an email by message ID | 🟢 LOW |
+| **Workspace** | `gmail_send_draft` | Creates a new draft message in Gmail | 🟡 MEDIUM |
+| **Workspace** | `calendar_list` | Queries upcoming Google Calendar events | 🟢 LOW |
+| **Browser** | `browser_navigate` | Navigates to a URL via Playwright / CDP | 🟢 LOW |
+| **Browser** | `browser_read_content` | Reads accessible text and layout of active page | 🟢 LOW |
+| **Browser** | `browser_click` | Clicks an interactive element by selector | 🟡 MEDIUM |
+| **Browser** | `browser_type` | Types text into an interactive form input | 🟡 MEDIUM |
+| **Browser** | `browser_screenshot` | Captures a screenshot of the active browser viewport | 🟢 LOW |
+
+---
+
+## 📚 Documentation
+
+Comprehensive architectural specifications and development guides are organized within the project:
+
+| Guide / Specification | Location | What's Covered |
+| :--- | :--- | :--- |
+| **System Architecture** | [ARCHITECTURE.md](ARCHITECTURE.md) | 7-layer design, IPC bridge, session governor, and subsystem contracts |
+| **Adapter & Observer Guide** | [guide/adapters/OBSERVER_ADAPTER_GUIDE.md](guide/adapters/OBSERVER_ADAPTER_GUIDE.md) | Building custom client adapters (CLI, Web, Telegram), observer hooks, and live state snapshots |
+| **Developer Guides Index** | [guide/README.md](guide/README.md) | Standard developer policies, contracts, and core engine invariants |
+| **Safety Policies** | [config/safety_policies.json](config/safety_policies.json) | Configurable risk categories, tool execution permissions, and HITL rules |
+| **Environment Configuration** | [config/.env.example](config/.env.example) | Full reference for AI providers, local models, and system credentials |
+| **Safety Gatekeeper Engine** | [src/orchestrator/safety/policy.go](src/orchestrator/safety/policy.go) | Core Go policy evaluation and approval gatekeeper implementation |
+| **Tool Dispatcher** | [src/tools/dispatcher/dispatcher.go](src/tools/dispatcher/dispatcher.go) | Central dispatch registry for all native Go tools and capabilities |
+
+---
+
+## 🖥️ Developer Workbench
+
+Me2 includes a self-contained web testbench and event monitor built directly into the Go binary:
 
 ```bash
 go run ./cmd/bench-ui
 ```
-Open your browser to [http://localhost:8080](http://localhost:8080) to inspect real-time module traces, test inputs, and profile memory allocations.
 
----
-
-## 🔒 Security Policies & Human-in-the-Loop (HITL)
-
-Safety is enforced at the architecture level via the **Safety Gatekeeper** (`src/orchestrator/safety/`), governed by [config/safety_policies.json](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/config/safety_policies.json):
-
-```
-Tool Invocation ──► Safety Gatekeeper ──┬──► [LOW Risk] ──────► Execute Instantly
-                                       ├──► [MEDIUM Risk] ───► Verify Capabilities & Execute
-                                       └──► [HIGH Risk] ─────► Request HITL Approval ──► (Pause Turn)
+Open your browser to:
+```text
+http://localhost:8080
 ```
 
-### Risk Classifications
-
-- **🟢 LOW (Instant Execution):** Read-only operations that do not modify state.
-  - `fs_read`, `fs_list`, `fs_ripgrep`, `git_status`, `git_diff`, `net_fetch`, `net_search`, `gmail_list`, `calendar_list`.
-- **🟡 MEDIUM (Monitored Execution):** Non-destructive writes or staged actions.
-  - `fs_write`, `gmail_send_draft`, `memory_store_fact`, `memory_update_profile`.
-- **🔴 HIGH (HITL Approval Required):** Destructive actions, system-level execution, or state deletions.
-  - `sys_exec`, `sys_kill`, `fs_delete`, `git_commit`, `git_push`, `memory_delete`.
-
-When a tool triggers **HIGH** risk:
-1. The Orchestrator halts subtask execution and saves a checkpoint in SQLite.
-2. An interactive approval prompt is emitted to the user's client (CLI modal or Telegram callback).
-3. The turn resumes immediately upon user confirmation or aborts cleanly if denied.
+* **Live Event Stream**: Watch real-time tokens, planning steps, tool invocations, and completion events over Server-Sent Events (SSE).
+* **Interactive Approval Testing**: Trigger high-risk tools and test approval modals in real time.
+* **Flight Recording**: Every test run is saved to `workspace/workbench/history.jsonl` for replay and inspection.
 
 ---
 
-## ⚡ Performance & Token Optimization
+## 🧪 Testing
 
-1. **Deterministic Prompt Cache Pinning:** System instructions and tool definitions are canonically ordered to maximize Google Gemini's KV-cache hits, cutting prompt processing costs by up to 90%.
-2. **Artifact Spillover Engine:** Outputs exceeding 100KB are automatically written to `workspace/artifacts/<id>.txt`. The agent receives a concise pointer and summary, preventing LLM context window crashes.
-3. **Sub-Millisecond Native Tools:** Go native tools bypass the Python runtime entirely, executing filesystem, process, and network requests in $<5\text{ms}$.
-4. **Anonymous Stdio Bridge:** Inter-process communication avoids HTTP overhead, port conflicts, and socket serialization penalties.
-
----
-
-## 🧪 Testing & Verification
-
-The project includes isolated test benches across all system layers:
+Me2 includes comprehensive unit, integration, and benchmark suites:
 
 ```bash
-# Run all Go unit and integration tests (Gateway, Orchestrator, Tools)
-go test -v ./test/...
+# Run all Go unit and tool tests
+go test -v ./test/tools/... ./test/gateway/...
 
-# Run Python Worker Agent test suite
-pytest test/agents/ -v
+# Run Python Worker Agent tests with pytest
+.venv/bin/pytest test/agents/ -v
 
-# Run Native Tool benchmarks
+# Run Native Go tool performance benchmarks
 go run ./cmd/bench/tools
 ```
 
@@ -400,21 +347,27 @@ go run ./cmd/bench/tools
 
 ## 🗺️ Roadmap
 
-- [x] Polyglot 7-Layer Architecture (Go Control Plane + Python Cognitive Plane)
-- [x] Anonymous Stdio NDJSON IPC Bridge
-- [x] Solitary Layer 2 Manager Agent with DAG TaskPlan synthesis
-- [x] Topological DAG Task Scheduler with parallel Goroutine execution
-- [x] Native Go Tool Engine (`sys`, `fs`, `git`, `net`, `workspace`)
-- [x] Artifact Spillover Engine for payloads >100KB
-- [x] Safety Gatekeeper with configurable HITL risk policies
-- [x] Embedded Developer Module Workbench & Flight Recorder (`cmd/bench-ui`)
-- [ ] Telegram Bot Adapter with long-polling batcher
-- [ ] Web Browser Dashboard Adapter (REST / WebSocket / SSE)
-- [ ] Local Quantized Offline Model Mode via Ollama (Full Air-Gapped Autonomy)
-- [ ] Multi-Account Google Workspace Switcher & Dynamic Credential Vault
+### ✅ Implemented & Verified
+- [x] Dual-engine architecture (Go Control Plane + Python Cognitive Plane)
+- [x] Secure anonymous pipe communication using NDJSON framing
+- [x] Manager Agent goal decomposition with zero unauthorized leaf tools
+- [x] Task scheduler with parallel task execution
+- [x] Safety Gatekeeper with configurable risk policies (`config/safety_policies.json`)
+- [x] Native tool engine (`sys`, `fs`, `git`, `net`, `workspace`)
+- [x] Browser automation via Playwright
+- [x] Artifact spillover handling for large payloads exceeding 100KB
+- [x] SQLite session governance and tool audit logging
+- [x] Embedded Developer Workbench and Flight Recorder (`cmd/bench-ui`)
+
+### 🚧 In Progress / Planned
+- [ ] Memory Layer (FAISS vector store, user profile grounding, background reflection)
+- [ ] Local Neural Audio Engine (Kokoro ONNX & Piper TTS voice synthesis)
+- [ ] Telegram Bot long-polling daemon integration
+- [ ] Web Browser Client Interface (REST / WebSocket / SSE dashboard)
+- [ ] Document RAG (PDF, DOCX, XLSX content extraction)
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+This project is licensed under the [MIT License](LICENSE).
