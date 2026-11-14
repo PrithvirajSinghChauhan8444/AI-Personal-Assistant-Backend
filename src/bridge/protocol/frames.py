@@ -48,7 +48,7 @@ class MasterFrame:
 class ReadyPayload:
     status: str = "ready"
     version: str = "1.0.0"
-    supported_agents: List[str] = field(default_factory=lambda: ["system", "browser", "research", "productivity", "manager"])
+    supported_agents: List[str] = field(default_factory=lambda: ["system", "browser", "research", "productivity", "memory", "manager"])
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

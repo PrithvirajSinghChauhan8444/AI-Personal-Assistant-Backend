@@ -258,7 +258,7 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description="Layer 6 Agent Engine Manual Test Bench")
     parser.add_argument(
         "--agent",
-        choices=["manager", "system", "research", "browser", "productivity"],
+        choices=["manager", "system", "research", "browser", "productivity", "memory"],
         default="system",
         help="Agent persona to test (default: system)",
     )

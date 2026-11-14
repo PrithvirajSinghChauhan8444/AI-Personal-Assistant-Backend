@@ -12,6 +12,7 @@ class AgentType(str, Enum):
     RESEARCH = "research"
     BROWSER = "browser"
     PRODUCTIVITY = "productivity"
+    MEMORY = "memory"
 
 
 @dataclass

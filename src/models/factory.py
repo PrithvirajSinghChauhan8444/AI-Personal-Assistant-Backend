@@ -4,10 +4,6 @@ import os
 from typing import Any, Optional
 
 from .base import BaseLLMClient
-from .providers.anthropic import AnthropicClient
-from .providers.google import GoogleClient
-from .providers.ollama import OllamaClient
-from .providers.openai import OpenAIClient
 from .types import ModelNotFoundError
 
 
@@ -41,12 +37,16 @@ class ModelFactory:
         provider, model_name = cls._parse_model_identifier(raw_id)
 
         if provider == "google":
+            from .providers.google import GoogleClient
             return GoogleClient(model_name=model_name, temperature=temperature, **kwargs)
         if provider == "openai":
+            from .providers.openai import OpenAIClient
             return OpenAIClient(model_name=model_name, temperature=temperature, **kwargs)
         if provider == "anthropic":
+            from .providers.anthropic import AnthropicClient
             return AnthropicClient(model_name=model_name, temperature=temperature, **kwargs)
         if provider == "ollama":
+            from .providers.ollama import OllamaClient
             return OllamaClient(model_name=model_name, temperature=temperature, **kwargs)
 
         raise ModelNotFoundError(f"Unsupported model provider '{provider}' for identifier '{raw_id}'")

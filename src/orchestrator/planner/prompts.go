@@ -42,6 +42,13 @@ var DefaultWorkerCapabilities = []WorkerCapability{
 			"Assign for all email (Gmail) inquiries, calendar events, meeting scheduling, and personal agendas.",
 		},
 	},
+	{
+		Name:        "memory",
+		Description: "Personal memory curation and recall: managing core user identity, preferences, rules, and searching/storing long-term episodic facts.",
+		RoutingRules: []string{
+			"Assign when the user asks to recall personal preferences, update user rules/profile, remember specific facts, or delete outdated memories.",
+		},
+	},
 }
 
 type rawAgentConfig struct {

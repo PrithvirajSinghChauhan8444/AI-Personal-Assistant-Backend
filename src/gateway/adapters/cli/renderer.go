@@ -37,6 +37,8 @@ func AgentBadge(agent string) string {
 		color = lipgloss.Color("#A855F7") // Purple
 	case "productivity", "productivityagent":
 		color = lipgloss.Color("#F472B6") // Pink
+	case "memory", "memoryagent":
+		color = lipgloss.Color("#EC4899") // Hot Pink / Fuchsia
 	case "orchestrator":
 		color = lipgloss.Color("#FB923C") // Orange
 	case "cli":
@@ -72,6 +74,7 @@ func RenderHelp() string {
 	builder.WriteString("  @browser <query>     - Invoke Browser Agent for web automation\n")
 	builder.WriteString("  @research <topic>    - Invoke Research Agent for deep investigation\n")
 	builder.WriteString("  @productivity <task> - Invoke Productivity Agent for email/calendar\n")
+	builder.WriteString("  @memory <task>       - Invoke Memory Agent for personal memory & rules\n")
 	builder.WriteString("  <query>              - Auto-routed by Orchestrator\n")
 	return builder.String()
 }

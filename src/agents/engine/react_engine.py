@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -150,7 +151,22 @@ class ReActEngine:
         remote_intents = [i for i in intents if not self._is_local_tool(i.tool_name)]
 
         for intent in local_intents:
+            if hasattr(self.pipe_emitter, "emit_local_tool_call"):
+                await self.pipe_emitter.emit_local_tool_call(ctx.turn_id, intent)
+
+            start_time = time.perf_counter()
             result_output = await self._execute_local_tool(intent)
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+
+            if hasattr(self.pipe_emitter, "emit_local_tool_result"):
+                await self.pipe_emitter.emit_local_tool_result(
+                    ctx.turn_id,
+                    intent.tool_name,
+                    result_output,
+                    duration_ms,
+                    result_output.startswith("Error"),
+                )
+
             messages.append({
                 "role": "tool",
                 "tool_call_id": intent.call_id,

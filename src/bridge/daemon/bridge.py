@@ -6,6 +6,7 @@ from typing import Any, Callable, Coroutine, Dict, List, Optional
 from src.agents.contracts import (
     AgentTurnResult,
     AgentType,
+    MemoryEngineProtocol,
     PipeEmitterProtocol,
     PipeReaderProtocol,
     ToolCallIntent,
@@ -42,8 +43,10 @@ class PythonBridgeDaemon(PipeEmitterProtocol, PipeReaderProtocol):
         self,
         transport: AsyncNDJSONTransport,
         agent_runner: Optional[AgentRunner] = None,
+        memory_engine: Optional[MemoryEngineProtocol] = None,
     ) -> None:
         self.transport = transport
+        self._memory_engine = memory_engine
         self.agent_runner = agent_runner or self._default_agent_runner
 
         self._active_tasks: Dict[str, asyncio.Task[None]] = {}
@@ -51,6 +54,17 @@ class PythonBridgeDaemon(PipeEmitterProtocol, PipeReaderProtocol):
         self._turn_tool_call_ids: Dict[str, List[str]] = {}
         self._active_sessions: Dict[str, str] = {}
         self._is_running = False
+        self.is_remote_bridge = True
+
+    @property
+    def memory_engine(self) -> Optional[MemoryEngineProtocol]:
+        if self._memory_engine is None:
+            try:
+                from src.memory.engine import MemoryEngine
+                self._memory_engine = MemoryEngine()
+            except Exception:
+                pass
+        return self._memory_engine
 
     async def run(self) -> None:
         """Starts the transport loop, sends the ready handshake, and listens until EOF."""
@@ -123,6 +137,17 @@ class PythonBridgeDaemon(PipeEmitterProtocol, PipeReaderProtocol):
                 payload=payload,
             )
             await self.transport.write_frame(out_frame)
+
+            # Trigger asynchronous background memory reflection if configured
+            if self.memory_engine and hasattr(self.memory_engine, "schedule_background_reflection"):
+                if result and result.status == "success":
+                    prompt_text = str(frame.payload.get("prompt", ""))
+                    history_list = frame.payload.get("messages", [])
+                    self.memory_engine.schedule_background_reflection(
+                        user_prompt=prompt_text,
+                        assistant_response=result.final_response,
+                        recent_history=history_list,
+                    )
 
         except asyncio.CancelledError:
             self.transport.log_diagnostic(f"Turn {turn_id} was cancelled.")
@@ -313,4 +338,5 @@ class PythonBridgeDaemon(PipeEmitterProtocol, PipeReaderProtocol):
             history=history,
             pipe_emitter=emitter,
             pipe_reader=reader,
+            memory_engine=self.memory_engine,
         )

@@ -19,6 +19,7 @@ from src.agents.factory import (
     load_agents_config,
     load_system_config,
 )
+from src.agents.memory.agent import MemoryAgent
 from src.agents.productivity.agent import ProductivityAgent
 from src.agents.research.agent import ResearchAgent
 from src.agents.system.agent import SystemAgent
@@ -28,6 +29,7 @@ __all__ = [
     "AgentTurnResult",
     "AgentType",
     "BrowserAgent",
+    "MemoryAgent",
     "MemoryEngineProtocol",
     "PipeEmitterProtocol",
     "PipeReaderProtocol",

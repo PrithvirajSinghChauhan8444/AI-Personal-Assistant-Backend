@@ -187,6 +187,7 @@ func (g *Gatekeeper) registerDefaults() {
 		{"browser", "browser"},
 		{"research", "research"},
 		{"productivity", "productivity"},
+		{"memory", "memory"},
 		{"manager", "manager"},
 	}
 	for _, w := range workerAgents {

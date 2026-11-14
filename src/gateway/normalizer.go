@@ -79,6 +79,7 @@ var validAgents = []string{
 	"browser",
 	"research",
 	"productivity",
+	"memory",
 	"manager",
 }
 
@@ -290,7 +291,7 @@ func validateDirectTarget(existing string) (string, error) {
 	if !slices.Contains(validAgents, trimmed) {
 		return "", &GatewayError{
 			Code:    "ERR_UNKNOWN_AGENT",
-			Message: fmt.Sprintf("Target agent '%s' is not recognized. Valid agents: system, browser, research, productivity.", trimmed),
+			Message: fmt.Sprintf("Target agent '%s' is not recognized. Valid agents: system, browser, research, productivity, memory.", trimmed),
 		}
 	}
 	return trimmed, nil
@@ -354,7 +355,7 @@ func validateAgentToken(token string) (string, error) {
 	if !slices.Contains(validAgents, agentName) {
 		return "", &GatewayError{
 			Code:    "ERR_UNKNOWN_AGENT",
-			Message: fmt.Sprintf("Agent '@%s' is not recognized. Valid agents: system, browser, research, productivity.", agentName),
+			Message: fmt.Sprintf("Agent '@%s' is not recognized. Valid agents: system, browser, research, productivity, memory.", agentName),
 		}
 	}
 

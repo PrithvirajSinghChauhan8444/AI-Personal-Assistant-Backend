@@ -64,6 +64,13 @@ DEFAULT_WORKER_SPECS = [
             "Assign for all email (Gmail) inquiries, calendar events, meeting scheduling, and personal agendas."
         ],
     },
+    {
+        "name": "memory",
+        "description": "Personal memory curation and recall: managing core user identity, preferences, rules, and searching/storing long-term episodic facts.",
+        "routing_rules": [
+            "Assign when the user asks to recall personal preferences, update user rules/profile, remember specific facts, or delete outdated memories."
+        ],
+    },
 ]
 
 

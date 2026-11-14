@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 
 from src.agents.browser.agent import BrowserAgent
 from src.agents.contracts import AgentType
+from src.agents.memory.agent import MemoryAgent
 from src.agents.productivity.agent import ProductivityAgent
 from src.agents.research.agent import ResearchAgent
 from src.agents.system.agent import SystemAgent
@@ -23,24 +24,16 @@ def load_agents_config(config_path: str = "config/agents.json") -> Dict[str, Any
 
 def load_system_config(config_path: str = "config/system.json") -> Dict[str, Any]:
     """Loads system configuration (workspace paths, limits, etc.) from JSON."""
-    candidates = [
-        config_path,
-        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config", "system.json"),
-    ]
-    for p in candidates:
-        if os.path.isfile(p):
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
-    return {
-        "workspace_dir": "workspace",
-        "artifacts_dir": "workspace/artifacts",
-        "database_path": "workspace/data/sessions.db",
-        "notes_dir": "workspace/obsidian_vault",
-        "allowed_access_roots": ["workspace"],
-    }
+    if not os.path.exists(config_path):
+        return {
+            "workspace_dir": "workspace",
+            "artifacts_dir": "workspace/artifacts",
+            "database_path": "workspace/data/sessions.db",
+            "notes_dir": "workspace/obsidian_vault",
+            "allowed_access_roots": ["workspace"],
+        }
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 def create_agent(
@@ -63,6 +56,8 @@ def create_agent(
         return BrowserAgent(model_client=model_client)
     elif agent_type == AgentType.PRODUCTIVITY:
         return ProductivityAgent(model_client=model_client)
+    elif agent_type == AgentType.MEMORY:
+        return MemoryAgent(model_client=model_client)
     else:
         raise ValueError(f"Unknown worker agent type: {agent_type}")
 
@@ -78,10 +73,12 @@ def create_all_agents(
     research_worker = create_agent(AgentType.RESEARCH, model_client, config)
     browser_worker = create_agent(AgentType.BROWSER, model_client, config)
     productivity_worker = create_agent(AgentType.PRODUCTIVITY, model_client, config)
+    memory_worker = create_agent(AgentType.MEMORY, model_client, config)
 
     return {
         AgentType.SYSTEM: system_worker,
         AgentType.RESEARCH: research_worker,
         AgentType.BROWSER: browser_worker,
         AgentType.PRODUCTIVITY: productivity_worker,
+        AgentType.MEMORY: memory_worker,
     }

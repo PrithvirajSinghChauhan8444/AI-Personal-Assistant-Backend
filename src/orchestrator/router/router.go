@@ -38,6 +38,8 @@ var KnownAgentAliases = map[string]string{
 	"mail":         "productivity",
 	"gmail":        "productivity",
 	"calendar":     "productivity",
+	"memory":       "memory",
+	"mem":          "memory",
 }
 
 // TaskRouter determines whether an inbound request follows the direct fast-path or manager coordination.

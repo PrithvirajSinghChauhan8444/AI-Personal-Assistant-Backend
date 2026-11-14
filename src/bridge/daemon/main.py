@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 from src.bridge.daemon.bridge import AgentRunner, PythonBridgeDaemon
 from src.bridge.daemon.transport import AsyncNDJSONTransport
+from src.memory.engine import MemoryEngine
 
 load_dotenv("config/.env")
 load_dotenv(".env")
@@ -20,7 +21,10 @@ async def run_daemon(agent_runner: Optional[AgentRunner] = None) -> None:
     transport = AsyncNDJSONTransport()
     await transport.initialize()
 
-    daemon = PythonBridgeDaemon(transport=transport, agent_runner=agent_runner)
+    daemon = PythonBridgeDaemon(
+        transport=transport,
+        agent_runner=agent_runner,
+    )
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
