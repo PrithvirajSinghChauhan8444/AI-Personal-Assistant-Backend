@@ -1,0 +1,17 @@
+{
+  "workspace_dir": "workspace",
+  "artifacts_dir": "workspace/artifacts",
+  "memory_dir": "workspace/Memory",
+  "memory_embedding_provider": "onnx",
+  "memory_similarity_threshold": 0.70,
+  "memory_embedding_model": "BAAI/bge-small-en-v1.5",
+  "database_path": "workspace/data/sessions.db",
+  "notes_dir": "workspace/notes",
+  "allowed_access_roots": [
+    "workspace"
+  ],
+  "timezone": "UTC",
+  "log_level": "INFO",
+  "max_turn_iterations": 10,
+  "artifact_spillover_threshold_bytes": 102400
+}
