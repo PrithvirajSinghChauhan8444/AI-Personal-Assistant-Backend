@@ -3,6 +3,7 @@ package gmail
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 )
@@ -51,6 +52,7 @@ type AccountWatcher struct {
 	wg         sync.WaitGroup
 	seenIDs    map[string]time.Time
 	seenOrder  []string
+	sessionID  string
 }
 
 // NewAccountWatcher initializes a watcher instance for a specific Google account.
@@ -78,6 +80,20 @@ func (w *AccountWatcher) Status() WatcherStatus {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 	return w.status
+}
+
+// SetSessionID binds the watcher to an active session conduit.
+func (w *AccountWatcher) SetSessionID(sessionID string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.sessionID = sessionID
+}
+
+// GetSessionID retrieves the currently bound session ID.
+func (w *AccountWatcher) GetSessionID() string {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.sessionID
 }
 
 // Start spawns the background monitoring loop.
@@ -128,6 +144,7 @@ func (w *AccountWatcher) runSupervisor(ctx context.Context) {
 			err := w.runWatchSession(ctx)
 			if err != nil && ctx.Err() == nil {
 				w.setStatus(StatusError)
+				fmt.Fprintf(os.Stderr, "⚠️ [Gmail Watcher %s] Session error: %v (retrying in %v)\n", w.account.Alias, err, backoff)
 				time.Sleep(backoff)
 				backoff = minDuration(backoff*2, w.config.BackoffMax)
 			} else {
@@ -241,8 +258,16 @@ func (w *AccountWatcher) dispatchEmailTurn(ctx context.Context, msg EmailSummary
 	}
 
 	req := w.deps.Classifier.BuildInboundTurn(msg)
+	w.mu.RLock()
+	sessID := w.sessionID
+	w.mu.RUnlock()
+	if sessID != "" {
+		req.SessionID = sessID
+	}
+
 	eventCh, _, err := w.deps.Gateway.SubmitTurn(ctx, req)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️ [Gmail Watcher %s] Failed to submit email turn: %v\n", w.account.Alias, err)
 		return
 	}
 

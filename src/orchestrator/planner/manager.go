@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"assistant/src/orchestrator/session"
 
@@ -27,7 +26,7 @@ type ManagerAgent struct {
 
 // NewManagerAgent constructs the Layer 2 Manager Agent.
 func NewManagerAgent(llm LLMCaller, workers []WorkerCapability, promptFilePath string) *ManagerAgent {
-	if len(workers) == 0 {
+	if workers == nil {
 		workers = DiscoverAndLoadActiveWorkers("", "")
 	}
 	if llm == nil {
@@ -50,9 +49,12 @@ func (m *ManagerAgent) Plan(ctx context.Context, goal string, contextData map[st
 		return nil, errors.New("cannot plan with an empty goal")
 	}
 
-	// Deterministic fallback if no LLM caller or runtime is attached
+	if len(m.workers) == 0 {
+		return nil, errors.New("cannot plan tasks: no specialist worker agents are currently enabled in config/agents.json. Please enable the required workers in config/agents.json to proceed")
+	}
+
 	if m.llm == nil {
-		return m.generateFallbackPlan(goal), nil
+		return nil, errors.New("manager planner has no LLM caller or bridge attached")
 	}
 
 	var chatHistory []session.ChatMessage
@@ -64,7 +66,9 @@ func (m *ManagerAgent) Plan(ctx context.Context, goal string, contextData map[st
 	if bridge, ok := m.llm.(*PythonManagerBridge); ok {
 		plan, err := bridge.Plan(ctx, goal, contextData, chatHistory)
 		if err == nil {
-			m.validateAndNormalizePlan(plan, goal)
+			if normErr := m.validateAndNormalizePlan(plan, goal); normErr != nil {
+				return nil, normErr
+			}
 			return plan, nil
 		}
 	}
@@ -90,20 +94,22 @@ func (m *ManagerAgent) Plan(ctx context.Context, goal string, contextData map[st
 
 	rawOutput, err := m.llm.Generate(ctx, sysPrompt, userPrompt)
 	if err != nil {
-		return m.generateFallbackPlan(goal), fmt.Errorf("manager planning failed: %w", err)
+		return nil, fmt.Errorf("manager planning failed: %w", err)
 	}
 
 	cleanJSON := extractJSON(rawOutput)
 	var plan TaskPlan
 	if err := json.Unmarshal([]byte(cleanJSON), &plan); err != nil {
-		return m.generateFallbackPlan(goal), nil
+		return nil, fmt.Errorf("failed to parse manager plan JSON: %w (raw output: %s)", err, rawOutput)
 	}
 
-	m.validateAndNormalizePlan(&plan, goal)
+	if normErr := m.validateAndNormalizePlan(&plan, goal); normErr != nil {
+		return nil, normErr
+	}
 	return &plan, nil
 }
 
-func (m *ManagerAgent) validateAndNormalizePlan(plan *TaskPlan, originalGoal string) {
+func (m *ManagerAgent) validateAndNormalizePlan(plan *TaskPlan, originalGoal string) error {
 	if plan.PlanID == "" {
 		plan.PlanID = fmt.Sprintf("plan_%s", uuid.New().String()[:12])
 	}
@@ -116,6 +122,10 @@ func (m *ManagerAgent) validateAndNormalizePlan(plan *TaskPlan, originalGoal str
 		knownWorkers[strings.ToLower(w.Name)] = true
 	}
 
+	if len(plan.SubTasks) == 0 {
+		return errors.New("no subtasks could be scheduled: required capabilities are disabled or missing from enabled workers in config/agents.json")
+	}
+
 	for i := range plan.SubTasks {
 		st := &plan.SubTasks[i]
 		if st.ID == "" {
@@ -123,8 +133,8 @@ func (m *ManagerAgent) validateAndNormalizePlan(plan *TaskPlan, originalGoal str
 		}
 
 		targetWorker := strings.ToLower(strings.TrimSpace(st.GetWorker()))
-		if !knownWorkers[targetWorker] {
-			targetWorker = "system"
+		if targetWorker == "" || !knownWorkers[targetWorker] {
+			return fmt.Errorf("task %q cannot be scheduled: worker %q is disabled or does not exist in config/agents.json", st.ID, targetWorker)
 		}
 		st.AssignedWorker = targetWorker
 		st.AssignedAgent = targetWorker
@@ -136,24 +146,7 @@ func (m *ManagerAgent) validateAndNormalizePlan(plan *TaskPlan, originalGoal str
 			st.ConfidenceScore = 1.0
 		}
 	}
-}
-
-func (m *ManagerAgent) generateFallbackPlan(goal string) *TaskPlan {
-	return &TaskPlan{
-		PlanID:      fmt.Sprintf("plan_fallback_%d", time.Now().UnixMilli()),
-		PrimaryGoal: goal,
-		SubTasks: []SubTask{
-			{
-				ID:              "task_1",
-				Description:     goal,
-				AssignedWorker:  "system",
-				AssignedAgent:   "system",
-				DependsOn:       []string{},
-				Status:          StatusPending,
-				ConfidenceScore: 1.0,
-			},
-		},
-	}
+	return nil
 }
 
 // extractJSON extracts the pure JSON payload between the first '{' and the last '}'.

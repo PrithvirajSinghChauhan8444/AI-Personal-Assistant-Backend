@@ -2,12 +2,14 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"assistant/src/gateway"
+	"assistant/src/orchestrator/planner"
 	"assistant/src/orchestrator/safety"
 	"assistant/src/orchestrator/session"
 
@@ -16,11 +18,15 @@ import (
 
 // HITLRequest encapsulates the data needed for interactive human approval.
 type HITLRequest struct {
-	SessionID string
-	TurnID    string
-	ToolName  string
-	ArgsJSON  string
-	EventChan chan<- gateway.OutboundEvent
+	SessionID        string
+	TurnID           string
+	ToolName         string
+	ArgsJSON         string
+	EventChan        chan<- gateway.OutboundEvent
+	SubtaskID        string
+	Plan             *planner.TaskPlan
+	CompletedOutputs map[string]string
+	TurnContext      *TurnContext
 }
 
 // Host coordinates session lifecycle, SQLite persistence, and forwards turns to the Controller.
@@ -121,6 +127,23 @@ func (h *Host) ExecuteTurn(
 func (h *Host) RequestHITL(ctx context.Context, req HITLRequest) (bool, error) {
 	requestID := fmt.Sprintf("req_%s", uuid.New().String())
 
+	turnStateJSON := fmt.Sprintf(`{"turn_id":%q,"tool_name":%q}`, req.TurnID, req.ToolName)
+	if req.Plan != nil {
+		fullState := CheckpointTurnState{
+			SessionID:        req.SessionID,
+			TurnID:           req.TurnID,
+			SubtaskID:        req.SubtaskID,
+			ToolName:         req.ToolName,
+			ArgsJSON:         req.ArgsJSON,
+			Plan:             req.Plan,
+			CompletedOutputs: req.CompletedOutputs,
+			TurnContext:      req.TurnContext,
+		}
+		if serialized, err := json.Marshal(fullState); err == nil {
+			turnStateJSON = string(serialized)
+		}
+	}
+
 	cp := session.Checkpoint{
 		RequestID:       requestID,
 		SessionID:       req.SessionID,
@@ -129,7 +152,7 @@ func (h *Host) RequestHITL(ctx context.Context, req HITLRequest) (bool, error) {
 		TargetAgent:     "Manager",
 		PendingToolName: req.ToolName,
 		PendingToolArgs: req.ArgsJSON,
-		TurnStateJSON:   fmt.Sprintf(`{"turn_id":%q,"tool_name":%q}`, req.TurnID, req.ToolName),
+		TurnStateJSON:   turnStateJSON,
 		CreatedAt:       time.Now().UTC(),
 		UpdatedAt:       time.Now().UTC(),
 	}
@@ -173,6 +196,77 @@ func (h *Host) RequestHITL(ctx context.Context, req HITLRequest) (bool, error) {
 		})
 		return resp.Approved, nil
 	}
+}
+
+// ResumeFromCheckpoint rehydrates execution from SQLite after a process reboot or resumes pending approval.
+func (h *Host) ResumeFromCheckpoint(
+	ctx context.Context,
+	requestID string,
+	approved bool,
+	feedback string,
+	eventCh chan<- gateway.OutboundEvent,
+) error {
+	// If the in-memory channel is active, delegate directly to SubmitHITLResponse
+	if _, loaded := h.pendingHITL.Load(requestID); loaded {
+		return h.SubmitHITLResponse(ctx, gateway.HITLResponse{
+			RequestID:    requestID,
+			Approved:     approved,
+			UserFeedback: feedback,
+			RespondedAt:  time.Now().UTC(),
+		})
+	}
+
+	// Process reboot / offline checkpoint: query SQLite
+	cp, err := h.store.GetCheckpoint(ctx, requestID)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve checkpoint %q: %w", requestID, err)
+	}
+
+	auditStatus := "HITL_APPROVED"
+	newStatus := session.CheckpointResumed
+	if !approved {
+		auditStatus = "HITL_REJECTED"
+		newStatus = session.CheckpointCancelled
+	}
+
+	_ = h.store.UpdateCheckpointStatus(ctx, requestID, newStatus)
+	_ = h.store.RecordToolAudit(ctx, session.ToolAuditEntry{
+		SessionID: cp.SessionID,
+		TurnID:    requestID,
+		ToolName:  cp.PendingToolName,
+		RiskLevel: string(safety.RiskHigh),
+		Status:    auditStatus,
+		CreatedAt: time.Now().UTC(),
+	})
+
+	if !approved {
+		return nil
+	}
+
+	var state CheckpointTurnState
+	if err := json.Unmarshal([]byte(cp.TurnStateJSON), &state); err != nil {
+		return fmt.Errorf("failed to parse turn state from checkpoint: %w", err)
+	}
+
+	if state.Plan == nil || state.TurnContext == nil || h.controller == nil {
+		return errors.New("cannot rehydrate DAG: incomplete checkpoint turn state or nil controller")
+	}
+
+	if eventCh == nil {
+		discardCh := make(chan gateway.OutboundEvent, 64)
+		eventCh = discardCh
+		go func() {
+			for range discardCh {
+			}
+		}()
+	}
+
+	assistantReply, err := h.controller.ResumeDAG(ctx, state, eventCh)
+	if err != nil {
+		return err
+	}
+
+	return h.persistAssistantResponse(ctx, cp.SessionID, state.TurnID, assistantReply)
 }
 
 // SubmitHITLResponse resolves a pending approval and resumes execution.

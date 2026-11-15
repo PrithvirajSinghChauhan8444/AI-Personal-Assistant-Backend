@@ -73,10 +73,39 @@ const (
 	EventToolCall        EventType = "TOOL_CALL"        // Tool execution start
 	EventToolResult      EventType = "TOOL_RESULT"      // Tool execution result
 	EventSystemLog       EventType = "SYSTEM_LOG"       // Live operational log entry
-	EventHITLRequest     EventType = "HITL_REQUEST"     // Interactive human approval prompt
-	EventTurnComplete    EventType = "TURN_COMPLETE"    // Final completion
-	EventTurnError       EventType = "TURN_ERROR"       // Failure event
+	EventHITLRequest        EventType = "HITL_REQUEST"         // Interactive human approval prompt
+	EventAgentStatusChanged EventType = "AGENT_STATUS_CHANGED" // Dynamic pipeline agent status update
+	EventTurnComplete       EventType = "TURN_COMPLETE"        // Final completion
+	EventTurnError          EventType = "TURN_ERROR"           // Failure event
 )
+
+// AgentStatusInfo represents the runtime metadata and status of an individual agent in the swarm.
+type AgentStatusInfo struct {
+	Identifier    string   `json:"identifier"`
+	DisplayName   string   `json:"display_name"`
+	Enabled       bool     `json:"enabled"`
+	IsCore        bool     `json:"is_core"`
+	AssignedModel string   `json:"assigned_model"`
+	ModelOverride *string  `json:"model_override,omitempty"`
+	Capabilities  []string `json:"capabilities,omitempty"`
+	DeclaredTools []string `json:"declared_tools,omitempty"`
+	ConfigPath    string   `json:"config_path,omitempty"`
+}
+
+// AgentCatalogSnapshot represents point-in-time discovery of all agents in the swarm.
+type AgentCatalogSnapshot struct {
+	TotalAgents    int                        `json:"total_agents"`
+	ActiveAgents   int                        `json:"active_agents"`
+	DisabledAgents int                        `json:"disabled_agents"`
+	Agents         map[string]AgentStatusInfo `json:"agents"`
+}
+
+// AgentConfigUpdate specifies runtime property modifications for an agent.
+type AgentConfigUpdate struct {
+	ModelOverride *string  `json:"model_override,omitempty"`
+	Temperature   *float64 `json:"temperature,omitempty"`
+	MaxIterations *int     `json:"max_iterations,omitempty"`
+}
 
 // LogSeverity defines log level categories for operational diagnostics.
 type LogSeverity string

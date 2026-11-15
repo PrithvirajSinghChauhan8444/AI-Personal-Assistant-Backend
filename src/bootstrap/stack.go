@@ -214,6 +214,9 @@ func BuildStack(ctx context.Context, cfg Config) (*Stack, func(), error) {
 		if mailWatcher != nil {
 			_ = mailWatcher.Stop()
 		}
+		if gw != nil {
+			gw.Close()
+		}
 		if bridgeSup != nil {
 			_ = bridgeSup.Stop()
 		}

@@ -190,6 +190,18 @@ func (s *TaskScheduler) GetPlan() *planner.TaskPlan {
 	return s.plan
 }
 
+// GetSubtasks returns a safe copy of all subtasks in the plan.
+func (s *TaskScheduler) GetSubtasks() []planner.SubTask {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.plan == nil {
+		return nil
+	}
+	copied := make([]planner.SubTask, len(s.plan.SubTasks))
+	copy(copied, s.plan.SubTasks)
+	return copied
+}
+
 func (s *TaskScheduler) findTask(taskID string) *planner.SubTask {
 	for i := range s.plan.SubTasks {
 		if s.plan.SubTasks[i].ID == taskID {

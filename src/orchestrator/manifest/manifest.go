@@ -171,14 +171,35 @@ func SyncControlRegistry(configPath, agentsDir string) error {
 	return nil
 }
 
+// ResolvePath searches for path candidates across current directory and parent directories.
+func ResolvePath(path string) string {
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	candidates := []string{
+		filepath.Join("..", path),
+		filepath.Join("..", "..", path),
+		filepath.Join("..", "..", "..", path),
+	}
+	for _, cand := range candidates {
+		if _, err := os.Stat(cand); err == nil {
+			return cand
+		}
+	}
+	return path
+}
+
 // LoadActiveManifests loads all manifests for active/enabled agents according to config/agents.json.
 func LoadActiveManifests(configPath, agentsDir string) (map[string]*AgentManifest, error) {
 	if configPath == "" {
-		configPath = filepath.Join("config", "agents.json")
+		configPath = "config/agents.json"
 	}
+	configPath = ResolvePath(configPath)
+
 	if agentsDir == "" {
-		agentsDir = filepath.Join("src", "agents")
+		agentsDir = "src/agents"
 	}
+	agentsDir = ResolvePath(agentsDir)
 
 	manifests := make(map[string]*AgentManifest)
 

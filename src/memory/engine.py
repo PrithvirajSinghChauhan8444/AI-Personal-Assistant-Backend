@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import time
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
@@ -10,7 +11,13 @@ load_dotenv("config/.env")
 load_dotenv(".env")
 
 from src.agents.contracts import MemoryEngineProtocol
-from src.memory.contracts import ReflectionAction
+from src.memory.contracts import (
+    MemoryContextSnapshot,
+    MemoryMutationEvent,
+    MemoryObserver,
+    ReflectionAction,
+    RetrievedFactSnapshot,
+)
 from src.memory.embeddings import EmbeddingEngineProtocol, create_embedder
 from src.memory.reflection import MemoryReflectionAgent
 from src.memory.tier1_profile import UserProfileManager
@@ -101,6 +108,72 @@ class MemoryEngine(MemoryEngineProtocol):
             min_relevance_score=min_score,
         )
         self.reflector = MemoryReflectionAgent(model_client=reflection_client)
+        self._observers: List[MemoryObserver] = []
+
+    def register_memory_observer(self, observer: MemoryObserver) -> None:
+        """Registers a listener for real-time memory state mutations."""
+        if observer not in self._observers:
+            self._observers.append(observer)
+
+    def unregister_memory_observer(self, observer: MemoryObserver) -> None:
+        """Removes a previously registered memory observer."""
+        if observer in self._observers:
+            self._observers.remove(observer)
+
+    def _notify_observers(self, event_type: str, details: Dict[str, Any]) -> None:
+        event = MemoryMutationEvent(
+            event_type=event_type,
+            details=details,
+            timestamp=time.time(),
+        )
+        for obs in list(self._observers):
+            try:
+                obs.on_memory_updated(event)
+            except Exception:
+                pass
+
+    def get_context_snapshot(
+        self, user_id: str = "default", query: Optional[str] = None
+    ) -> MemoryContextSnapshot:
+        """Assembles a structured, explainable snapshot across all 3 memory tiers."""
+        profile_attrs = dict(self.profile.sections)
+
+        accounts_data = self.accounts.get_accounts_data()
+        connected = []
+        for acc in accounts_data.get("email_accounts", []):
+            connected.append({
+                "alias": acc.get("alias", ""),
+                "email": acc.get("email", ""),
+                "provider": acc.get("provider", "unknown"),
+            })
+
+        retrieved_facts: List[RetrievedFactSnapshot] = []
+        if query:
+            search_resp = self.storage.search(query=query, top_k=5)
+            for res in search_resp.results:
+                tokens = max(1, len(res.record.content) // 4)
+                retrieved_facts.append(
+                    RetrievedFactSnapshot(
+                        id=res.record.id,
+                        content=res.record.content,
+                        category=res.record.category,
+                        similarity_score=res.score,
+                        estimated_tokens=tokens,
+                    )
+                )
+
+        profile_text = self.profile.get_profile_markdown()
+        accounts_text = self.accounts.get_accounts_summary()
+        facts_tokens = sum(f.estimated_tokens for f in retrieved_facts)
+        total_tokens = (len(profile_text) + len(accounts_text)) // 4 + facts_tokens
+
+        return MemoryContextSnapshot(
+            user_id=user_id,
+            profile_attributes=profile_attrs,
+            connected_accounts=connected,
+            retrieved_facts=retrieved_facts,
+            total_estimated_tokens=total_tokens,
+        )
 
     # MemoryEngineProtocol Implementation
     def is_memory_tool(self, tool_name: str) -> bool:
@@ -181,6 +254,9 @@ class MemoryEngine(MemoryEngineProtocol):
                     tags=action.tags,
                 )
 
+        if actions:
+            self._notify_observers("reflection_completed", {"actions_count": len(actions)})
+
         return actions
 
     # Internal Tool Handlers
@@ -192,7 +268,9 @@ class MemoryEngine(MemoryEngineProtocol):
         if not section or not key:
             return "Error: 'section' and 'key' are required for memory_update_profile."
 
-        return self.profile.update_profile(section, key, value)
+        result = self.profile.update_profile(section, key, value)
+        self._notify_observers("profile_updated", {"section": section, "key": key, "value": value})
+        return result
 
     def _handle_update_account(self, args: Dict[str, Any]) -> str:
         alias = str(args.get("alias", "")).strip().lower()
@@ -204,10 +282,15 @@ class MemoryEngine(MemoryEngineProtocol):
                 return "Error: 'alias' or 'email' parameter is required for memory_update_account."
             deleted = self.accounts.delete_account(alias)
             if deleted:
+                self._notify_observers("account_updated", {"action": "delete", "alias": alias})
                 return f"Successfully removed account alias '{alias}' from accounts.md."
             return f"Account alias '{alias}' was not found in accounts.md."
 
         assigned_alias = self.accounts.update_account(alias=alias or None, email=email, provider=provider)
+        self._notify_observers(
+            "account_updated",
+            {"action": "upsert", "alias": assigned_alias, "email": email, "provider": provider},
+        )
         return f"Successfully saved account '{assigned_alias}' ({email}, provider: {provider}) to accounts.md."
 
     def _handle_store_fact(self, args: Dict[str, Any]) -> str:
@@ -225,6 +308,10 @@ class MemoryEngine(MemoryEngineProtocol):
             content=content,
             category=category,
             tags=tags,
+        )
+        self._notify_observers(
+            "fact_stored",
+            {"id": record.id, "category": record.category, "tags": record.tags},
         )
         return f"Stored memory record successfully: [ID: {record.id}, Category: {record.category}]"
 
@@ -255,5 +342,6 @@ class MemoryEngine(MemoryEngineProtocol):
         reason = args.get("reason")
         success = self.storage.delete(memory_id=mem_id, reason=reason)
         if success:
+            self._notify_observers("fact_deleted", {"memory_id": mem_id, "reason": reason})
             return f"Deleted memory record '{mem_id}'."
         return f"Memory record '{mem_id}' not found."

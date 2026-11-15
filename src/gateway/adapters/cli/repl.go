@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,6 +22,7 @@ type TerminalREPL struct {
 	sessionID string
 	reader    *bufio.Reader
 	out       io.Writer
+	renderMu  sync.Mutex
 }
 
 // NewTerminalREPL creates an initialized REPL instance with an active session ID.
@@ -39,6 +41,12 @@ func NewTerminalREPL(gw *gateway.Gateway, in io.Reader, out io.Writer, sessionID
 // Run starts the interactive prompt loop and processes turns until exit.
 func (r *TerminalREPL) Run(ctx context.Context) error {
 	fmt.Fprint(r.out, RenderBanner(r.sessionID))
+
+	// Register autonomous consumer to stream watcher events into terminal cleanly
+	r.gw.RegisterAutonomousConsumer(r.sessionID, func(req gateway.InboundTurnRequest, eventCh <-chan gateway.OutboundEvent) {
+		r.renderAutonomousTurn(req, eventCh)
+	})
+	defer r.gw.UnregisterAutonomousConsumer(r.sessionID)
 
 	for {
 		select {
@@ -100,6 +108,9 @@ func (r *TerminalREPL) handleSlashCommand(input string) (handled bool, shouldExi
 }
 
 func (r *TerminalREPL) executeInteractiveTurn(ctx context.Context, prompt string) {
+	r.renderMu.Lock()
+	defer r.renderMu.Unlock()
+
 	turnCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -125,6 +136,52 @@ func (r *TerminalREPL) executeInteractiveTurn(ctx context.Context, prompt string
 	}
 
 	r.consumeTurnStream(turnCtx, eventCh)
+}
+
+func (r *TerminalREPL) renderAutonomousTurn(req gateway.InboundTurnRequest, eventCh <-chan gateway.OutboundEvent) {
+	r.renderMu.Lock()
+	defer r.renderMu.Unlock()
+
+	// Clear active prompt line
+	fmt.Fprint(r.out, "\r\033[K\n")
+
+	border := strings.Repeat("─", 68)
+	fmt.Fprintln(r.out, BrandStyle.Render(border))
+	fmt.Fprintln(r.out, BrandStyle.Render("📬 [GMAIL WATCHER] Autonomous Inbound Event"))
+
+	from := extractHeader(req.Prompt, "From: ")
+	subject := extractHeader(req.Prompt, "Subject: ")
+	if from != "" {
+		fmt.Fprintf(r.out, "   %s %s\n", DimStyle.Render("From:   "), from)
+	}
+	if subject != "" {
+		fmt.Fprintf(r.out, "   %s %s\n", DimStyle.Render("Subject:"), subject)
+	}
+	fmt.Fprintln(r.out, BrandStyle.Render(border))
+
+	streamRenderer := NewStreamRenderer(r.out)
+	for ev := range eventCh {
+		if ev.Type == gateway.EventHITLRequest {
+			streamRenderer.Flush()
+			r.handleHITLPrompt(context.Background(), ev.HITL)
+		} else {
+			streamRenderer.RenderEvent(ev)
+		}
+	}
+	streamRenderer.Flush()
+
+	fmt.Fprintln(r.out, BrandStyle.Render(border))
+	fmt.Fprint(r.out, BrandStyle.Render("assistant > "))
+}
+
+func extractHeader(prompt, prefix string) string {
+	for _, line := range strings.Split(prompt, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, prefix))
+		}
+	}
+	return ""
 }
 
 func (r *TerminalREPL) watchTurnInterrupt(sigCh <-chan os.Signal, cancel context.CancelFunc) {

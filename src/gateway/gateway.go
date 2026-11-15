@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -16,10 +17,13 @@ var (
 
 // Gateway acts as the central ingress and egress boundary for Layer 1.
 // It normalizes incoming client traffic, multiplexes outbound streaming events,
-// and coordinates the execution observer telemetry hub.
+// and coordinates the execution observer telemetry hub and prioritized turn queue.
 type Gateway struct {
-	handler TurnHandler
-	hub     *ObserverHub
+	mu            sync.RWMutex
+	handler       TurnHandler
+	hub           *ObserverHub
+	activeSession string
+	queue         *PriorityTurnQueue
 }
 
 // NewGateway creates a verified Gateway backed by a downstream TurnHandler and an ObserverHub.
@@ -27,10 +31,48 @@ func NewGateway(handler TurnHandler) (*Gateway, error) {
 	if handler == nil {
 		return nil, ErrNilHandler
 	}
-	return &Gateway{
+	gw := &Gateway{
 		handler: handler,
 		hub:     NewObserverHub(),
-	}, nil
+	}
+	gw.queue = NewPriorityTurnQueue(gw.runTurnPipeline)
+	gw.queue.Start(context.Background())
+	return gw, nil
+}
+
+// SetActiveSession registers the active foreground session ID across Layer 1.
+func (g *Gateway) SetActiveSession(sessionID string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.activeSession = sessionID
+}
+
+// GetActiveSession retrieves the current active foreground session ID.
+func (g *Gateway) GetActiveSession() string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.activeSession
+}
+
+// RegisterAutonomousConsumer binds a listener to receive autonomous turns for a given session.
+func (g *Gateway) RegisterAutonomousConsumer(sessionID string, consumer AutonomousConsumerFunc) {
+	if g.queue != nil {
+		g.queue.RegisterAutonomousConsumer(sessionID, consumer)
+	}
+}
+
+// UnregisterAutonomousConsumer removes a registered autonomous turn listener.
+func (g *Gateway) UnregisterAutonomousConsumer(sessionID string) {
+	if g.queue != nil {
+		g.queue.UnregisterAutonomousConsumer(sessionID)
+	}
+}
+
+// Close gracefully terminates background queue workers.
+func (g *Gateway) Close() {
+	if g.queue != nil {
+		g.queue.Stop()
+	}
 }
 
 // ObserverHub returns the gateway's execution observer hub.
@@ -73,11 +115,32 @@ func (g *Gateway) GetTurnLogs(turnID string) ([]LogEntry, error) {
 	return g.hub.GetTurnLogs(turnID)
 }
 
-// SubmitTurn normalizes an incoming turn and begins streaming outbound events.
+// SubmitTurn normalizes an incoming turn, enqueues it according to priority, and begins streaming outbound events.
 func (g *Gateway) SubmitTurn(ctx context.Context, raw InboundTurnRequest) (<-chan OutboundEvent, InboundTurnRequest, error) {
+	g.mu.RLock()
+	activeSess := g.activeSession
+	g.mu.RUnlock()
+
+	if raw.SessionID == "" && activeSess != "" {
+		raw.SessionID = activeSess
+	}
+
 	req, err := NormalizeInbound(raw)
 	if err != nil {
 		return nil, InboundTurnRequest{}, fmt.Errorf("normalization failed: %w", err)
+	}
+
+	priority := PriorityInteractive
+	if req.Trigger == TriggerAutonomous || req.Channel == ClientTypeInternal {
+		priority = PriorityAutonomous
+	}
+
+	if g.queue != nil {
+		eventCh, err := g.queue.Enqueue(ctx, req, priority)
+		if err != nil {
+			return nil, req, fmt.Errorf("failed to enqueue turn: %w", err)
+		}
+		return eventCh, req, nil
 	}
 
 	eventCh := make(chan OutboundEvent, 64)

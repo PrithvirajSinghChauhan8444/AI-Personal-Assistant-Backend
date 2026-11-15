@@ -2,12 +2,14 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"assistant/src/gateway"
+	"assistant/src/orchestrator/manifest"
 	"assistant/src/orchestrator/planner"
 	"assistant/src/orchestrator/router"
 	"assistant/src/orchestrator/safety"
@@ -39,6 +41,22 @@ type Controller struct {
 	executor      TurnExecutor
 	spillover     *ArtifactSpillover
 	hitlRequester HITLRequester
+	activeDAGs    sync.Map // sessionID -> *activeDAGContext
+	interceptors  sync.Map // id -> TaskInterceptor
+}
+
+type inFlightTaskInfo struct {
+	startedAt    time.Time
+	worker       string
+	inputContext map[string]interface{}
+}
+
+type activeDAGContext struct {
+	sessionID     string
+	turnID        string
+	sched         *scheduler.TaskScheduler
+	inFlightTasks map[string]*inFlightTaskInfo
+	inFlightMu    sync.RWMutex
 }
 
 // ControllerConfig configures the Controller.
@@ -85,6 +103,155 @@ func NewController(cfg ControllerConfig) *Controller {
 // SetHITLRequester binds the host approval handler to the controller.
 func (c *Controller) SetHITLRequester(requester HITLRequester) {
 	c.hitlRequester = requester
+}
+
+// RegisterTaskInterceptor binds an interceptor to subtask execution hooks.
+func (c *Controller) RegisterTaskInterceptor(id string, interceptor TaskInterceptor) {
+	if id != "" && interceptor != nil {
+		c.interceptors.Store(id, interceptor)
+	}
+}
+
+// UnregisterTaskInterceptor unbinds an interceptor by ID.
+func (c *Controller) UnregisterTaskInterceptor(id string) {
+	c.interceptors.Delete(id)
+}
+
+// GetDAGSnapshot retrieves the live topological execution graph of the active turn for a session.
+func (c *Controller) GetDAGSnapshot(sessionID string) (*DAGExecutionSnapshot, error) {
+	dagRaw, ok := c.activeDAGs.Load(sessionID)
+	if !ok {
+		return nil, ErrNoActiveDAG
+	}
+	dagCtx := dagRaw.(*activeDAGContext)
+	plan := dagCtx.sched.GetPlan()
+	if plan == nil {
+		return nil, ErrNoActiveDAG
+	}
+
+	subtasks := dagCtx.sched.GetSubtasks()
+	snapshot := &DAGExecutionSnapshot{
+		PlanID:         plan.PlanID,
+		PrimaryGoal:    plan.PrimaryGoal,
+		TotalTasks:     len(subtasks),
+		DependencyTree: make(map[string][]string),
+	}
+
+	dagCtx.inFlightMu.RLock()
+	defer dagCtx.inFlightMu.RUnlock()
+
+	for _, st := range subtasks {
+		snapshot.DependencyTree[st.ID] = st.DependsOn
+		switch st.Status {
+		case planner.StatusCompleted:
+			snapshot.CompletedTasks++
+		case planner.StatusFailed, planner.StatusAborted:
+			snapshot.FailedTasks++
+		case planner.StatusPending:
+			snapshot.PendingTasks = append(snapshot.PendingTasks, st.ID)
+		case planner.StatusInProgress:
+			info := dagCtx.inFlightTasks[st.ID]
+			var elapsed int64
+			var inputCtx map[string]interface{}
+			worker := st.GetWorker()
+			if info != nil {
+				elapsed = time.Since(info.startedAt).Milliseconds()
+				inputCtx = info.inputContext
+				if info.worker != "" {
+					worker = info.worker
+				}
+			}
+			snapshot.InFlightTasks = append(snapshot.InFlightTasks, InFlightTaskSnapshot{
+				SubtaskID:    st.ID,
+				Worker:       worker,
+				ElapsedMs:    elapsed,
+				InputContext: inputCtx,
+			})
+		}
+	}
+
+	return snapshot, nil
+}
+
+// ResumeDAG rehydrates and continues execution of a suspended TaskPlan DAG.
+func (c *Controller) ResumeDAG(
+	ctx context.Context,
+	state CheckpointTurnState,
+	eventCh chan<- gateway.OutboundEvent,
+) (string, error) {
+	if state.Plan == nil || state.TurnContext == nil {
+		return "", errors.New("cannot resume DAG: nil plan or turn context")
+	}
+
+	turn := *state.TurnContext
+	sched := scheduler.NewTaskScheduler(state.Plan, scheduler.Config{
+		AllowParallel:     true,
+		MaxParallel:       4,
+		AutoHealDeadlocks: true,
+	})
+
+	// Restore completed outputs
+	for id, output := range state.CompletedOutputs {
+		_ = sched.MarkCompleted(id, output)
+	}
+
+	// Register active DAG for observability
+	dagCtx := &activeDAGContext{
+		sessionID:     turn.SessionID,
+		turnID:        turn.TurnID,
+		sched:         sched,
+		inFlightTasks: make(map[string]*inFlightTaskInfo),
+	}
+	c.activeDAGs.Store(turn.SessionID, dagCtx)
+	defer c.activeDAGs.Delete(turn.SessionID)
+
+	eventCh <- gateway.OutboundEvent{
+		SessionID: turn.SessionID,
+		TurnID:    turn.TurnID,
+		TraceID:   turn.TraceID,
+		Type:      gateway.EventPhaseChange,
+		Phase:     gateway.PhaseExecuting,
+		AgentName: "Scheduler",
+		Timestamp: time.Now().UTC(),
+		StatusMsg: fmt.Sprintf("Resuming DAG execution from checkpoint for %d subtask(s)...", len(state.Plan.SubTasks)),
+	}
+
+	accumulator := &stringAccumulator{}
+	// Preload any completed outputs into accumulator
+	for _, st := range state.Plan.SubTasks {
+		if st.Status == planner.StatusCompleted && st.Output != "" {
+			accumulator.WriteString(fmt.Sprintf("[%s Result]:\n%s\n\n", st.ID, st.Output))
+		}
+	}
+
+	c.executeScheduledDAG(ctx, sched, turn, accumulator, eventCh)
+
+	eventCh <- gateway.OutboundEvent{
+		SessionID: turn.SessionID,
+		TurnID:    turn.TurnID,
+		TraceID:   turn.TraceID,
+		Type:      gateway.EventPhaseChange,
+		Phase:     gateway.PhaseCompleted,
+		AgentName: "Orchestrator",
+		Timestamp: time.Now().UTC(),
+		StatusMsg: "Resumed turn completed successfully.",
+	}
+
+	eventCh <- gateway.OutboundEvent{
+		SessionID: turn.SessionID,
+		TurnID:    turn.TurnID,
+		TraceID:   turn.TraceID,
+		Type:      gateway.EventTurnComplete,
+		AgentName: "Orchestrator",
+		Timestamp: time.Now().UTC(),
+		Metrics: &gateway.TurnMetrics{
+			ModelName:        "layer2-orchestrator",
+			PromptTokens:     int32(len(turn.Prompt) / 4),
+			CompletionTokens: int32(len(accumulator.String()) / 4),
+		},
+	}
+
+	return accumulator.String(), nil
 }
 
 // Orchestrate executes the cognitive planning and DAG execution lifecycle.
@@ -196,6 +363,15 @@ func (c *Controller) Orchestrate(
 		MaxParallel:       4,
 		AutoHealDeadlocks: true,
 	})
+
+	dagCtx := &activeDAGContext{
+		sessionID:     turn.SessionID,
+		turnID:        turn.TurnID,
+		sched:         sched,
+		inFlightTasks: make(map[string]*inFlightTaskInfo),
+	}
+	c.activeDAGs.Store(turn.SessionID, dagCtx)
+	defer c.activeDAGs.Delete(turn.SessionID)
 
 	eventCh <- gateway.OutboundEvent{
 		SessionID: turn.SessionID,
@@ -318,11 +494,111 @@ func (c *Controller) executeSubTask(
 ) {
 	subtaskStart := time.Now()
 	_ = sched.MarkInProgress(t.ID)
-	targetWorker := t.GetWorker()
+	targetWorker := strings.ToLower(strings.TrimSpace(t.GetWorker()))
 
 	subtaskTurnID := turn.TurnID
 	if t.ID != "" {
 		subtaskTurnID = fmt.Sprintf("%s_%s", turn.TurnID, t.ID)
+	}
+
+	dagRaw, hasDAG := c.activeDAGs.Load(turn.SessionID)
+	var dagCtx *activeDAGContext
+	if hasDAG {
+		dagCtx = dagRaw.(*activeDAGContext)
+		dagCtx.inFlightMu.Lock()
+		dagCtx.inFlightTasks[t.ID] = &inFlightTaskInfo{
+			startedAt:    subtaskStart,
+			worker:       targetWorker,
+			inputContext: t.InputContext,
+		}
+		dagCtx.inFlightMu.Unlock()
+	}
+	defer func() {
+		if dagCtx != nil {
+			dagCtx.inFlightMu.Lock()
+			delete(dagCtx.inFlightTasks, t.ID)
+			dagCtx.inFlightMu.Unlock()
+		}
+	}()
+
+	// Execute BeforeSubtask interceptors
+	var beforeErr error
+	c.interceptors.Range(func(key, value interface{}) bool {
+		if interceptor, ok := value.(TaskInterceptor); ok {
+			if err := interceptor.BeforeSubtask(ctx, t); err != nil {
+				beforeErr = err
+				return false
+			}
+		}
+		return true
+	})
+	if beforeErr != nil {
+		_ = sched.MarkFailed(t.ID, beforeErr.Error())
+		eventCh <- gateway.OutboundEvent{
+			SessionID: turn.SessionID,
+			TurnID:    subtaskTurnID,
+			TraceID:   turn.TraceID,
+			Type:      gateway.EventSubtaskFailed,
+			AgentName: targetWorker,
+			Timestamp: time.Now().UTC(),
+			StatusMsg: fmt.Sprintf("Subtask %s denied by interceptor: %v", t.ID, beforeErr),
+			Error:     beforeErr.Error(),
+			Subtask: &gateway.SubtaskEventInfo{
+				SubtaskID:   t.ID,
+				Worker:      targetWorker,
+				Description: t.Description,
+				Status:      "FAILED",
+				Error:       beforeErr.Error(),
+			},
+		}
+		eventCh <- gateway.OutboundEvent{
+			SessionID: turn.SessionID,
+			TurnID:    subtaskTurnID,
+			TraceID:   turn.TraceID,
+			Type:      gateway.EventTurnError,
+			AgentName: targetWorker,
+			Timestamp: time.Now().UTC(),
+			Error:     beforeErr.Error(),
+		}
+		return
+	}
+
+	// Verify that the targetWorker is currently active and enabled in configuration
+	if targetWorker != "echo" && targetWorker != "system" {
+		activeManifests, err := manifest.LoadActiveManifests("", "")
+		if err == nil && len(activeManifests) > 0 {
+			if _, isActive := activeManifests[targetWorker]; !isActive {
+				errReason := fmt.Sprintf("subtask %s requires worker %q which is currently disabled in config/agents.json. Please enable %q to execute this task", t.ID, targetWorker, targetWorker)
+				_ = sched.MarkFailed(t.ID, errReason)
+				eventCh <- gateway.OutboundEvent{
+					SessionID: turn.SessionID,
+					TurnID:    subtaskTurnID,
+					TraceID:   turn.TraceID,
+					Type:      gateway.EventSubtaskFailed,
+					AgentName: targetWorker,
+					Timestamp: time.Now().UTC(),
+					StatusMsg: errReason,
+					Error:     errReason,
+					Subtask: &gateway.SubtaskEventInfo{
+						SubtaskID:   t.ID,
+						Worker:      targetWorker,
+						Description: t.Description,
+						Status:      "FAILED",
+						Error:       errReason,
+					},
+				}
+				eventCh <- gateway.OutboundEvent{
+					SessionID: turn.SessionID,
+					TurnID:    subtaskTurnID,
+					TraceID:   turn.TraceID,
+					Type:      gateway.EventTurnError,
+					AgentName: targetWorker,
+					Timestamp: time.Now().UTC(),
+					Error:     errReason,
+				}
+				return
+			}
+		}
 	}
 
 	// Safety Gatekeeper check
@@ -371,12 +647,24 @@ func (c *Controller) executeSubTask(
 			StatusMsg: fmt.Sprintf("Pausing execution. Subtask %s requires human approval.", t.ID),
 		}
 
+		// Gather completed outputs from completed subtasks
+		completedOutputs := make(map[string]string)
+		for _, st := range sched.GetSubtasks() {
+			if st.Status == planner.StatusCompleted && st.Output != "" {
+				completedOutputs[st.ID] = st.Output
+			}
+		}
+
 		hitlReq := HITLRequest{
-			SessionID: turn.SessionID,
-			TurnID:    subtaskTurnID,
-			ToolName:  targetWorker,
-			ArgsJSON:  fmt.Sprintf(`{"task_id":%q,"description":%q}`, t.ID, t.Description),
-			EventChan: eventCh,
+			SessionID:        turn.SessionID,
+			TurnID:           subtaskTurnID,
+			ToolName:         targetWorker,
+			ArgsJSON:         fmt.Sprintf(`{"task_id":%q,"description":%q}`, t.ID, t.Description),
+			EventChan:        eventCh,
+			SubtaskID:        t.ID,
+			Plan:             sched.GetPlan(),
+			CompletedOutputs: completedOutputs,
+			TurnContext:      &turn,
 		}
 		approved, err := c.hitlRequester.RequestHITL(ctx, hitlReq)
 		if err != nil || !approved {
@@ -504,10 +792,35 @@ func (c *Controller) executeSubTask(
 				Error:       err.Error(),
 			},
 		}
+
+		subResult := SubtaskResult{
+			Output:     subtaskOutput.String(),
+			DurationMs: durationMs,
+			Error:      err,
+		}
+		c.interceptors.Range(func(key, value interface{}) bool {
+			if interceptor, ok := value.(TaskInterceptor); ok {
+				interceptor.AfterSubtask(ctx, t, &subResult)
+			}
+			return true
+		})
 		return
 	}
 
-	c.finalizeSubTaskOutput(t, subtaskOutput.String(), sched, eventCh, turn.SessionID, subtaskTurnID, durationMs)
+	artifactPath := c.finalizeSubTaskOutput(t, subtaskOutput.String(), sched, eventCh, turn.SessionID, subtaskTurnID, durationMs)
+
+	subResult := SubtaskResult{
+		Output:       subtaskOutput.String(),
+		ArtifactPath: artifactPath,
+		DurationMs:   durationMs,
+		Error:        nil,
+	}
+	c.interceptors.Range(func(key, value interface{}) bool {
+		if interceptor, ok := value.(TaskInterceptor); ok {
+			interceptor.AfterSubtask(ctx, t, &subResult)
+		}
+		return true
+	})
 }
 
 func (c *Controller) buildTaskPrompt(t *planner.SubTask, sched *scheduler.TaskScheduler) string {
@@ -532,7 +845,7 @@ func (c *Controller) finalizeSubTaskOutput(
 	sessionID string,
 	subtaskTurnID string,
 	durationMs int64,
-) {
+) string {
 	targetWorker := t.GetWorker()
 	finalOutput, artifactPath, spilled, spillErr := c.spillover.Process(rawOutput)
 	if spillErr == nil && spilled {
@@ -562,7 +875,7 @@ func (c *Controller) finalizeSubTaskOutput(
 				DurationMs:   durationMs,
 			},
 		}
-		return
+		return artifactPath
 	}
 
 	if rawOutput == "" {
@@ -595,4 +908,5 @@ func (c *Controller) finalizeSubTaskOutput(
 		Timestamp: time.Now().UTC(),
 		StatusMsg: fmt.Sprintf("Subtask %s completed successfully.", t.ID),
 	}
+	return ""
 }

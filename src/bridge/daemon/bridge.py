@@ -328,8 +328,20 @@ class PythonBridgeDaemon(PipeEmitterProtocol, PipeReaderProtocol):
             plan_str = json.dumps(plan)
             return AgentTurnResult(status="success", final_response=plan_str)
 
-        from src.agents.factory import create_agent
-        worker = create_agent(target_agent)
+        from src.agents.factory import create_agent, load_agents_config
+        agents_cfg = load_agents_config()
+        agent_entry = agents_cfg.get(target_agent.lower(), {})
+        if isinstance(agent_entry, dict) and not agent_entry.get("enabled", True):
+            err_msg = f"Execution rejected: specialist worker '{target_agent}' is disabled in config/agents.json."
+            await emitter.emit_token(frame.turn_id, target_agent, err_msg)
+            return AgentTurnResult(
+                status="failed",
+                final_response=err_msg,
+                prompt_tokens=0,
+                completion_tokens=0,
+            )
+
+        worker = create_agent(target_agent, config=agents_cfg)
         return await worker.execute_turn(
             session_id=frame.session_id,
             turn_id=frame.turn_id,

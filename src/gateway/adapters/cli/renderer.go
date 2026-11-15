@@ -18,6 +18,7 @@ var (
 	StatusStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#A855F7"))              // Purple
 	ErrorStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#EF4444"))   // Red
 	SuccessStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#34D399"))              // Emerald
+	DimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8"))              // Slate Dim
 	BoxBorder    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
 )
 

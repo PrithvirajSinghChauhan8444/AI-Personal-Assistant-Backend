@@ -56,9 +56,6 @@ func NewTaskRouter() *TaskRouter {
 // NewTaskRouterWithConfig constructs a TaskRouter from explicit config and agent paths.
 func NewTaskRouterWithConfig(configPath, agentsDir string) *TaskRouter {
 	aliasMap := make(map[string]string)
-	for k, v := range KnownAgentAliases {
-		aliasMap[strings.ToLower(k)] = strings.ToLower(v)
-	}
 
 	manifests, err := manifest.LoadActiveManifests(configPath, agentsDir)
 	if err == nil {
@@ -71,6 +68,17 @@ func NewTaskRouterWithConfig(configPath, agentsDir string) *TaskRouter {
 					aliasMap[cleanAlias] = canonical
 				}
 			}
+		}
+		// Map static KnownAgentAliases only if the target worker is active in manifests
+		for k, v := range KnownAgentAliases {
+			canonical := strings.ToLower(v)
+			if _, isActive := manifests[canonical]; isActive {
+				aliasMap[strings.ToLower(k)] = canonical
+			}
+		}
+	} else {
+		for k, v := range KnownAgentAliases {
+			aliasMap[strings.ToLower(k)] = strings.ToLower(v)
 		}
 	}
 

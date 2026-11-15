@@ -1,8 +1,9 @@
 {
   "browser": {
     "config_path": "src/agents/browser/browser_config.json",
-    "enabled": false,
-    "model_override": null
+    "enabled": true,
+    "model_override": "",
+    "temperature": 0.2
   },
   "manager": {
     "auto_heal_deadlocks": true,
@@ -14,22 +15,22 @@
   },
   "memory": {
     "config_path": "src/agents/memory/memory_config.json",
-    "enabled": false,
+    "enabled": true,
     "model_override": null
   },
   "productivity": {
     "config_path": "src/agents/productivity/productivity_config.json",
-    "enabled": false,
+    "enabled": true,
     "model_override": null
   },
   "research": {
     "config_path": "src/agents/research/research_config.json",
-    "enabled": false,
+    "enabled": true,
     "model_override": null
   },
   "system": {
     "config_path": "src/agents/system/system_config.json",
-    "enabled": false,
+    "enabled": true,
     "model_override": null
   }
 }

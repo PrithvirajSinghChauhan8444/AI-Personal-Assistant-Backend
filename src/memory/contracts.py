@@ -80,6 +80,42 @@ class MemorySearchResponse:
 
 
 @dataclass
+class RetrievedFactSnapshot:
+    """Snapshot of a retrieved episodic memory record with relevance and token weight."""
+    id: str
+    content: str
+    category: str
+    similarity_score: float
+    estimated_tokens: int
+
+
+@dataclass
+class MemoryContextSnapshot:
+    """Structured point-in-time explainability snapshot of Tier 1-3 memory context."""
+    user_id: str
+    profile_attributes: Dict[str, Dict[str, str]]
+    connected_accounts: List[Dict[str, Any]]
+    retrieved_facts: List[RetrievedFactSnapshot]
+    total_estimated_tokens: int
+
+
+@dataclass
+class MemoryMutationEvent:
+    """Telemetry and lifecycle event emitted whenever memory state is mutated."""
+    event_type: str  # 'profile_updated', 'account_updated', 'fact_stored', 'fact_deleted', 'reflection_completed'
+    details: Dict[str, Any]
+    timestamp: float
+
+
+@runtime_checkable
+class MemoryObserver(Protocol):
+    """Observer protocol for subscribing to Layer 5 memory mutations."""
+
+    def on_memory_updated(self, event: MemoryMutationEvent) -> None:
+        ...
+
+
+@dataclass
 class ReflectionAction:
     """Individual memory mutation action derived from reflection analysis."""
     action_type: str  # 'update_profile', 'store_fact', or 'noop'

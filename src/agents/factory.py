@@ -129,6 +129,10 @@ def create_agent(
 ) -> Any:
     """Instantiates a specialist worker agent dynamically with configured LLM client."""
     agent_name = _resolve_agent_name(agent_type)
+    if config is not None:
+        agent_cfg = config.get(agent_name, {})
+        if isinstance(agent_cfg, dict) and not agent_cfg.get("enabled", True):
+            raise ValueError(f"Cannot instantiate worker '{agent_name}': agent is disabled in config/agents.json.")
 
     if not model_client:
         agent_cfg = (config or {}).get(agent_name, {})

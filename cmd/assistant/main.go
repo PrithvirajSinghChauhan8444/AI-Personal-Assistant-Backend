@@ -13,6 +13,7 @@ import (
 	"assistant/src/gateway/adapters/cli"
 	"assistant/src/orchestrator/manifest"
 	"assistant/src/orchestrator/planner"
+	"github.com/google/uuid"
 )
 
 func main() {
@@ -69,10 +70,20 @@ func main() {
 	}
 	defer cleanup()
 
+	// Ensure active session is set consistently across Gateway and background watchers
+	activeSession := *sessionID
+	if activeSession == "" {
+		activeSession = uuid.NewString()
+	}
+	stack.Gateway.SetActiveSession(activeSession)
+	if stack.MailWatcher != nil {
+		stack.MailWatcher.SetSessionID(activeSession)
+	}
+
 	// Single turn execution mode (CLI flag)
 	if *prompt != "" {
 		rawReq := gateway.InboundTurnRequest{
-			SessionID: *sessionID,
+			SessionID: activeSession,
 			Channel:   gateway.ClientTypeCLI,
 			Prompt:    *prompt,
 		}
@@ -84,7 +95,7 @@ func main() {
 	}
 
 	// Full interactive REPL mode
-	adapter := cli.NewCLIAdapter(stack.Gateway, os.Stdin, os.Stdout, *sessionID)
+	adapter := cli.NewCLIAdapter(stack.Gateway, os.Stdin, os.Stdout, activeSession)
 	if err := adapter.StartInteractive(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Session ended with error: %v\n", err)
 		os.Exit(1)

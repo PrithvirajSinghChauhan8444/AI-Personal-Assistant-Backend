@@ -29,6 +29,7 @@ type WatcherManager struct {
 	classifier *EmailClassifier
 	watchers   map[string]*AccountWatcher
 	running    bool
+	sessionID  string
 }
 
 // NewWatcherManager initializes a WatcherManager with system dependencies.
@@ -41,6 +42,23 @@ func NewWatcherManager(cfg ManagerConfig) *WatcherManager {
 		classifier: NewEmailClassifier(nil),
 		watchers:   make(map[string]*AccountWatcher),
 	}
+}
+
+// SetSessionID sets the active session ID across all account watchers.
+func (m *WatcherManager) SetSessionID(sessionID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sessionID = sessionID
+	for _, w := range m.watchers {
+		w.SetSessionID(sessionID)
+	}
+}
+
+// GetSessionID retrieves the currently bound active session ID.
+func (m *WatcherManager) GetSessionID() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.sessionID
 }
 
 // Start discovers configured accounts and starts watchers in background goroutines.
@@ -74,6 +92,9 @@ func (m *WatcherManager) Start(ctx context.Context) error {
 			Gateway:    m.cfg.Gateway,
 		}
 		watcher := NewAccountWatcher(acc, m.cfg.WatcherCfg, deps)
+		if m.sessionID != "" {
+			watcher.SetSessionID(m.sessionID)
+		}
 		if err := watcher.Start(ctx); err == nil {
 			m.watchers[acc.Alias] = watcher
 		}

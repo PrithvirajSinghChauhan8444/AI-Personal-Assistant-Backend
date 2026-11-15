@@ -171,13 +171,17 @@ func BuildPlannerSystemPrompt(workers []WorkerCapability, promptFilePath string)
 	}
 
 	var workerBullets strings.Builder
-	for _, w := range workers {
-		workerBullets.WriteString(fmt.Sprintf("- %s: %s\n", w.Name, w.Description))
-		for _, r := range w.RoutingRules {
-			workerBullets.WriteString(fmt.Sprintf("  • %s\n", r))
-		}
-		if w.Fallback != "" {
-			workerBullets.WriteString(fmt.Sprintf("  • Fallback agent: %s\n", w.Fallback))
+	if len(workers) == 0 {
+		workerBullets.WriteString("(NONE - All specialist worker agents are currently disabled in config/agents.json)\n")
+	} else {
+		for _, w := range workers {
+			workerBullets.WriteString(fmt.Sprintf("- %s: %s\n", w.Name, w.Description))
+			for _, r := range w.RoutingRules {
+				workerBullets.WriteString(fmt.Sprintf("  • %s\n", r))
+			}
+			if w.Fallback != "" {
+				workerBullets.WriteString(fmt.Sprintf("  • Fallback agent: %s\n", w.Fallback))
+			}
 		}
 	}
 

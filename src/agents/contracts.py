@@ -95,6 +95,39 @@ class AgentTurnResult:
     subtask_results: List[Dict[str, Any]] = field(default_factory=list)
 
 
+@dataclass
+class WorkerExecutionSnapshot:
+    """Live execution snapshot for an in-flight specialist worker."""
+    worker_id: str
+    turn_id: str
+    is_running: bool
+    current_iteration: int
+    max_iterations: int
+    active_tool: Optional[str]
+    elapsed_ms: int
+    total_tool_calls: int
+    tokens_streamed: int
+
+
+@runtime_checkable
+class ReActObserver(Protocol):
+    """Lifecycle observer protocol for Layer 6 ReAct execution engine."""
+
+    def on_thought(self, worker_id: str, turn_id: str, thought_text: str) -> None:
+        ...
+
+    def on_tool_call(self, worker_id: str, turn_id: str, tool_name: str, args: Dict[str, Any]) -> None:
+        ...
+
+    def on_tool_result(
+        self, worker_id: str, turn_id: str, tool_name: str, result_text: str, duration_ms: int
+    ) -> None:
+        ...
+
+    def on_iteration_end(self, worker_id: str, turn_id: str, iteration: int) -> None:
+        ...
+
+
 @runtime_checkable
 class PipeEmitterProtocol(Protocol):
     """Interface for streaming events to the Layer 4 Bridge."""

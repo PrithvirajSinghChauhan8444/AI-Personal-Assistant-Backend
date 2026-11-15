@@ -108,6 +108,11 @@ class UserProfileManager:
         with open(self.file_path, "r", encoding="utf-8") as f:
             return f.read().strip()
 
+    @property
+    def sections(self) -> Dict[str, Dict[str, str]]:
+        """Returns all parsed profile sections and their key-value pairs."""
+        return {k: dict(v) for k, v in self._sections.items()}
+
     def get_section_entries(self, section: str) -> Dict[str, str]:
         """Returns entries under a given section header."""
         for sec_name, entries in self._sections.items():

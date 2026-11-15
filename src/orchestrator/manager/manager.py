@@ -134,28 +134,32 @@ class ManagerAgent:
         agents_dir = _PROJECT_ROOT / "src" / "agents"
         if agents_dir.is_dir():
             for child in agents_dir.iterdir():
-                if child.is_dir() and child.name not in ("manager", "engine", "__pycache__"):
-                    worker_name = child.name.lower()
-                    if worker_name not in discovered:
-                        discovered[worker_name] = {
-                            "name": worker_name,
-                            "description": f"Specialist worker in {worker_name}.",
-                            "routing_rules": [f"Assign for tasks relating to {worker_name}."],
-                        }
+                if not child.is_dir() or child.name.startswith((".", "_")) or child.name in ("manager", "engine"):
+                    continue
 
-                    manifest_file = find_agent_config(child, child.name)
-                    if manifest_file and manifest_file.is_file():
-                        try:
-                            with open(manifest_file, "r", encoding="utf-8") as mf:
-                                mdata = json.load(mf)
-                                if "description" in mdata:
-                                    discovered[worker_name]["description"] = mdata["description"]
-                                if "routing_rules" in mdata:
-                                    discovered[worker_name]["routing_rules"] = mdata["routing_rules"]
-                                if "fallback_capability" in mdata:
-                                    discovered[worker_name]["fallback"] = mdata["fallback_capability"]
-                        except Exception:
-                            pass
+                worker_name = child.name.lower()
+                manifest_file = find_agent_config(child, child.name)
+                if not manifest_file or not manifest_file.is_file():
+                    continue
+
+                if worker_name not in discovered:
+                    discovered[worker_name] = {
+                        "name": worker_name,
+                        "description": f"Specialist worker in {worker_name}.",
+                        "routing_rules": [f"Assign for tasks relating to {worker_name}."],
+                    }
+
+                try:
+                    with open(manifest_file, "r", encoding="utf-8") as mf:
+                        mdata = json.load(mf)
+                        if "description" in mdata:
+                            discovered[worker_name]["description"] = mdata["description"]
+                        if "routing_rules" in mdata:
+                            discovered[worker_name]["routing_rules"] = mdata["routing_rules"]
+                        if "fallback_capability" in mdata:
+                            discovered[worker_name]["fallback"] = mdata["fallback_capability"]
+                except Exception:
+                    pass
 
         # 3. Apply user configuration from config/agents.json
         for name, cfg in self.all_agents_config.items():
@@ -206,7 +210,7 @@ class ManagerAgent:
         active_workers: List[Dict[str, Any]] = []
         for name, spec in discovered.items():
             user_setting = self.all_agents_config.get(name, {})
-            if user_setting.get("enabled", True):
+            if isinstance(user_setting, dict) and user_setting.get("enabled") is True:
                 active_workers.append(spec)
 
         return active_workers
@@ -270,7 +274,10 @@ class ManagerAgent:
         """Asynchronously decomposes the goal into a validated TaskPlan DAG."""
         goal = (goal or "").strip()
         if not goal:
-            return self._fallback_plan("Empty request received")
+            raise ValueError("cannot plan with an empty goal")
+
+        if not self.workers:
+            raise ValueError("Cannot plan tasks: no specialist worker agents are currently enabled in config/agents.json. Please enable the required workers in config/agents.json to proceed.")
 
         context_parts = []
         if conversation_history:
@@ -285,20 +292,16 @@ class ManagerAgent:
         if context_parts:
             user_content = f"{'\n\n'.join(context_parts)}\n\n{user_content}"
 
-        try:
-            client = ModelFactory.get_client(
-                model_id=self.model_id,
-                temperature=self.temperature,
-            )
-            raw_output = await client.generate(
-                system_prompt=self._system_prompt,
-                user_prompt=user_content,
-            )
-            parsed_plan = self._extract_and_validate_json(raw_output, goal)
-            return parsed_plan
-        except Exception as err:
-            sys.stderr.write(f"[ManagerAgent] Planning error with model {self.model_id}: {err}\n")
-            return self._fallback_plan(goal)
+        client = ModelFactory.get_client(
+            model_id=self.model_id,
+            temperature=self.temperature,
+        )
+        raw_output = await client.generate(
+            system_prompt=self._system_prompt,
+            user_prompt=user_content,
+        )
+        parsed_plan = self._extract_and_validate_json(raw_output, goal)
+        return parsed_plan
 
     def plan_sync(
         self,
@@ -337,6 +340,9 @@ class ManagerAgent:
         raw_tasks = plan.get("subtasks") or []
 
         valid_workers = {w["name"].lower() for w in self.workers}
+        if not raw_tasks:
+            raise ValueError("No subtasks could be scheduled: required capabilities are disabled or missing from enabled workers in config/agents.json.")
+
         normalized_tasks: List[Dict[str, Any]] = []
 
         for idx, t in enumerate(raw_tasks, start=1):
@@ -344,8 +350,8 @@ class ManagerAgent:
             desc = str(t.get("description") or original_goal)
 
             worker = str(t.get("assigned_worker") or t.get("assigned_agent") or "").lower().strip()
-            if worker not in valid_workers:
-                worker = "system" if "system" in valid_workers else (next(iter(valid_workers)) if valid_workers else "system")
+            if not worker or worker not in valid_workers:
+                raise ValueError(f"Task '{task_id}' cannot be scheduled: worker '{worker}' is disabled or not found in config/agents.json.")
 
             deps = t.get("depends_on")
             if not isinstance(deps, list):
@@ -370,33 +376,10 @@ class ManagerAgent:
                 "status": "pending",
             })
 
-        if not normalized_tasks:
-            return self._fallback_plan(original_goal)
-
         return {
             "plan_id": plan_id,
             "primary_goal": primary_goal,
             "subtasks": normalized_tasks,
-        }
-
-    def _fallback_plan(self, goal: str) -> Dict[str, Any]:
-        """Deterministic single-step fallback plan in case of provider failure."""
-        return {
-            "plan_id": f"plan_fallback_{uuid.uuid4().hex[:8]}",
-            "primary_goal": goal,
-            "subtasks": [
-                {
-                    "id": "task_1",
-                    "description": goal,
-                    "assigned_worker": "system",
-                    "assigned_agent": "system",
-                    "depends_on": [],
-                    "confidence_score": 1.0,
-                    "confidence_reason": "Single-step deterministic execution fallback",
-                    "entity_reference": None,
-                    "status": "pending",
-                }
-            ],
         }
 
 
