@@ -13,5 +13,18 @@
   "timezone": "UTC",
   "log_level": "INFO",
   "max_turn_iterations": 10,
-  "artifact_spillover_threshold_bytes": 102400
+  "artifact_spillover_threshold_bytes": 102400,
+  "enable_mail_watcher": true,
+  "mail_watcher": {
+    "enabled": true,
+    "description": "Background proactive Gmail watcher daemon accounts (supports multiple accounts)",
+    "accounts": [
+      {
+        "alias": "primary",
+        "email": "user@gmail.com",
+        "provider": "google",
+        "enabled": true
+      }
+    ]
+  }
 }

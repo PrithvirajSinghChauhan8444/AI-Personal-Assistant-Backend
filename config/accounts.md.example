@@ -1,0 +1,12 @@
+# User Accounts & Connected Context
+
+## Primary User
+- Name: User
+
+## Gmail Watcher Accounts
+# Accounts monitored by the background proactive Gmail watcher daemon (supports multiple accounts):
+- [primary] your_email@gmail.com (google)
+
+## Preferences
+- preferred_email_alias: primary
+- default_timezone: UTC
