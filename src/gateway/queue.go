@@ -206,10 +206,7 @@ func (pq *PriorityTurnQueue) executeTurn(turn *QueuedTurn) {
 	}
 
 	execCh := make(chan OutboundEvent, 64)
-	go func() {
-		defer close(execCh)
-		pq.turnExecutor(turn.Ctx, turn.Request, execCh)
-	}()
+	go pq.turnExecutor(turn.Ctx, turn.Request, execCh)
 
 	for ev := range execCh {
 		turn.EventCh <- ev
