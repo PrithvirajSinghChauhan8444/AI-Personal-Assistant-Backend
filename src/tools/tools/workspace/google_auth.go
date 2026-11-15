@@ -43,8 +43,8 @@ func (t *GoogleAuthLoginTool) Metadata() tools.ToolMetadata {
 			"properties": {
 				"account": {
 					"type": "string",
-					"description": "Account alias to authenticate: 'primary' (default), 'college', or 'personal'",
-					"default": "primary"
+					"description": "Account alias to authenticate: 'email1' (default), 'email2', etc., or raw email address",
+					"default": "email1"
 				},
 				"port": {
 					"type": "integer",
@@ -67,7 +67,7 @@ func (t *GoogleAuthLoginTool) Execute(ctx context.Context, argsJSON string) (*to
 
 	account := strings.TrimSpace(strings.ToLower(args.Account))
 	if account == "" || account == "default" {
-		account = "primary"
+		account = "email1"
 	}
 
 	port := args.Port

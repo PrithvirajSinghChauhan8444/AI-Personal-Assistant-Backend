@@ -1,10 +1,13 @@
 package gmail
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -120,21 +123,83 @@ func (m *WatcherManager) discoverAccounts(ctx context.Context) []WatchedAccount 
 	var results []WatchedAccount
 	seen := make(map[string]bool)
 
-	// 1. Discover from config/google_accounts.json
-	accountsPath := filepath.Join(m.cfg.ConfigDir, "google_accounts.json")
-	if data, err := os.ReadFile(accountsPath); err == nil {
-		var mapped map[string]string
-		if json.Unmarshal(data, &mapped) == nil {
-			for alias, email := range mapped {
-				if clean := strings.TrimSpace(email); clean != "" && !seen[alias] {
+	parseMD := func(path string) bool {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return false
+		}
+		reBracket := regexp.MustCompile(`^\[([a-zA-Z0-9_\-\.]+)\]\s*([^\s\(]+)`)
+		scanner := bufio.NewScanner(bytes.NewReader(data))
+		found := false
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if !strings.HasPrefix(line, "- ") && !strings.HasPrefix(line, "* ") {
+				continue
+			}
+			item := strings.TrimSpace(line[2:])
+			if match := reBracket.FindStringSubmatch(item); len(match) > 2 {
+				alias := strings.ToLower(strings.TrimSpace(match[1]))
+				email := strings.ToLower(strings.TrimSpace(match[2]))
+				if strings.Contains(email, "@") && !seen[alias] {
 					seen[alias] = true
-					results = append(results, WatchedAccount{Alias: alias, Email: clean})
+					results = append(results, WatchedAccount{Alias: alias, Email: email})
+					found = true
+				}
+			} else if strings.Contains(item, ":") {
+				parts := strings.SplitN(item, ":", 2)
+				alias := strings.ToLower(strings.TrimSpace(parts[0]))
+				email := strings.ToLower(strings.TrimSpace(parts[1]))
+				if strings.Contains(email, "@") && !seen[alias] {
+					seen[alias] = true
+					results = append(results, WatchedAccount{Alias: alias, Email: email})
+					found = true
+				}
+			}
+		}
+		return found
+	}
+
+	// 1. Check local config dir first (accounts.md or google_accounts.json)
+	localMD := filepath.Join(m.cfg.ConfigDir, "accounts.md")
+	hasLocalMD := parseMD(localMD)
+
+	if !hasLocalMD {
+		localJSON := filepath.Join(m.cfg.ConfigDir, "google_accounts.json")
+		if data, err := os.ReadFile(localJSON); err == nil {
+			var mapped map[string]string
+			if json.Unmarshal(data, &mapped) == nil && len(mapped) > 0 {
+				for alias, email := range mapped {
+					if clean := strings.TrimSpace(email); clean != "" && !seen[alias] {
+						seen[alias] = true
+						results = append(results, WatchedAccount{Alias: alias, Email: clean})
+					}
 				}
 			}
 		}
 	}
 
-	// 2. Discover from token_*.json files
+	// 2. If nothing configured in local config dir, search global memory paths
+	if len(results) == 0 {
+		globalCandidates := []string{}
+		if dir := os.Getenv("AI_ASSISTANT_MEMORY_DIR"); dir != "" {
+			globalCandidates = append(globalCandidates, filepath.Join(dir, "accounts.md"))
+		}
+		if home, err := os.UserHomeDir(); err == nil {
+			globalCandidates = append(globalCandidates, filepath.Join(home, ".config", "ai-assistant", "memory", "accounts.md"))
+		}
+		globalCandidates = append(globalCandidates,
+			"workspace/Memory/accounts.md",
+			"Memory/accounts.md",
+		)
+
+		for _, cand := range globalCandidates {
+			if parseMD(cand) {
+				break
+			}
+		}
+	}
+
+	// 3. Discover from token_*.json files in ConfigDir
 	files, err := os.ReadDir(m.cfg.ConfigDir)
 	if err == nil {
 		for _, file := range files {

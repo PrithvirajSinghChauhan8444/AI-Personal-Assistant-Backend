@@ -25,6 +25,32 @@ MEMORY_TOOLS: List[ToolDefinition] = [
         },
     ),
     ToolDefinition(
+        name="memory_update_account",
+        category="memory",
+        description="Add, update, or remove a connected user account or email alias in accounts.md.",
+        risk="LOW",
+        prompt_usage_tip="Use when the user shares or updates an email address, account alias (e.g. 'email1', 'email2', or custom label), or communication handle.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "alias": {
+                    "type": "string",
+                    "description": "Account alias (e.g. 'email1', 'email2', or custom label; omit to auto-assign next arbitrary alias)",
+                },
+                "email": {
+                    "type": "string",
+                    "description": "Email address associated with this account (pass empty string to delete)",
+                },
+                "provider": {
+                    "type": "string",
+                    "description": "Provider type (default: google)",
+                    "default": "google",
+                },
+            },
+            "required": ["email"],
+        },
+    ),
+    ToolDefinition(
         name="memory_store_fact",
         category="memory",
         description="Commit an archival fact, note, or historical detail with vector embedding into long-term memory.",

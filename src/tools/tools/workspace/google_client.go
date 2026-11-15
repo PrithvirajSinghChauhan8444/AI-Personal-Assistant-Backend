@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -99,9 +101,132 @@ func (gc *GoogleClient) DoAuthorizedRequest(ctx context.Context, account, method
 func (gc *GoogleClient) resolveAccountKey(account string) string {
 	account = strings.TrimSpace(strings.ToLower(account))
 	if account == "" || account == "default" {
-		return "primary"
+		if mdPath := findAccountsMarkdownPath(); mdPath != "" {
+			if pref := getPreferredAlias(mdPath); pref != "" {
+				return pref
+			}
+		}
+		return "email1"
 	}
+
+	// If account is a raw email, resolve its configured alias from accounts.md
+	if strings.Contains(account, "@") {
+		if mdPath := findAccountsMarkdownPath(); mdPath != "" {
+			accounts := parseAccountsMarkdown(mdPath)
+			for alias, email := range accounts {
+				if email == account {
+					return alias
+				}
+			}
+		}
+	}
+
 	return sanitizeFilename(account)
+}
+
+func getPreferredAlias(path string) string {
+	if path == "" {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "- preferred_email_alias:") || strings.HasPrefix(line, "* preferred_email_alias:") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				return strings.ToLower(strings.TrimSpace(parts[1]))
+			}
+		}
+	}
+	return ""
+}
+
+func findAccountsMarkdownPath() string {
+	if dir := os.Getenv("AI_ASSISTANT_MEMORY_DIR"); dir != "" {
+		p := filepath.Join(dir, "accounts.md")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+
+	// Check system.json if present
+	for _, sysJSON := range []string{"config/system.json", "not_comit/system.json", "system.json"} {
+		if data, err := os.ReadFile(sysJSON); err == nil {
+			var m map[string]interface{}
+			if json.Unmarshal(data, &m) == nil {
+				if memDir, ok := m["memory_dir"].(string); ok && memDir != "" {
+					p := filepath.Join(memDir, "accounts.md")
+					if _, err := os.Stat(p); err == nil {
+						return p
+					}
+				}
+				if wsDir, ok := m["workspace_dir"].(string); ok && wsDir != "" {
+					p := filepath.Join(wsDir, "Memory", "accounts.md")
+					if _, err := os.Stat(p); err == nil {
+						return p
+					}
+				}
+			}
+		}
+	}
+
+	if home, err := os.UserHomeDir(); err == nil {
+		p := filepath.Join(home, ".config", "ai-assistant", "memory", "accounts.md")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+
+	for _, cand := range []string{
+		"workspace/Memory/accounts.md",
+		"Memory/accounts.md",
+		"config/accounts.md",
+	} {
+		if _, err := os.Stat(cand); err == nil {
+			return cand
+		}
+	}
+	return ""
+}
+
+func parseAccountsMarkdown(path string) map[string]string {
+	result := make(map[string]string)
+	if path == "" {
+		return result
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return result
+	}
+
+	reBracket := regexp.MustCompile(`^\[([a-zA-Z0-9_\-\.]+)\]\s*([^\s\(]+)`)
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "- ") && !strings.HasPrefix(line, "* ") {
+			continue
+		}
+		item := strings.TrimSpace(line[2:])
+		if m := reBracket.FindStringSubmatch(item); len(m) > 2 {
+			alias := strings.ToLower(strings.TrimSpace(m[1]))
+			email := strings.ToLower(strings.TrimSpace(m[2]))
+			if strings.Contains(email, "@") {
+				result[alias] = email
+			}
+		} else if strings.Contains(item, ":") {
+			parts := strings.SplitN(item, ":", 2)
+			alias := strings.ToLower(strings.TrimSpace(parts[0]))
+			email := strings.ToLower(strings.TrimSpace(parts[1]))
+			if strings.Contains(email, "@") {
+				result[alias] = email
+			}
+		}
+	}
+	return result
 }
 
 func (gc *GoogleClient) loadCredentials() error {
@@ -128,6 +253,8 @@ func (gc *GoogleClient) loadTokenFromDisk(accountKey string) (*OAuthToken, error
 	candidates := []string{
 		filepath.Join(gc.configDir, fmt.Sprintf("token_%s.json", accountKey)),
 		filepath.Join(gc.configDir, fmt.Sprintf("token_%s.json", sanitizeFilename(accountKey))),
+		filepath.Join(gc.configDir, "token_email1.json"),
+		filepath.Join(gc.configDir, "token_primary.json"),
 		filepath.Join(gc.configDir, "token_default.json"),
 		filepath.Join(gc.configDir, "token.json"),
 	}
@@ -140,6 +267,31 @@ func (gc *GoogleClient) loadTokenFromDisk(accountKey string) (*OAuthToken, error
 			tokenBytes = data
 			loadedPath = cand
 			break
+		}
+	}
+
+	if tokenBytes == nil {
+		if mdPath := findAccountsMarkdownPath(); mdPath != "" {
+			accounts := parseAccountsMarkdown(mdPath)
+			if email, ok := accounts[accountKey]; ok && email != "" {
+				cand := filepath.Join(gc.configDir, fmt.Sprintf("token_%s.json", sanitizeFilename(email)))
+				if data, err := LoadTokenFile(cand); err == nil && len(data) > 0 {
+					tokenBytes = data
+					loadedPath = cand
+				}
+			}
+			if tokenBytes == nil {
+				for alias, email := range accounts {
+					if email == accountKey {
+						cand := filepath.Join(gc.configDir, fmt.Sprintf("token_%s.json", alias))
+						if data, err := LoadTokenFile(cand); err == nil && len(data) > 0 {
+							tokenBytes = data
+							loadedPath = cand
+							break
+						}
+					}
+				}
+			}
 		}
 	}
 

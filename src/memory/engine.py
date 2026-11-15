@@ -83,7 +83,7 @@ class MemoryEngine(MemoryEngineProtocol):
         self.base_dir = resolve_memory_base_dir(base_dir)
 
         profile_path = os.path.join(self.base_dir, "core_profile.md")
-        accounts_path = os.path.join(self.base_dir, "accounts.json")
+        accounts_path = os.path.join(self.base_dir, "accounts.md")
         db_path = os.path.join(self.base_dir, "storage", "memories.db")
         index_path = os.path.join(self.base_dir, "storage", "faiss_index.bin")
 
@@ -107,6 +107,7 @@ class MemoryEngine(MemoryEngineProtocol):
         """Determines if the given tool identifier belongs to Layer 5 local cognitive tools."""
         return tool_name in (
             "memory_update_profile",
+            "memory_update_account",
             "memory_store_fact",
             "memory_search",
             "memory_delete",
@@ -116,6 +117,8 @@ class MemoryEngine(MemoryEngineProtocol):
         """Executes a local memory tool in-process with 0ms IPC latency."""
         if tool_name == "memory_update_profile":
             return self._handle_update_profile(arguments)
+        elif tool_name == "memory_update_account":
+            return self._handle_update_account(arguments)
         elif tool_name == "memory_store_fact":
             return self._handle_store_fact(arguments)
         elif tool_name == "memory_search":
@@ -190,6 +193,22 @@ class MemoryEngine(MemoryEngineProtocol):
             return "Error: 'section' and 'key' are required for memory_update_profile."
 
         return self.profile.update_profile(section, key, value)
+
+    def _handle_update_account(self, args: Dict[str, Any]) -> str:
+        alias = str(args.get("alias", "")).strip().lower()
+        email = str(args.get("email", "")).strip().lower()
+        provider = str(args.get("provider", "google")).strip().lower()
+
+        if not email:
+            if not alias:
+                return "Error: 'alias' or 'email' parameter is required for memory_update_account."
+            deleted = self.accounts.delete_account(alias)
+            if deleted:
+                return f"Successfully removed account alias '{alias}' from accounts.md."
+            return f"Account alias '{alias}' was not found in accounts.md."
+
+        assigned_alias = self.accounts.update_account(alias=alias or None, email=email, provider=provider)
+        return f"Successfully saved account '{assigned_alias}' ({email}, provider: {provider}) to accounts.md."
 
     def _handle_store_fact(self, args: Dict[str, Any]) -> str:
         # Accepts 'content' with fallback alias 'fact'
