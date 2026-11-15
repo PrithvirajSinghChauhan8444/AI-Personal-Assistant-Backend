@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "description": "Configuration for background proactive Gmail watcher daemon (supports multiple accounts)",
+  "accounts": [
+    {
+      "alias": "primary",
+      "email": "user@gmail.com",
+      "enabled": true
+    },
+    {
+      "alias": "work",
+      "email": "user@company.com",
+      "enabled": false
+    }
+  ]
+}

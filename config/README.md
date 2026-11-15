@@ -98,3 +98,38 @@ Configure paths, limits, and runtime settings:
 - `voice_kokoro`: Default Kokoro neural voice (e.g. `am_michael`).
 - `voice_piper`: Default Piper ONNX voice file (`en_US-lessac-medium.onnx`).
 - `sample_rate_hz`: `24000` (Kokoro) or `22050` (Piper).
+
+---
+
+## 6. Proactive Gmail Watcher (`config/gmail_watcher.json`)
+
+Controls the background email watcher daemon (`-watch-mail` flag):
+
+```json
+{
+  "enabled": true,
+  "description": "Configuration for background proactive Gmail watcher daemon (supports multiple accounts)",
+  "accounts": [
+    {
+      "alias": "primary",
+      "email": "user@gmail.com",
+      "enabled": true
+    },
+    {
+      "alias": "work",
+      "email": "user@company.com",
+      "enabled": false
+    }
+  ]
+}
+```
+
+- **`enabled`**: Master switch to turn the Gmail watcher daemon on or off.
+- **`accounts`**: List of monitored accounts.
+  - **`alias`**: Account identifier matching the OAuth token file (`config/token_<alias>.json` or `config/token.json`).
+  - **`email`**: The exact Gmail address associated with the OAuth token (required for XOAUTH2 SASL authentication).
+  - **`enabled`**: Whether this specific account is actively monitored.
+
+> [!NOTE]
+> The Gmail watcher strictly reads `config/gmail_watcher.json`. It does not fall back to legacy configuration files or sweep arbitrary token files on disk. Only accounts explicitly enabled in this file will be monitored.
+

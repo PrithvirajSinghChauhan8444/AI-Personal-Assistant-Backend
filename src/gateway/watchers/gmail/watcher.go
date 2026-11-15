@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -144,6 +145,11 @@ func (w *AccountWatcher) runSupervisor(ctx context.Context) {
 			err := w.runWatchSession(ctx)
 			if err != nil && ctx.Err() == nil {
 				w.setStatus(StatusError)
+				errStr := err.Error()
+				if strings.Contains(errStr, "invalid_grant") || strings.Contains(errStr, "expired or revoked") {
+					fmt.Fprintf(os.Stderr, "⚠️ [Gmail Watcher %s] OAuth token is expired or revoked. Disabling watcher for %s until re-authenticated via scripts/auth_google.py --account %s\n", w.account.Alias, w.account.Alias, w.account.Alias)
+					return // Permanent auth failure: terminate goroutine rather than spamming
+				}
 				fmt.Fprintf(os.Stderr, "⚠️ [Gmail Watcher %s] Session error: %v (retrying in %v)\n", w.account.Alias, err, backoff)
 				time.Sleep(backoff)
 				backoff = minDuration(backoff*2, w.config.BackoffMax)
