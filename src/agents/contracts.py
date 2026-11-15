@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from typing import Any, Dict, List, Optional, Protocol, Union, runtime_checkable
 
 
 class AgentType(str, Enum):
@@ -74,7 +74,7 @@ class AgentContext:
     """Execution context and constraints for an autonomous agent turn."""
     session_id: str
     turn_id: str
-    agent_type: AgentType
+    agent_type: Union[AgentType, str]
     user_prompt: str
     system_prompt: str
     conversation_history: List[Dict[str, Any]] = field(default_factory=list)

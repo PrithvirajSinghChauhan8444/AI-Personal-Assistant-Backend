@@ -1,59 +1,35 @@
 {
-  "manager": {
-    "enabled": true,
-    "model": "google:gemini-3.5-flash-lite",
-    "temperature": 0.1,
-    "max_parallel_workers": 4,
-    "auto_heal_deadlocks": true,
-    "description": "Layer 2 Cognitive Planner that decomposes user requests into actionable DAG task plans."
-  },
-  "system": {
-    "enabled": true,
-    "model": "google:gemini-3.5-flash-lite",
-    "temperature": 0.0,
-    "description": "Local Linux OS operations: file reading/writing/deletion, shell execution, process monitoring, and git version control.",
-    "routing_rules": [
-      "Assign when inspecting local files, directory trees, terminal scripts, or git repositories."
-    ]
-  },
   "browser": {
-    "enabled": true,
-    "model": "google:gemini-3.5-flash-lite",
-    "temperature": 0.0,
-    "headless": false,
-    "cdp_url": "http://localhost:9222",
-    "slow_mo_ms": 1000,
-    "description": "Interactive web browser automation: navigating URLs, clicking elements, reading dynamic web pages, and taking screenshots via Playwright.",
-    "routing_rules": [
-      "Assign when a task requires rendering modern JavaScript websites, logging into web dashboards, or visual UI verification."
-    ]
+    "config_path": "src/agents/browser/browser_config.json",
+    "enabled": false,
+    "model_override": null
   },
-  "research": {
+  "manager": {
+    "auto_heal_deadlocks": true,
+    "description": "Layer 2 Cognitive Planner that decomposes user requests into actionable DAG task plans.",
     "enabled": true,
+    "max_parallel_workers": 4,
     "model": "google:gemini-3.5-flash-lite",
-    "temperature": 0.2,
-    "max_search_results": 5,
-    "description": "Deep research, web searching, summarizing articles/papers, fact-checking, and long-term memory retrieval.",
-    "routing_rules": [
-      "Assign when looking up public facts, searching the web, or synthesizing multiple information sources."
-    ]
-  },
-  "productivity": {
-    "enabled": true,
-    "model": "google:gemini-3.5-flash-lite",
-    "temperature": 0.0,
-    "description": "Personal communication and scheduling: searching and reading Gmail, drafting emails, and creating/updating Google Calendar events.",
-    "routing_rules": [
-      "Assign for all email (Gmail) inquiries, calendar events, meeting scheduling, and personal agendas."
-    ]
+    "temperature": 0.1
   },
   "memory": {
-    "enabled": true,
-    "model": "google:gemini-3.5-flash-lite",
-    "temperature": 0.0,
-    "description": "Personal memory curation and recall: managing core user identity, preferences, rules, and searching/storing long-term episodic facts.",
-    "routing_rules": [
-      "Assign when the user asks to recall personal preferences, update user rules/profile, remember specific facts, or delete outdated memories."
-    ]
+    "config_path": "src/agents/memory/memory_config.json",
+    "enabled": false,
+    "model_override": null
+  },
+  "productivity": {
+    "config_path": "src/agents/productivity/productivity_config.json",
+    "enabled": false,
+    "model_override": null
+  },
+  "research": {
+    "config_path": "src/agents/research/research_config.json",
+    "enabled": false,
+    "model_override": null
+  },
+  "system": {
+    "config_path": "src/agents/system/system_config.json",
+    "enabled": false,
+    "model_override": null
   }
 }

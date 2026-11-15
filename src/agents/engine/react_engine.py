@@ -100,14 +100,15 @@ class ReActEngine:
             tools=tools,
         )
 
+        agent_name = ctx.agent_type.value if hasattr(ctx.agent_type, "value") else str(ctx.agent_type)
         async for chunk in stream:
             if chunk.thought and self.pipe_emitter:
-                await self.pipe_emitter.emit_thought(ctx.turn_id, ctx.agent_type.value, chunk.thought)
+                await self.pipe_emitter.emit_thought(ctx.turn_id, agent_name, chunk.thought)
 
             if chunk.text_delta:
                 text_parts.append(chunk.text_delta)
                 if self.pipe_emitter:
-                    await self.pipe_emitter.emit_token(ctx.turn_id, ctx.agent_type.value, chunk.text_delta)
+                    await self.pipe_emitter.emit_token(ctx.turn_id, agent_name, chunk.text_delta)
 
             if chunk.tool_calls:
                 tool_chunks.extend(chunk.tool_calls)

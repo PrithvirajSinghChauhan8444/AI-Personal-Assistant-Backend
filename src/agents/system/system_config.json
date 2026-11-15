@@ -1,0 +1,191 @@
+{
+  "$schema": "https://assistant.local/schemas/agent_manifest_v1.json",
+  "agent_identifier": "system",
+  "display_name": "System Agent",
+  "version": "1.0.0",
+  "agent_aliases": [
+    "system",
+    "sys",
+    "sh",
+    "bash"
+  ],
+  "fallback_capability": "research",
+  "model": {
+    "default": "google:gemini-3.5-flash-lite",
+    "temperature": 0.0
+  },
+  "description": "Local Linux OS operations: file reading/writing/deletion, shell execution, process monitoring, and git version control.",
+  "routing_rules": [
+    "Assign when inspecting local files, directory trees, terminal scripts, or git repositories."
+  ],
+  "tools": [
+    {
+      "name": "sys_exec",
+      "description": "Executes a Linux bash or shell command with a timeout deadline, or launches background/GUI processes detached.",
+      "risk": "HIGH",
+      "execution_domain": "go_native",
+      "required_capability": "system_exec"
+    },
+    {
+      "name": "sys_ps",
+      "description": "Lists active operating system processes, memory usage, CPU, and PIDs.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "process"
+    },
+    {
+      "name": "sys_kill",
+      "description": "Terminates an operating system process by process ID (PID) using POSIX signals.",
+      "risk": "HIGH",
+      "execution_domain": "go_native",
+      "required_capability": "process"
+    },
+    {
+      "name": "sys_exec_python",
+      "description": "Executes Python code in an isolated subprocess with a timeout.",
+      "risk": "HIGH",
+      "execution_domain": "go_native",
+      "required_capability": "system_exec"
+    },
+    {
+      "name": "sys_volume_get",
+      "description": "Gets current master audio volume percentage and mute status via pactl or amixer.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "hardware"
+    },
+    {
+      "name": "sys_volume_set",
+      "description": "Sets master audio volume percentage.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "hardware"
+    },
+    {
+      "name": "sys_volume_mute",
+      "description": "Toggles or sets master audio mute state.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "hardware"
+    },
+    {
+      "name": "sys_brightness_get",
+      "description": "Gets current display brightness percentage.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "hardware"
+    },
+    {
+      "name": "sys_brightness_set",
+      "description": "Sets display brightness percentage.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "hardware"
+    },
+    {
+      "name": "sys_lock",
+      "description": "Locks the Linux desktop session immediately.",
+      "risk": "MEDIUM",
+      "execution_domain": "go_native",
+      "required_capability": "system_exec"
+    },
+    {
+      "name": "sys_suspend",
+      "description": "Suspends the system into sleep mode.",
+      "risk": "HIGH",
+      "execution_domain": "go_native",
+      "required_capability": "system_exec"
+    },
+    {
+      "name": "sys_health",
+      "description": "Collects full Linux system health diagnostics.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "process"
+    },
+    {
+      "name": "sys_clipboard_copy",
+      "description": "Copies text to Linux clipboard using xclip or wl-copy.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "system_exec"
+    },
+    {
+      "name": "sys_clipboard_paste",
+      "description": "Pastes text from Linux clipboard using xclip or wl-paste.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "system_exec"
+    },
+    {
+      "name": "sys_launch_app",
+      "description": "Launches a desktop GUI application detached in background.",
+      "risk": "MEDIUM",
+      "execution_domain": "go_native",
+      "required_capability": "system_exec"
+    },
+    {
+      "name": "sys_get_time",
+      "description": "Gets exact local and UTC time, date, weekday, and timezone.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "general"
+    },
+    {
+      "name": "fs_read",
+      "description": "Reads file content with optional line slicing and offset limits.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "fs_read"
+    },
+    {
+      "name": "fs_write",
+      "description": "Atomically creates or overwrites a file, or appends content to an existing file.",
+      "risk": "MEDIUM",
+      "execution_domain": "go_native",
+      "required_capability": "fs_write"
+    },
+    {
+      "name": "fs_delete",
+      "description": "Permanently deletes a file or directory tree from the filesystem.",
+      "risk": "HIGH",
+      "execution_domain": "go_native",
+      "required_capability": "fs_write"
+    },
+    {
+      "name": "fs_list",
+      "description": "Lists contents of a directory with file sizes, types, and modified timestamps.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "fs_read"
+    },
+    {
+      "name": "fs_ripgrep",
+      "description": "Fast regex search across files and directories via ripgrep.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "fs_read"
+    },
+    {
+      "name": "git_status",
+      "description": "Retrieves git repository status, active branch, and modified files.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "git"
+    },
+    {
+      "name": "git_diff",
+      "description": "Inspects git diff against HEAD, working tree, or specific commits.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "git"
+    },
+    {
+      "name": "git_commit",
+      "description": "Stages all changes or specific files and creates a git commit with a message.",
+      "risk": "MEDIUM",
+      "execution_domain": "go_native",
+      "required_capability": "git"
+    }
+  ]
+}

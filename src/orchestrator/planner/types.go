@@ -47,4 +47,5 @@ type WorkerCapability struct {
 	Name         string   `json:"name"`
 	Description  string   `json:"description"`
 	RoutingRules []string `json:"routing_rules,omitempty"`
+	Fallback     string   `json:"fallback,omitempty"`
 }

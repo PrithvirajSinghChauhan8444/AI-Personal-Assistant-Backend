@@ -6,6 +6,7 @@ from pathlib import Path
 def _load_prompt(filename: str, fallback: str) -> str:
     """Loads markdown prompt from config/prompts directory with fallback."""
     candidates = [
+        Path(__file__).resolve().parent / "prompt.md",
         Path("config/prompts") / filename,
         Path(__file__).resolve().parent.parent.parent.parent / "config" / "prompts" / filename,
     ]
@@ -55,7 +56,7 @@ Operational Directives & Safe Draft-First Policy:
 - For newsletters, automated transaction receipts, or spam notifications, do NOT draft any replies.
 - When scheduling meetings, check `calendar_list` first to prevent scheduling conflicts.
 - Always check `sys_get_time` when calculating relative dates (e.g. "tomorrow", "next Monday").
-- Explicitly state which account ('primary', 'college', 'personal') was accessed or updated.
+- Explicitly state which account (e.g. 'email1', 'email2', etc.) was accessed or updated.
 
 Authentication & Automatic Task Resumption Directive:
 - If ANY Gmail, Calendar, or Tasks tool call fails due to authentication or token errors (e.g. "invalid_grant", "Token has been expired or revoked", "unauthorized", or status 400/401):

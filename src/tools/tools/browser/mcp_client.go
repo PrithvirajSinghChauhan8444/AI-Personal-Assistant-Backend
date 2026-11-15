@@ -204,6 +204,22 @@ func GetDefaultClient() *PlaywrightMCPClient {
 
 		headless := strings.ToLower(os.Getenv("BROWSER_HEADLESS")) == "true"
 
+		// Fallback to browser_config.json if present
+		if cfgData, err := os.ReadFile("src/agents/browser/browser_config.json"); err == nil {
+			var bCfg struct {
+				Headless *bool  `json:"headless"`
+				CDPURL   string `json:"cdp_url"`
+			}
+			if err := json.Unmarshal(cfgData, &bCfg); err == nil {
+				if bCfg.Headless != nil && os.Getenv("BROWSER_HEADLESS") == "" {
+					headless = *bCfg.Headless
+				}
+				if bCfg.CDPURL != "" && os.Getenv("BROWSER_CDP_URL") == "" {
+					cdpURL = bCfg.CDPURL
+				}
+			}
+		}
+
 		defaultClient = &PlaywrightMCPClient{
 			browserType:    resolvedType,
 			profileName:    profileName,

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"assistant/src/gateway"
+	"assistant/src/orchestrator/manifest"
 )
 
 // RiskLevel defines the risk tier of a system or external action.
@@ -73,6 +74,38 @@ func (g *Gatekeeper) LoadPoliciesFromFile(path string) error {
 	for _, p := range cfg.Tools {
 		g.RegisterPolicy(p)
 	}
+	return nil
+}
+
+// RegisterManifestPolicies registers tool policies and risk levels declared in agent manifests.
+func (g *Gatekeeper) RegisterManifestPolicies(manifests []*manifest.AgentManifest) {
+	for _, m := range manifests {
+		for _, tool := range m.Tools {
+			risk := RiskLevel(strings.ToUpper(tool.Risk))
+			if risk != RiskLow && risk != RiskMedium && risk != RiskHigh {
+				risk = RiskLow
+			}
+			g.RegisterPolicy(ToolPolicy{
+				ToolName:            strings.ToLower(tool.Name),
+				Risk:                risk,
+				RequiresInteractive: risk == RiskHigh,
+				RequiredCapability:  tool.RequiredCapability,
+			})
+		}
+	}
+}
+
+// LoadPoliciesFromManifests loads and registers tool policies from active agent manifests.
+func (g *Gatekeeper) LoadPoliciesFromManifests(configPath, agentsDir string) error {
+	manifests, err := manifest.LoadActiveManifests(configPath, agentsDir)
+	if err != nil {
+		return err
+	}
+	manifestList := make([]*manifest.AgentManifest, 0, len(manifests))
+	for _, m := range manifests {
+		manifestList = append(manifestList, m)
+	}
+	g.RegisterManifestPolicies(manifestList)
 	return nil
 }
 

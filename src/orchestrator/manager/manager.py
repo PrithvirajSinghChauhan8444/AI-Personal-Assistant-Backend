@@ -33,6 +33,7 @@ try:
 except ImportError:
     pass
 
+from src.agents.manifest import find_agent_config
 from src.models.factory import ModelFactory
 
 DEFAULT_WORKER_SPECS = [
@@ -142,11 +143,8 @@ class ManagerAgent:
                             "routing_rules": [f"Assign for tasks relating to {worker_name}."],
                         }
 
-                    # Check for manifest.json or agent.json in worker folder
-                    manifest_file = child / "manifest.json"
-                    if not manifest_file.is_file():
-                        manifest_file = child / "agent.json"
-                    if manifest_file.is_file():
+                    manifest_file = find_agent_config(child, child.name)
+                    if manifest_file and manifest_file.is_file():
                         try:
                             with open(manifest_file, "r", encoding="utf-8") as mf:
                                 mdata = json.load(mf)
@@ -154,6 +152,8 @@ class ManagerAgent:
                                     discovered[worker_name]["description"] = mdata["description"]
                                 if "routing_rules" in mdata:
                                     discovered[worker_name]["routing_rules"] = mdata["routing_rules"]
+                                if "fallback_capability" in mdata:
+                                    discovered[worker_name]["fallback"] = mdata["fallback_capability"]
                         except Exception:
                             pass
 
@@ -168,6 +168,26 @@ class ManagerAgent:
                 if name_lower in discovered:
                     del discovered[name_lower]
                 continue
+
+            # Load explicit config_path / manifest_path if provided
+            manifest_path = cfg.get("config_path") or cfg.get("manifest_path")
+            if manifest_path:
+                mp = _PROJECT_ROOT / manifest_path if not Path(manifest_path).is_absolute() else Path(manifest_path)
+                if mp.is_file():
+                    try:
+                        with open(mp, "r", encoding="utf-8") as mf:
+                            mdata = json.load(mf)
+                            target_key = mdata.get("agent_identifier", name_lower).lower()
+                            if target_key not in discovered:
+                                discovered[target_key] = {"name": target_key}
+                            if "description" in mdata:
+                                discovered[target_key]["description"] = mdata["description"]
+                            if "routing_rules" in mdata:
+                                discovered[target_key]["routing_rules"] = mdata["routing_rules"]
+                            if "fallback_capability" in mdata:
+                                discovered[target_key]["fallback"] = mdata["fallback_capability"]
+                    except Exception:
+                        pass
 
             # Merge user config overrides
             if name_lower not in discovered:
@@ -223,6 +243,8 @@ class ManagerAgent:
             worker_bullets.append(f"- {w['name']}: {w['description']}")
             for r in w.get("routing_rules", []):
                 worker_bullets.append(f"  • {r}")
+            if w.get("fallback"):
+                worker_bullets.append(f"  • Fallback agent: {w['fallback']}")
 
         # Inject workspace and artifacts paths from system.json
         try:

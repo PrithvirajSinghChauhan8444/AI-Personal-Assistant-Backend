@@ -329,8 +329,7 @@ class PythonBridgeDaemon(PipeEmitterProtocol, PipeReaderProtocol):
             return AgentTurnResult(status="success", final_response=plan_str)
 
         from src.agents.factory import create_agent
-        agent_type = AgentType(target_agent) if target_agent in [e.value for e in AgentType] else AgentType.SYSTEM
-        worker = create_agent(agent_type)
+        worker = create_agent(target_agent)
         return await worker.execute_turn(
             session_id=frame.session_id,
             turn_id=frame.turn_id,

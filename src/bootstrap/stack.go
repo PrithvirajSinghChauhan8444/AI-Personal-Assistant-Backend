@@ -12,6 +12,7 @@ import (
 	"assistant/src/gateway"
 	"assistant/src/gateway/watchers/gmail"
 	"assistant/src/orchestrator"
+	"assistant/src/orchestrator/manifest"
 	"assistant/src/orchestrator/safety"
 	"assistant/src/orchestrator/session"
 	"assistant/src/tools"
@@ -103,7 +104,10 @@ func BuildStack(ctx context.Context, cfg Config) (*Stack, func(), error) {
 	}
 
 	// 3. Initialize Layer 2 Safety Gatekeeper
+	agentsConfigPath := filepath.Join(cfg.ConfigDir, "agents.json")
+	_ = manifest.SyncControlRegistry(agentsConfigPath, "src/agents")
 	gk := safety.NewGatekeeper()
+	_ = gk.LoadPoliciesFromManifests(agentsConfigPath, "src/agents")
 	safetyConfigPath := filepath.Join(cfg.ConfigDir, "safety_policies.json")
 	if _, err := os.Stat(safetyConfigPath); err == nil {
 		_ = gk.LoadPoliciesFromFile(safetyConfigPath)

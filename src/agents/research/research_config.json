@@ -1,0 +1,64 @@
+{
+  "$schema": "https://assistant.local/schemas/agent_manifest_v1.json",
+  "agent_identifier": "research",
+  "display_name": "Research Agent",
+  "version": "1.0.0",
+  "agent_aliases": [
+    "research",
+    "search"
+  ],
+  "fallback_capability": "system",
+  "max_search_results": 5,
+  "model": {
+    "default": "google:gemini-3.5-flash-lite",
+    "temperature": 0.2
+  },
+  "description": "Deep research, web searching, summarizing articles/papers, fact-checking, and long-term memory retrieval.",
+  "routing_rules": [
+    "Assign when looking up public facts, searching the web, or synthesizing multiple information sources."
+  ],
+  "tools": [
+    {
+      "name": "net_search",
+      "description": "Queries web search engines to retrieve relevant search snippets, titles, and URLs.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "network"
+    },
+    {
+      "name": "net_fetch",
+      "description": "Executes high-speed HTTP requests with custom headers and response inspection.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "network"
+    },
+    {
+      "name": "net_weather",
+      "description": "Retrieves live weather data and meteorological forecasts.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "network"
+    },
+    {
+      "name": "sys_exec_python",
+      "description": "Executes Python code in an isolated subprocess with a timeout.",
+      "risk": "HIGH",
+      "execution_domain": "go_native",
+      "required_capability": "system_exec"
+    },
+    {
+      "name": "memory_search",
+      "description": "Searches stored memory facts and user profile using semantic vector retrieval.",
+      "risk": "LOW",
+      "execution_domain": "python_local",
+      "required_capability": "memory"
+    },
+    {
+      "name": "memory_store_fact",
+      "description": "Stores a new episodic fact, research note, or user preference in long-term memory.",
+      "risk": "LOW",
+      "execution_domain": "python_local",
+      "required_capability": "memory"
+    }
+  ]
+}

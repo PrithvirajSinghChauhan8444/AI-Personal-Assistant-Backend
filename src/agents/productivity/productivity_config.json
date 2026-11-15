@@ -1,0 +1,122 @@
+{
+  "$schema": "https://assistant.local/schemas/agent_manifest_v1.json",
+  "agent_identifier": "productivity",
+  "display_name": "Productivity Agent",
+  "version": "1.0.0",
+  "agent_aliases": [
+    "productivity",
+    "prod",
+    "mail",
+    "gmail",
+    "calendar"
+  ],
+  "fallback_capability": "system",
+  "model": {
+    "default": "google:gemini-3.5-flash-lite",
+    "temperature": 0.0
+  },
+  "description": "Personal communication and scheduling: searching and reading Gmail, drafting emails, and creating/updating Google Calendar events.",
+  "routing_rules": [
+    "Assign for all email (Gmail) inquiries, calendar events, meeting scheduling, and personal agendas."
+  ],
+  "tools": [
+    {
+      "name": "google_auth_login",
+      "description": "Initiates Google Workspace OAuth flow, starts local callback receiver, and prints the direct authorization link to terminal.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "workspace"
+    },
+    {
+      "name": "gmail_list",
+      "description": "Lists recent emails matching query via Google Workspace OAuth client.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "email"
+    },
+    {
+      "name": "gmail_read",
+      "description": "Fetches full content, headers, subject, and body for a specific email message ID.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "email"
+    },
+    {
+      "name": "gmail_check_unread",
+      "description": "Quick scan of unread inbox emails across one or all configured accounts.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "email"
+    },
+    {
+      "name": "gmail_send_draft",
+      "description": "Creates a new email draft in Gmail without sending it immediately.",
+      "risk": "MEDIUM",
+      "execution_domain": "go_native",
+      "required_capability": "email"
+    },
+    {
+      "name": "gmail_reply",
+      "description": "Creates a draft reply to an existing email thread preserving subject and message references.",
+      "risk": "MEDIUM",
+      "execution_domain": "go_native",
+      "required_capability": "email"
+    },
+    {
+      "name": "gmail_send",
+      "description": "Dispatches an email immediately to recipient addresses.",
+      "risk": "HIGH",
+      "execution_domain": "go_native",
+      "required_capability": "email"
+    },
+    {
+      "name": "calendar_list",
+      "description": "Lists upcoming events and meetings from Google Calendar within a time window.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "calendar"
+    },
+    {
+      "name": "calendar_create_event",
+      "description": "Creates a new event or appointment on Google Calendar.",
+      "risk": "MEDIUM",
+      "execution_domain": "go_native",
+      "required_capability": "calendar"
+    },
+    {
+      "name": "calendar_edit_event",
+      "description": "Modifies start/end time, summary, description, or attendees of an existing calendar event.",
+      "risk": "MEDIUM",
+      "execution_domain": "go_native",
+      "required_capability": "calendar"
+    },
+    {
+      "name": "calendar_delete_event",
+      "description": "Deletes or cancels an existing event on Google Calendar.",
+      "risk": "HIGH",
+      "execution_domain": "go_native",
+      "required_capability": "calendar"
+    },
+    {
+      "name": "tasks_list",
+      "description": "Lists pending tasks and to-do items from Google Tasks.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "workspace"
+    },
+    {
+      "name": "tasks_create",
+      "description": "Creates a new to-do task item in Google Tasks.",
+      "risk": "MEDIUM",
+      "execution_domain": "go_native",
+      "required_capability": "workspace"
+    },
+    {
+      "name": "sys_get_time",
+      "description": "Gets exact local and UTC time, date, weekday, and timezone.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "general"
+    }
+  ]
+}

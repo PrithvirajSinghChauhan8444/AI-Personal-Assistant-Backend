@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"assistant/src/gateway"
+	"assistant/src/orchestrator/manifest"
 )
 
 // RouteType distinguishes between direct single-agent execution and cognitive manager planning.
@@ -43,19 +44,50 @@ var KnownAgentAliases = map[string]string{
 }
 
 // TaskRouter determines whether an inbound request follows the direct fast-path or manager coordination.
-type TaskRouter struct{}
+type TaskRouter struct {
+	aliases map[string]string
+}
 
-// NewTaskRouter constructs a TaskRouter.
+// NewTaskRouter constructs a TaskRouter auto-registering aliases from manifests with static fallback.
 func NewTaskRouter() *TaskRouter {
-	return &TaskRouter{}
+	return NewTaskRouterWithConfig("config/agents.json", "src/agents")
+}
+
+// NewTaskRouterWithConfig constructs a TaskRouter from explicit config and agent paths.
+func NewTaskRouterWithConfig(configPath, agentsDir string) *TaskRouter {
+	aliasMap := make(map[string]string)
+	for k, v := range KnownAgentAliases {
+		aliasMap[strings.ToLower(k)] = strings.ToLower(v)
+	}
+
+	manifests, err := manifest.LoadActiveManifests(configPath, agentsDir)
+	if err == nil {
+		for id, m := range manifests {
+			canonical := strings.ToLower(id)
+			aliasMap[canonical] = canonical
+			for _, alias := range m.AgentAliases {
+				cleanAlias := strings.ToLower(strings.TrimSpace(alias))
+				if cleanAlias != "" {
+					aliasMap[cleanAlias] = canonical
+				}
+			}
+		}
+	}
+
+	return &TaskRouter{aliases: aliasMap}
 }
 
 // Resolve analyzes the InboundTurnRequest and resolves the execution target.
 func (r *TaskRouter) Resolve(req gateway.InboundTurnRequest) RouteDecision {
 	target := strings.ToLower(strings.TrimSpace(req.TargetAgent))
 
+	aliasMap := r.aliases
+	if aliasMap == nil {
+		aliasMap = KnownAgentAliases
+	}
+
 	// If explicit agent is requested and recognized, use direct fast-path
-	if canonicalAgent, exists := KnownAgentAliases[target]; exists {
+	if canonicalAgent, exists := aliasMap[target]; exists {
 		return RouteDecision{
 			Type:        RouteFastPath,
 			TargetAgent: canonicalAgent,

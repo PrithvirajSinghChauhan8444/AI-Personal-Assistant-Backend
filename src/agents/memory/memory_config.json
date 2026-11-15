@@ -1,0 +1,49 @@
+{
+  "$schema": "https://assistant.local/schemas/agent_manifest_v1.json",
+  "agent_identifier": "memory",
+  "display_name": "Memory Agent",
+  "version": "1.0.0",
+  "agent_aliases": [
+    "memory",
+    "mem"
+  ],
+  "fallback_capability": "system",
+  "model": {
+    "default": "google:gemini-3.5-flash-lite",
+    "temperature": 0.0
+  },
+  "description": "Personal memory curation and recall: managing core user identity, preferences, rules, and searching/storing long-term episodic facts.",
+  "routing_rules": [
+    "Assign when the user asks to recall personal preferences, update user rules/profile, remember specific facts, or delete outdated memories."
+  ],
+  "tools": [
+    {
+      "name": "memory_update_profile",
+      "description": "Appends, updates, or deletes structured markdown sections or key-value items in the user's core profile.",
+      "risk": "LOW",
+      "execution_domain": "python_local",
+      "required_capability": "memory"
+    },
+    {
+      "name": "memory_store_fact",
+      "description": "Stores an atomic episodic memory fact or research note with vector embedding in ChromaDB.",
+      "risk": "LOW",
+      "execution_domain": "python_local",
+      "required_capability": "memory"
+    },
+    {
+      "name": "memory_search",
+      "description": "Semantically searches long-term episodic memory facts and user profile by natural language query.",
+      "risk": "LOW",
+      "execution_domain": "python_local",
+      "required_capability": "memory"
+    },
+    {
+      "name": "memory_delete",
+      "description": "Deletes a specific memory record from ChromaDB and SQLite by its unique record ID.",
+      "risk": "MEDIUM",
+      "execution_domain": "python_local",
+      "required_capability": "memory"
+    }
+  ]
+}

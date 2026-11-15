@@ -11,6 +11,7 @@ import (
 	"assistant/src/bootstrap"
 	"assistant/src/gateway"
 	"assistant/src/gateway/adapters/cli"
+	"assistant/src/orchestrator/manifest"
 	"assistant/src/orchestrator/planner"
 )
 
@@ -38,6 +39,9 @@ func main() {
 	}
 
 	ctx := context.Background()
+
+	// Ensure agents registry is synchronized and manager entry is present
+	_ = manifest.SyncControlRegistry(filepath.Join("config", "agents.json"), "src/agents")
 
 	// Plan-only mode: Run only the Layer 2 Manager Agent
 	if *planOnly {

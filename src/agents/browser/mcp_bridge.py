@@ -11,6 +11,7 @@ import os
 import shutil
 import socket
 import subprocess
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.agents.contracts import PipeReaderProtocol, ToolCallIntent, ToolCallResult
@@ -163,6 +164,14 @@ class PlaywrightMCPBridge(PipeReaderProtocol):
             user_data_dir or os.getenv("BROWSER_USER_DATA_DIR"),
         )
 
+        cfg_path = Path("src/agents/browser/browser_config.json")
+        browser_cfg = {}
+        if cfg_path.is_file():
+            try:
+                browser_cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
         self.viewport_size = viewport_size or os.getenv("BROWSER_VIEWPORT", "1280x720")
 
         if isolated is not None:
@@ -172,11 +181,14 @@ class PlaywrightMCPBridge(PipeReaderProtocol):
 
         if headless is not None:
             self.headless = headless
+        elif "headless" in browser_cfg and os.getenv("BROWSER_HEADLESS") is None:
+            self.headless = bool(browser_cfg["headless"])
         else:
             self.headless = os.getenv("BROWSER_HEADLESS", "false").lower() == "true"
 
         self.attach_cdp = os.getenv("BROWSER_ATTACH_CDP", "false").lower() == "true"
-        self.cdp_url = os.getenv("BROWSER_CDP_URL", "http://localhost:9222")
+        self.cdp_url = os.getenv("BROWSER_CDP_URL") or browser_cfg.get("cdp_url", "http://localhost:9222")
+        self.slow_mo_ms = browser_cfg.get("slow_mo_ms", 1000)
 
         self._proc: Optional[subprocess.Popen] = None
         self._req_id = 0

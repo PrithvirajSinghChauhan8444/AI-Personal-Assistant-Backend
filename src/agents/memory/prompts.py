@@ -6,6 +6,7 @@ from pathlib import Path
 def _load_prompt(filename: str, fallback: str) -> str:
     """Loads markdown prompt from config/prompts directory with fallback."""
     candidates = [
+        Path(__file__).resolve().parent / "prompt.md",
         Path("config/prompts") / filename,
         Path(__file__).resolve().parent.parent.parent.parent / "config" / "prompts" / filename,
     ]
@@ -28,7 +29,8 @@ Core Capabilities & Canonical Tools:
 1. `memory_search`: Queries long-term episodic facts, user preferences, and historical notes using local vector similarity.
 2. `memory_store_fact`: Commits an atomic factual statement, research note, or personal detail with vector embedding into long-term memory.
 3. `memory_update_profile`: Adds, modifies, or deletes a core user preference, personal rule, or identity attribute in core_profile.md.
-4. `memory_delete`: Removes obsolete, contradicted, or unwanted memory records by their unique record ID.
+4. `memory_update_account`: Adds, updates, or deletes an email address or service alias (e.g. 'email1', 'email2', etc.) in accounts.md.
+5. `memory_delete`: Removes obsolete, contradicted, or unwanted memory records by their unique record ID.
 
 Operational Directives:
 - Mandatory Tool Execution (Zero Simulated Actions): If the user shares ANY personal fact, location, preference, project detail, rule, or status (e.g. "I live in Seattle", "my live in seattle whiel office is in Bellevue", "remember that I prefer Python with async/await"):

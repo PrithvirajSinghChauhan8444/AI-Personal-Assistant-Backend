@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"assistant/src/orchestrator/manifest"
 )
 
 //go:embed manager_prompt.md
@@ -53,20 +55,41 @@ var DefaultWorkerCapabilities = []WorkerCapability{
 
 type rawAgentConfig struct {
 	Enabled      *bool    `json:"enabled"`
+	ConfigPath   string   `json:"config_path"`
+	ManifestPath string   `json:"manifest_path"`
 	Description  string   `json:"description"`
 	RoutingRules []string `json:"routing_rules"`
 }
 
 // DiscoverAndLoadActiveWorkers loads worker capabilities respecting config/agents.json toggles and auto-discovering agents directory.
 func DiscoverAndLoadActiveWorkers(configPath, agentsDir string) []WorkerCapability {
+	if configPath == "" {
+		configPath = filepath.Join("config", "agents.json")
+	}
+	if agentsDir == "" {
+		agentsDir = filepath.Join("src", "agents")
+	}
+
 	discovered := make(map[string]WorkerCapability)
 	for _, w := range DefaultWorkerCapabilities {
 		discovered[strings.ToLower(w.Name)] = w
 	}
 
-	if agentsDir == "" {
-		agentsDir = filepath.Join("src", "agents")
+	// 1. Auto-discover from active manifests
+	if manifests, err := manifest.LoadActiveManifests(configPath, agentsDir); err == nil {
+		for id, m := range manifests {
+			canonical := strings.ToLower(id)
+			capItem := WorkerCapability{
+				Name:         canonical,
+				Description:  m.Description,
+				RoutingRules: m.RoutingRules,
+				Fallback:     m.FallbackCapability,
+			}
+			discovered[canonical] = capItem
+		}
 	}
+
+	// 2. Discover any additional agent subdirectories without manifests
 	if entries, err := os.ReadDir(agentsDir); err == nil {
 		for _, e := range entries {
 			if e.IsDir() {
@@ -87,9 +110,7 @@ func DiscoverAndLoadActiveWorkers(configPath, agentsDir string) []WorkerCapabili
 		}
 	}
 
-	if configPath == "" {
-		configPath = filepath.Join("config", "agents.json")
-	}
+	// 3. Apply raw overrides or deletions from config/agents.json
 	if data, err := os.ReadFile(configPath); err == nil {
 		var cfgMap map[string]rawAgentConfig
 		if err := json.Unmarshal(data, &cfgMap); err == nil {
@@ -154,6 +175,9 @@ func BuildPlannerSystemPrompt(workers []WorkerCapability, promptFilePath string)
 		workerBullets.WriteString(fmt.Sprintf("- %s: %s\n", w.Name, w.Description))
 		for _, r := range w.RoutingRules {
 			workerBullets.WriteString(fmt.Sprintf("  • %s\n", r))
+		}
+		if w.Fallback != "" {
+			workerBullets.WriteString(fmt.Sprintf("  • Fallback agent: %s\n", w.Fallback))
 		}
 	}
 
