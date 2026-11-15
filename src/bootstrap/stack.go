@@ -160,10 +160,11 @@ func BuildStack(ctx context.Context, cfg Config) (*Stack, func(), error) {
 
 	// 5. Initialize Layer 2 Orchestrator
 	orch, err := orchestrator.New(orchestrator.Config{
-		Store:        store,
-		Gatekeeper:   gk,
-		Executor:     turnExecutor,
-		ArtifactsDir: cfg.ArtifactsDir,
+		Store:            store,
+		Gatekeeper:       gk,
+		Executor:         turnExecutor,
+		ArtifactsDir:     cfg.ArtifactsDir,
+		AgentsConfigPath: agentsConfigPath,
 	})
 	if err != nil {
 		if bridgeSup != nil {

@@ -244,6 +244,9 @@ class ManagerAgent:
 
         worker_bullets: List[str] = []
         for w in self.workers:
+            if w.get("name", "").lower() == "summarizer":
+                # Summarizer is a terminal gateway pipeline agent, never scheduled by manager
+                continue
             worker_bullets.append(f"- {w['name']}: {w['description']}")
             for r in w.get("routing_rules", []):
                 worker_bullets.append(f"  • {r}")

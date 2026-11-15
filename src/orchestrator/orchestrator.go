@@ -21,12 +21,13 @@ type Orchestrator = Host
 
 // Config holds configuration parameters for initializing the Layer 2 Host and Controller.
 type Config struct {
-	Store          session.Store
-	Gatekeeper     *safety.Gatekeeper
-	Manager        *planner.ManagerAgent
-	PromptFilePath string
-	Executor       TurnExecutor
-	ArtifactsDir   string
+	Store            session.Store
+	Gatekeeper       *safety.Gatekeeper
+	Manager          *planner.ManagerAgent
+	PromptFilePath   string
+	Executor         TurnExecutor
+	ArtifactsDir     string
+	AgentsConfigPath string
 }
 
 // New creates and wires the Host (Part 1) with the Controller (Part 2).
@@ -39,11 +40,12 @@ func New(cfg Config) (*Host, error) {
 
 	// Part 2: Real Orchestrator Controller (LLM, DAG, Safety, Workers)
 	ctrl := NewController(ControllerConfig{
-		Manager:        cfg.Manager,
-		Gatekeeper:     cfg.Gatekeeper,
-		Executor:       cfg.Executor,
-		Spillover:      spill,
-		PromptFilePath: cfg.PromptFilePath,
+		Manager:          cfg.Manager,
+		Gatekeeper:       cfg.Gatekeeper,
+		Executor:         cfg.Executor,
+		Spillover:        spill,
+		PromptFilePath:   cfg.PromptFilePath,
+		AgentsConfigPath: cfg.AgentsConfigPath,
 	})
 
 	// Part 1: Host (SQLite Session Store, Message History, Checkpoints)

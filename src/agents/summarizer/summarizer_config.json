@@ -1,0 +1,21 @@
+{
+  "$schema": "https://assistant.local/schemas/agent_manifest_v1.json",
+  "agent_identifier": "summarizer",
+  "display_name": "Summarizer Specialist Agent",
+  "version": "1.0.0",
+  "agent_aliases": [
+    "summarizer",
+    "summary",
+    "synthesizer"
+  ],
+  "fallback_capability": "system",
+  "model": {
+    "default": "google:gemini-3.5-flash-lite",
+    "temperature": 0.1
+  },
+  "description": "Specialist summarizer agent that synthesizes execution results, subtask outputs, and complex data into clean, well-structured, human-readable final responses.",
+  "routing_rules": [
+    "Do NOT select this worker during DAG planning. This worker executes automatically before the gateway to synthesize and structure the final response."
+  ],
+  "tools": []
+}

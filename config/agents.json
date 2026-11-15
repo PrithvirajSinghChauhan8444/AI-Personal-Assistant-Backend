@@ -28,6 +28,11 @@
     "enabled": true,
     "model_override": null
   },
+  "summarizer": {
+    "config_path": "src/agents/summarizer/summarizer_config.json",
+    "enabled": true,
+    "model_override": null
+  },
   "system": {
     "config_path": "src/agents/system/system_config.json",
     "enabled": true,

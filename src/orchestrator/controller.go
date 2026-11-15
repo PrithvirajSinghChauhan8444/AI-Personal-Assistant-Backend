@@ -36,13 +36,14 @@ type TurnContext struct {
 
 // Controller is the real orchestrator: manages the Manager Agent (LLM), Scheduler (DAG), Gatekeeper, and Workers.
 type Controller struct {
-	manager       *planner.ManagerAgent
-	gatekeeper    *safety.Gatekeeper
-	executor      TurnExecutor
-	spillover     *ArtifactSpillover
-	hitlRequester HITLRequester
-	activeDAGs    sync.Map // sessionID -> *activeDAGContext
-	interceptors  sync.Map // id -> TaskInterceptor
+	manager          *planner.ManagerAgent
+	gatekeeper       *safety.Gatekeeper
+	executor         TurnExecutor
+	spillover        *ArtifactSpillover
+	hitlRequester    HITLRequester
+	activeDAGs       sync.Map // sessionID -> *activeDAGContext
+	interceptors     sync.Map // id -> TaskInterceptor
+	agentsConfigPath string
 }
 
 type inFlightTaskInfo struct {
@@ -61,12 +62,13 @@ type activeDAGContext struct {
 
 // ControllerConfig configures the Controller.
 type ControllerConfig struct {
-	Manager        *planner.ManagerAgent
-	Gatekeeper     *safety.Gatekeeper
-	Executor       TurnExecutor
-	Spillover      *ArtifactSpillover
-	HITLRequester  HITLRequester
-	PromptFilePath string
+	Manager          *planner.ManagerAgent
+	Gatekeeper       *safety.Gatekeeper
+	Executor         TurnExecutor
+	Spillover        *ArtifactSpillover
+	HITLRequester    HITLRequester
+	PromptFilePath   string
+	AgentsConfigPath string
 }
 
 // NewController initializes the real orchestrator controller.
@@ -91,12 +93,18 @@ func NewController(cfg ControllerConfig) *Controller {
 		spill = NewArtifactSpillover("workspace/artifacts", DefaultSpilloverThresholdBytes)
 	}
 
+	agentsCfgPath := cfg.AgentsConfigPath
+	if agentsCfgPath == "" {
+		agentsCfgPath = "config/agents.json"
+	}
+
 	return &Controller{
-		manager:       mgr,
-		gatekeeper:    gk,
-		executor:      exec,
-		spillover:     spill,
-		hitlRequester: cfg.HITLRequester,
+		manager:          mgr,
+		gatekeeper:       gk,
+		executor:         exec,
+		spillover:        spill,
+		hitlRequester:    cfg.HITLRequester,
+		agentsConfigPath: agentsCfgPath,
 	}
 }
 
@@ -237,6 +245,14 @@ func (c *Controller) ResumeDAG(
 		StatusMsg: "Resumed turn completed successfully.",
 	}
 
+	finalResponse := accumulator.String()
+	if c.isSummarizerEnabled() && sched.IsComplete() && turn.TargetAgent != "summarizer" {
+		summarized, err := c.runSummarizer(ctx, turn, sched, accumulator.String(), eventCh)
+		if err == nil && strings.TrimSpace(summarized) != "" {
+			finalResponse = summarized
+		}
+	}
+
 	eventCh <- gateway.OutboundEvent{
 		SessionID: turn.SessionID,
 		TurnID:    turn.TurnID,
@@ -247,11 +263,11 @@ func (c *Controller) ResumeDAG(
 		Metrics: &gateway.TurnMetrics{
 			ModelName:        "layer2-orchestrator",
 			PromptTokens:     int32(len(turn.Prompt) / 4),
-			CompletionTokens: int32(len(accumulator.String()) / 4),
+			CompletionTokens: int32(len(finalResponse) / 4),
 		},
 	}
 
-	return accumulator.String(), nil
+	return finalResponse, nil
 }
 
 // Orchestrate executes the cognitive planning and DAG execution lifecycle.
@@ -397,6 +413,14 @@ func (c *Controller) Orchestrate(
 	accumulator := &stringAccumulator{}
 	c.executeScheduledDAG(ctx, sched, turn, accumulator, eventCh)
 
+	finalResponse := accumulator.String()
+	if c.isSummarizerEnabled() && sched.IsComplete() && turn.TargetAgent != "summarizer" {
+		summarized, err := c.runSummarizer(ctx, turn, sched, accumulator.String(), eventCh)
+		if err == nil && strings.TrimSpace(summarized) != "" {
+			finalResponse = summarized
+		}
+	}
+
 	// 4. Emit final turn completion event with telemetry
 	duration := time.Since(startTime).Milliseconds()
 
@@ -421,12 +445,12 @@ func (c *Controller) Orchestrate(
 		Metrics: &gateway.TurnMetrics{
 			ModelName:        "layer2-orchestrator",
 			PromptTokens:     int32(len(turn.Prompt) / 4),
-			CompletionTokens: int32(len(accumulator.String()) / 4),
+			CompletionTokens: int32(len(finalResponse) / 4),
 			TotalDurationMs:  duration,
 		},
 	}
 
-	return accumulator.String(), nil
+	return finalResponse, nil
 }
 
 func (c *Controller) planTurn(ctx context.Context, turn TurnContext) (*planner.TaskPlan, error) {
@@ -909,4 +933,127 @@ func (c *Controller) finalizeSubTaskOutput(
 		StatusMsg: fmt.Sprintf("Subtask %s completed successfully.", t.ID),
 	}
 	return ""
+}
+
+// IsSummarizerEnabled verifies whether the summarizer agent is active in configuration.
+func (c *Controller) IsSummarizerEnabled() bool {
+	cfgPath := c.agentsConfigPath
+	if cfgPath == "" {
+		cfgPath = "config/agents.json"
+	}
+	manifests, err := manifest.LoadActiveManifests(cfgPath, "")
+	if err != nil {
+		return false
+	}
+	_, enabled := manifests["summarizer"]
+	return enabled
+}
+
+func (c *Controller) isSummarizerEnabled() bool {
+	return c.IsSummarizerEnabled()
+}
+
+// BuildSummarizerPrompt constructs a concise synthesis prompt from executed subtask outputs.
+func (c *Controller) BuildSummarizerPrompt(
+	userGoal string,
+	sched *scheduler.TaskScheduler,
+	rawAccumulated string,
+) string {
+	var sb strings.Builder
+	sb.WriteString("User Primary Goal:\n")
+	sb.WriteString(userGoal)
+	sb.WriteString("\n\nExecution Results:\n")
+
+	subtasks := sched.GetSubtasks()
+	if len(subtasks) > 0 {
+		for _, st := range subtasks {
+			sb.WriteString(fmt.Sprintf("- Subtask %s (@%s): %s\n", st.ID, st.GetWorker(), st.Description))
+			sb.WriteString(fmt.Sprintf("  Status: %s\n", st.Status))
+			if st.Output != "" {
+				sb.WriteString(fmt.Sprintf("  Output: %s\n", st.Output))
+			}
+			if st.Error != "" {
+				sb.WriteString(fmt.Sprintf("  Error: %s\n", st.Error))
+			}
+		}
+	} else if strings.TrimSpace(rawAccumulated) != "" {
+		sb.WriteString(rawAccumulated)
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString("Tasks executed successfully with no textual output.\n")
+	}
+
+	sb.WriteString("\nDirectives:\n")
+	sb.WriteString("Synthesize the results above into a well-structured, clear, and human-readable final response. ")
+	sb.WriteString("Directly answer the user's primary goal using clean markdown formatting (headings, bullet points, code blocks, or tables). ")
+	sb.WriteString("Do not include conversational preamble, filler, or robotic apologies.")
+
+	return sb.String()
+}
+
+// runSummarizer invokes the summarizer agent right before gateway delivery to produce structured output.
+func (c *Controller) runSummarizer(
+	ctx context.Context,
+	turn TurnContext,
+	sched *scheduler.TaskScheduler,
+	rawAccumulated string,
+	eventCh chan<- gateway.OutboundEvent,
+) (string, error) {
+	summaryPrompt := c.BuildSummarizerPrompt(turn.Prompt, sched, rawAccumulated)
+	summaryTurnID := fmt.Sprintf("%s_summarizer", turn.TurnID)
+
+	eventCh <- gateway.OutboundEvent{
+		SessionID: turn.SessionID,
+		TurnID:    summaryTurnID,
+		TraceID:   turn.TraceID,
+		Type:      gateway.EventStatusUpdate,
+		AgentName: "summarizer",
+		Timestamp: time.Now().UTC(),
+		StatusMsg: "Synthesizing and formatting final output...",
+	}
+
+	summaryInput := TurnExecutionInput{
+		SessionID: turn.SessionID,
+		TurnID:    summaryTurnID,
+		TraceID:   turn.TraceID,
+		Decision: router.RouteDecision{
+			Type:        router.RouteFastPath,
+			TargetAgent: "summarizer",
+			Prompt:      summaryPrompt,
+		},
+		Prompt:      summaryPrompt,
+		History:     turn.History,
+		Trigger:     turn.Trigger,
+		AllowedCaps: turn.AllowedCapabilities,
+	}
+
+	summaryAccumulator := &stringAccumulator{}
+	interceptorCh := make(chan gateway.OutboundEvent, 16)
+	var forwardWg sync.WaitGroup
+	forwardWg.Add(1)
+
+	go func() {
+		defer forwardWg.Done()
+		for ev := range interceptorCh {
+			if ev.TurnID == "" {
+				ev.TurnID = summaryTurnID
+			}
+			if ev.AgentName == "" {
+				ev.AgentName = "summarizer"
+			}
+			if ev.Type == gateway.EventTokenChunk && ev.TextDelta != "" {
+				summaryAccumulator.WriteString(ev.TextDelta)
+			}
+			eventCh <- ev
+		}
+	}()
+
+	err := c.executor.Execute(ctx, summaryInput, interceptorCh)
+	close(interceptorCh)
+	forwardWg.Wait()
+
+	if err != nil {
+		return "", err
+	}
+	return summaryAccumulator.String(), nil
 }

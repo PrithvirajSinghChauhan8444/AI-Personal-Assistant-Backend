@@ -80,6 +80,14 @@ func (g *Gatekeeper) LoadPoliciesFromFile(path string) error {
 // RegisterManifestPolicies registers tool policies and risk levels declared in agent manifests.
 func (g *Gatekeeper) RegisterManifestPolicies(manifests []*manifest.AgentManifest) {
 	for _, m := range manifests {
+		if m.AgentIdentifier != "" {
+			g.RegisterPolicy(ToolPolicy{
+				ToolName:            strings.ToLower(m.AgentIdentifier),
+				Risk:                RiskLow,
+				RequiresInteractive: false,
+				RequiredCapability:  strings.ToLower(m.AgentIdentifier),
+			})
+		}
 		for _, tool := range m.Tools {
 			risk := RiskLevel(strings.ToUpper(tool.Risk))
 			if risk != RiskLow && risk != RiskMedium && risk != RiskHigh {
@@ -222,6 +230,7 @@ func (g *Gatekeeper) registerDefaults() {
 		{"productivity", "productivity"},
 		{"memory", "memory"},
 		{"manager", "manager"},
+		{"summarizer", "summarizer"},
 	}
 	for _, w := range workerAgents {
 		g.RegisterPolicy(ToolPolicy{

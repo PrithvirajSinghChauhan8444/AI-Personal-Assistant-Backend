@@ -175,6 +175,10 @@ func BuildPlannerSystemPrompt(workers []WorkerCapability, promptFilePath string)
 		workerBullets.WriteString("(NONE - All specialist worker agents are currently disabled in config/agents.json)\n")
 	} else {
 		for _, w := range workers {
+			if strings.ToLower(w.Name) == "summarizer" {
+				// Summarizer is a terminal gateway pipeline agent, never scheduled by manager
+				continue
+			}
 			workerBullets.WriteString(fmt.Sprintf("- %s: %s\n", w.Name, w.Description))
 			for _, r := range w.RoutingRules {
 				workerBullets.WriteString(fmt.Sprintf("  • %s\n", r))

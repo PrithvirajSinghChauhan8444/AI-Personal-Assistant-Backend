@@ -16,6 +16,7 @@ from src.agents.manifest import find_agent_config, load_manifest, sync_control_r
 from src.agents.memory.agent import MemoryAgent
 from src.agents.productivity.agent import ProductivityAgent
 from src.agents.research.agent import ResearchAgent
+from src.agents.summarizer.agent import SummarizerAgent
 from src.agents.system.agent import SystemAgent
 from src.models.base import BaseLLMClient
 from src.models.factory import ModelFactory
@@ -26,6 +27,7 @@ _STATIC_AGENT_CLASSES: Dict[str, type] = {
     "research": ResearchAgent,
     "productivity": ProductivityAgent,
     "memory": MemoryAgent,
+    "summarizer": SummarizerAgent,
 }
 
 

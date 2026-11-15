@@ -241,6 +241,10 @@ func (a *TelegramAdapter) OnEvent(ctx context.Context, ev gateway.OutboundEvent)
 		a.requestThrottledEdit(ctx)
 
 	case gateway.EventTokenChunk:
+		if strings.EqualFold(ev.AgentName, "summarizer") && a.activeWorker != "summarizer" && a.answerBuffer.Len() > 0 {
+			a.answerBuffer.Reset()
+			a.activeWorker = "summarizer"
+		}
 		a.answerBuffer.WriteString(ev.TextDelta)
 
 	case gateway.EventHITLRequest:
