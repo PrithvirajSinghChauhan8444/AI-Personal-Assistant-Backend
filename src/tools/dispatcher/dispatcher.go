@@ -7,6 +7,7 @@ import (
 	"assistant/src/tools/tools/browser"
 	"assistant/src/tools/tools/fs"
 	"assistant/src/tools/tools/git"
+	"assistant/src/tools/tools/hyprland"
 	"assistant/src/tools/tools/net"
 	"assistant/src/tools/tools/sys"
 	"assistant/src/tools/tools/workspace"
@@ -73,6 +74,7 @@ func RegisterAllTools(registry *tools.ToolRegistry, configDir string) error {
 	}
 
 	allTools = append(allTools, browser.GetAllBrowserTools(nil)...)
+	allTools = append(allTools, hyprland.GetAllHyprlandTools()...)
 
 	for _, t := range allTools {
 		if err := registry.Register(t); err != nil {

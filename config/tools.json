@@ -26,5 +26,17 @@
   "gmail_list": true,
   "gmail_read": true,
   "gmail_send_draft": true,
-  "calendar_list": true
+  "calendar_list": true,
+  "hypr_get_active_window": true,
+  "hypr_get_workspaces": true,
+  "hypr_get_clients": true,
+  "hypr_get_monitors": true,
+  "hypr_dispatch": true,
+  "hypr_switch_workspace": true,
+  "hypr_move_window": true,
+  "hypr_focus_window": true,
+  "hypr_window_action": true,
+  "hypr_close_window": true,
+  "hypr_notify": true,
+  "hypr_keyword": true
 }

@@ -7,16 +7,19 @@
     "system",
     "sys",
     "sh",
-    "bash"
+    "bash",
+    "hyprland",
+    "hypr"
   ],
   "fallback_capability": "research",
   "model": {
     "default": "google:gemini-3.5-flash-lite",
     "temperature": 0.0
   },
-  "description": "Local Linux OS operations: file reading/writing/deletion, shell execution, process monitoring, and git version control.",
+  "description": "Local Linux OS operations: file reading/writing/deletion, shell execution, process monitoring, git version control, and Hyprland window manager automation.",
   "routing_rules": [
-    "Assign when inspecting local files, directory trees, terminal scripts, or git repositories."
+    "Assign when inspecting local files, directory trees, terminal scripts, or git repositories.",
+    "Assign when managing desktop windows, workspaces, monitors, or notifications in Hyprland."
   ],
   "tools": [
     {
@@ -186,6 +189,90 @@
       "risk": "MEDIUM",
       "execution_domain": "go_native",
       "required_capability": "git"
+    },
+    {
+      "name": "hypr_get_active_window",
+      "description": "Gets the currently active/focused window in Hyprland with its title, class, address, workspace, pid, floating status, position, and size in JSON.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "hyprland"
+    },
+    {
+      "name": "hypr_get_workspaces",
+      "description": "Lists all active workspaces with their IDs, names, assigned monitors, window counts, and properties in JSON.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "hyprland"
+    },
+    {
+      "name": "hypr_get_clients",
+      "description": "Lists all open client windows across all workspaces in Hyprland with optional filtering by workspace, window class, or title.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "hyprland"
+    },
+    {
+      "name": "hypr_get_monitors",
+      "description": "Lists all connected monitors/displays, their resolutions, refresh rates, active workspaces, and focus states in JSON.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "hyprland"
+    },
+    {
+      "name": "hypr_dispatch",
+      "description": "Executes a keybind dispatcher or command through hyprctl dispatch with arguments (supports classic dispatchers and Lua expressions).",
+      "risk": "MEDIUM",
+      "execution_domain": "go_native",
+      "required_capability": "hyprland"
+    },
+    {
+      "name": "hypr_switch_workspace",
+      "description": "Switches the active workspace on the current monitor to a target workspace (by ID, name, or relative offset like '+1', '-1', 'special:scratchpad').",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "hyprland"
+    },
+    {
+      "name": "hypr_move_window",
+      "description": "Moves a window to a target workspace or in a direction (l/r/u/d), with optional silent mode.",
+      "risk": "MEDIUM",
+      "execution_domain": "go_native",
+      "required_capability": "hyprland"
+    },
+    {
+      "name": "hypr_focus_window",
+      "description": "Focuses a specific window by class, title regex, or address.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "hyprland"
+    },
+    {
+      "name": "hypr_window_action",
+      "description": "Performs layout and state actions on a window: toggle floating, fullscreen, pin, center, or move focus.",
+      "risk": "MEDIUM",
+      "execution_domain": "go_native",
+      "required_capability": "hyprland"
+    },
+    {
+      "name": "hypr_close_window",
+      "description": "Gracefully closes the active window or a specified window in Hyprland.",
+      "risk": "HIGH",
+      "execution_domain": "go_native",
+      "required_capability": "hyprland"
+    },
+    {
+      "name": "hypr_notify",
+      "description": "Sends a desktop notification directly through Hyprland's built-in notification system.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "hyprland"
+    },
+    {
+      "name": "hypr_keyword",
+      "description": "Sets a dynamic Hyprland config keyword (e.g. 'general:border_size 2') or forces a reload of the Hyprland configuration.",
+      "risk": "MEDIUM",
+      "execution_domain": "go_native",
+      "required_capability": "hyprland"
     }
   ]
 }

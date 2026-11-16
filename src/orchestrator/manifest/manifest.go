@@ -45,7 +45,56 @@ type AgentControlEntry struct {
 	Temperature  *float64               `json:"temperature,omitempty"`
 	Description  string                 `json:"description,omitempty"`
 	RoutingRules []string               `json:"routing_rules,omitempty"`
-	Overrides    map[string]interface{} `json:"model_override,omitempty"`
+	Overrides    map[string]interface{} `json:"-"`
+}
+
+// UnmarshalJSON implements custom deserialization for AgentControlEntry,
+// gracefully supporting model_override as string, dict, or null.
+func (e *AgentControlEntry) UnmarshalJSON(data []byte) error {
+	type rawEntry AgentControlEntry
+	var shadow struct {
+		rawEntry
+		RawOverride json.RawMessage `json:"model_override,omitempty"`
+	}
+
+	if err := json.Unmarshal(data, &shadow); err != nil {
+		return err
+	}
+
+	*e = AgentControlEntry(shadow.rawEntry)
+	e.Overrides = parseModelOverride(shadow.RawOverride)
+	return nil
+}
+
+func parseModelOverride(raw json.RawMessage) map[string]interface{} {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var strVal string
+	if err := json.Unmarshal(raw, &strVal); err == nil {
+		if strVal == "" {
+			return nil
+		}
+		return map[string]interface{}{"model": strVal}
+	}
+	var mapVal map[string]interface{}
+	if err := json.Unmarshal(raw, &mapVal); err == nil {
+		return mapVal
+	}
+	return nil
+}
+
+// MarshalJSON preserves custom serialization format for AgentControlEntry.
+func (e AgentControlEntry) MarshalJSON() ([]byte, error) {
+	type rawEntry AgentControlEntry
+	shadow := struct {
+		rawEntry
+		ModelOverride interface{} `json:"model_override,omitempty"`
+	}{
+		rawEntry:      rawEntry(e),
+		ModelOverride: e.Overrides,
+	}
+	return json.Marshal(shadow)
 }
 
 // capitalize returns the string with its first rune in uppercase.

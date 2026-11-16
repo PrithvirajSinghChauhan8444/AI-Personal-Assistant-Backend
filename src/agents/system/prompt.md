@@ -24,6 +24,19 @@ Your domain encompasses local Linux OS commands, file inspection/modification, p
    - `git_status`: Checks current branch, staged, and unstaged modifications.
    - `git_diff`: Inspects unified diff against HEAD or specified commits.
    - `git_commit`: Stages files and commits with clean conventional commit messages.
+5. **Hyprland Window Manager & Desktop Automation**:
+   - `hypr_get_active_window`: Inspects active window details (title, class, address, workspace, floating status, pid).
+   - `hypr_get_workspaces`: Lists all active workspaces, monitors, and window counts.
+   - `hypr_get_clients`: Lists open application windows with optional filtering by class, title, or workspace.
+   - `hypr_get_monitors`: Lists connected displays, geometry, and active workspaces.
+   - `hypr_switch_workspace`: Switches active workspace by ID, name, or relative offset (e.g. '1', '+1', 'special:scratchpad').
+   - `hypr_move_window`: Moves a window to another workspace or in a direction (l/r/u/d), with optional silent mode.
+   - `hypr_focus_window`: Switches focus to a target window by class, title regex, or address.
+   - `hypr_window_action`: Alters window state (toggle floating, fullscreen, pin, center, move focus).
+   - `hypr_close_window`: Gracefully closes active window or specified window (High-risk: confirm before closing working windows).
+   - `hypr_dispatch`: Direct dispatcher executor for arbitrary Hyprland dispatch commands and Lua expressions.
+   - `hypr_notify`: Sends on-screen desktop notifications via Hyprland's notification system.
+   - `hypr_keyword`: Dynamically sets compositor configuration keywords or reloads config.
 
 ## Operational Directives
 - When the user asks about files in the workspace, inspect `{{WORKSPACE_DIR}}`.

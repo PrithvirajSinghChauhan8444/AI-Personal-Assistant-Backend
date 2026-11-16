@@ -331,4 +331,168 @@ SYSTEM_TOOLS: List[ToolDefinition] = [
             "required": ["message"],
         },
     ),
+
+    # Hyprland Category
+    ToolDefinition(
+        name="hypr_get_active_window",
+        category="hyprland",
+        description="Gets the currently active/focused window in Hyprland with its title, class, address, workspace, pid, floating status, position, and size in JSON.",
+        risk="LOW",
+        prompt_usage_tip="Use to inspect what application or window the user is currently working on.",
+        parameters={"type": "object", "properties": {}},
+    ),
+    ToolDefinition(
+        name="hypr_get_workspaces",
+        category="hyprland",
+        description="Lists all active workspaces with their IDs, names, assigned monitors, window counts, and properties in JSON.",
+        risk="LOW",
+        prompt_usage_tip="Use to inspect workspace allocation, monitor assignments, and window distribution.",
+        parameters={"type": "object", "properties": {}},
+    ),
+    ToolDefinition(
+        name="hypr_get_clients",
+        category="hyprland",
+        description="Lists all open client windows across all workspaces in Hyprland with optional filtering by workspace, window class, or title.",
+        risk="LOW",
+        prompt_usage_tip="Use to find window addresses or locate where specific applications are open.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string", "description": "Optional filter by workspace name or ID (e.g. '1', '3', 'special:scratchpad')"},
+                "class_name": {"type": "string", "description": "Optional case-insensitive filter by window class (e.g. 'firefox', 'code', 'kitty')"},
+                "title": {"type": "string", "description": "Optional case-insensitive substring filter by window title"},
+            },
+        },
+    ),
+    ToolDefinition(
+        name="hypr_get_monitors",
+        category="hyprland",
+        description="Lists all connected monitors/displays, their resolutions, refresh rates, active workspaces, and focus states in JSON.",
+        risk="LOW",
+        prompt_usage_tip="Use to inspect multi-monitor setups and display geometry.",
+        parameters={"type": "object", "properties": {}},
+    ),
+    ToolDefinition(
+        name="hypr_dispatch",
+        category="hyprland",
+        description="Executes a keybind dispatcher or command through hyprctl dispatch with arguments (supports classic dispatchers and Lua expressions).",
+        risk="MEDIUM",
+        prompt_usage_tip="Use for custom or raw Hyprland window manager dispatching actions.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "dispatcher": {"type": "string", "description": "Dispatcher name (e.g. 'workspace', 'focuswindow', 'togglefloating', 'exec') or Lua expression ('hl.dsp.window.float()')"},
+                "args": {"type": "string", "description": "Arguments for the dispatcher (e.g. '1', 'firefox', 'l')"},
+            },
+            "required": ["dispatcher"],
+        },
+    ),
+    ToolDefinition(
+        name="hypr_switch_workspace",
+        category="hyprland",
+        description="Switches the active workspace on the current monitor to a target workspace (by ID, name, or relative offset like '+1', '-1', 'special:scratchpad').",
+        risk="LOW",
+        prompt_usage_tip="Use when asked to navigate or switch to another desktop workspace.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string", "description": "Target workspace (e.g. '1', '2', 'work', '+1', '-1', 'special:scratchpad')"},
+            },
+            "required": ["workspace"],
+        },
+    ),
+    ToolDefinition(
+        name="hypr_move_window",
+        category="hyprland",
+        description="Moves a window to a target workspace or in a direction (l/r/u/d), with optional silent mode.",
+        risk="MEDIUM",
+        prompt_usage_tip="Use to move an application to another workspace or reposition it in the layout.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string", "description": "Target workspace ID or name (e.g. '3', 'special:scratchpad')"},
+                "direction": {"type": "string", "description": "Direction to move window within layout: 'l', 'r', 'u', 'd'"},
+                "silent": {"type": "boolean", "description": "Whether to move silently without following focus (default: false)"},
+                "window": {"type": "string", "description": "Target window address or class regex (default: currently active window)"},
+            },
+        },
+    ),
+    ToolDefinition(
+        name="hypr_focus_window",
+        category="hyprland",
+        description="Focuses a specific window by class, title regex, or address.",
+        risk="LOW",
+        prompt_usage_tip="Use to switch focus to a specific opened application.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "window": {"type": "string", "description": "Window title, class regex, or address (e.g. 'firefox', 'code', 'address:0x...')"},
+            },
+            "required": ["window"],
+        },
+    ),
+    ToolDefinition(
+        name="hypr_window_action",
+        category="hyprland",
+        description="Performs layout and state actions on a window: toggle floating, fullscreen, pin, center, or move focus.",
+        risk="MEDIUM",
+        prompt_usage_tip="Use to float, fullscreen, pin, center, or navigate window focus.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "Action to perform: 'togglefloating', 'fullscreen', 'pin', 'center', 'cyclenext', 'movefocus_l', 'movefocus_r', 'movefocus_u', 'movefocus_d'",
+                    "enum": ["togglefloating", "fullscreen", "pin", "center", "cyclenext", "movefocus_l", "movefocus_r", "movefocus_u", "movefocus_d"],
+                },
+                "window": {"type": "string", "description": "Optional target window address or class regex (default: active window)"},
+            },
+            "required": ["action"],
+        },
+    ),
+    ToolDefinition(
+        name="hypr_close_window",
+        category="hyprland",
+        description="Gracefully closes the active window or a specified window in Hyprland.",
+        risk="HIGH",
+        prompt_usage_tip="Use with caution. Confirm with user before closing working windows or tabs.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "window": {"type": "string", "description": "Target window address or class regex (if omitted, closes the currently focused window)"},
+            },
+        },
+    ),
+    ToolDefinition(
+        name="hypr_notify",
+        category="hyprland",
+        description="Sends a desktop notification directly through Hyprland's built-in notification system.",
+        risk="LOW",
+        prompt_usage_tip="Use to alert the user of finished tasks or status updates via on-screen Hyprland notification.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "message": {"type": "string", "description": "Notification message to display"},
+                "icon": {"type": "integer", "description": "Icon type: 0=Warning, 1=Info, 2=Hint, 3=Error, 4=Confused, 5=Ok, -1=None (default: 1)", "default": 1},
+                "time_ms": {"type": "integer", "description": "Display duration in milliseconds (default: 3000)", "default": 3000},
+                "color": {"type": "string", "description": "Notification color format (default: '0')", "default": "0"},
+            },
+            "required": ["message"],
+        },
+    ),
+    ToolDefinition(
+        name="hypr_keyword",
+        category="hyprland",
+        description="Sets a dynamic Hyprland config keyword (e.g. 'general:border_size 2') or forces a reload of the Hyprland configuration.",
+        risk="MEDIUM",
+        prompt_usage_tip="Use to tweak compositor visual settings dynamically or reload compositor rules.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "keyword": {"type": "string", "description": "Keyword/setting name (e.g. 'general:border_size', 'animations:enabled', or 'reload')"},
+                "value": {"type": "string", "description": "Value to set (if keyword is 'reload' or value is omitted, triggers config reload)"},
+            },
+            "required": ["keyword"],
+        },
+    ),
 ]
