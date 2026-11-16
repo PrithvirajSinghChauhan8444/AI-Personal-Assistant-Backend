@@ -21,7 +21,9 @@ Memory/
 *.db-shm
 *.db-wal
 workspace/data/*.db*
-workspace/logs/*.log
+workspace/logs/
+workspace/artifacts/*
+!workspace/artifacts/.gitkeep
 .playwright-mcp/
 
 # Dynamically generated skills (already tracked core skills remain tracked)
@@ -34,7 +36,6 @@ not_comti
 # TTS models and temporary generated audio
 /models/
 *.wav
-docs/
 reference/
 
 # Go build artifacts
