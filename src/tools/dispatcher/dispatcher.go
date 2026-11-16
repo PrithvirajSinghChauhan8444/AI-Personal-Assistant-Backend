@@ -50,6 +50,8 @@ func RegisterAllTools(registry *tools.ToolRegistry, configDir string) error {
 		fs.NewFsDeleteTool(),
 		fs.NewFsListTool(),
 		fs.NewFsRipgrepTool(),
+		fs.NewDocParseTool(),
+		fs.NewAudioTranscribeTool(),
 
 		// Git Category
 		git.NewGitStatusTool(),
