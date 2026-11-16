@@ -98,6 +98,10 @@ func DefaultAutonomousCapabilities() []string {
 		"gmail_read",
 		"gmail_list",
 		"gmail_send_draft",
+		"classroom_list_courses",
+		"classroom_list_assignments",
+		"classroom_get_assignment",
+		"classroom_list_announcements",
 	}
 }
 

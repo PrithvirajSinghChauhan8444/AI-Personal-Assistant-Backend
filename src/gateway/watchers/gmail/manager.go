@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"assistant/src/tools/tools/workspace"
+	"assistant/src/tools/workspace"
 )
 
 // ManagerConfig holds runtime options for WatcherManager.

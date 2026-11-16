@@ -9,14 +9,32 @@ import (
 
 	"assistant/src/gateway"
 	"github.com/google/uuid"
+	"github.com/mattn/go-isatty"
 )
+
+// DaemonStatus represents the operational status of a background service.
+type DaemonStatus struct {
+	Name   string
+	State  string // "RUNNING", "WATCHING", "SYNCED", "STOPPED", "DISABLED", "IDLE"
+	Detail string
+	Active bool
+}
+
+// DaemonProvider exposes lifecycle operations and health inspection for background daemons.
+type DaemonProvider interface {
+	ListDaemons() []DaemonStatus
+	RestartDaemon(ctx context.Context, name string) error
+	StopDaemon(ctx context.Context, name string) error
+	StartDaemon(ctx context.Context, name string) error
+}
 
 // CLIAdapter manages interactive terminal sessions and one-off turn runs.
 type CLIAdapter struct {
-	gw        *gateway.Gateway
-	sessionID string
-	in        io.Reader
-	out       io.Writer
+	gw             *gateway.Gateway
+	sessionID      string
+	in             io.Reader
+	out            io.Writer
+	daemonProvider DaemonProvider
 }
 
 // NewCLIAdapter creates an adapter targeting the specified I/O streams.
@@ -38,10 +56,31 @@ func NewCLIAdapter(gw *gateway.Gateway, in io.Reader, out io.Writer, sessionID s
 	}
 }
 
-// StartInteractive launches the full terminal REPL session.
+// SetDaemonProvider attaches a daemon supervisor provider to the CLI adapter.
+func (a *CLIAdapter) SetDaemonProvider(dp DaemonProvider) {
+	a.daemonProvider = dp
+}
+
+// StartInteractive launches the full terminal TUI session, with fallback to line REPL.
 func (a *CLIAdapter) StartInteractive(ctx context.Context) error {
-	repl := NewTerminalREPL(a.gw, a.in, a.out, a.sessionID)
-	return repl.Run(ctx)
+	// Check if environment requests plain REPL or if running non-interactively
+	if os.Getenv("ASSISTANT_PLAIN") == "1" || os.Getenv("TERM") == "dumb" || !isTerminalDevice(a.in, a.out) {
+		repl := NewTerminalREPL(a.gw, a.in, a.out, a.sessionID)
+		return repl.Run(ctx)
+	}
+
+	tui := NewTUI(a.gw, a.sessionID)
+	tui.SetDaemonProvider(a.daemonProvider)
+	return tui.Run(ctx)
+}
+
+func isTerminalDevice(in io.Reader, out io.Writer) bool {
+	inFile, inOk := in.(*os.File)
+	outFile, outOk := out.(*os.File)
+	if !inOk || !outOk {
+		return false
+	}
+	return isatty.IsTerminal(inFile.Fd()) && isatty.IsTerminal(outFile.Fd())
 }
 
 // RunSingleTurn executes a single turn request to completion and streams output.

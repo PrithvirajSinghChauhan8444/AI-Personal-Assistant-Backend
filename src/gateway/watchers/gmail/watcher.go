@@ -151,7 +151,11 @@ func (w *AccountWatcher) runSupervisor(ctx context.Context) {
 					return // Permanent auth failure: terminate goroutine rather than spamming
 				}
 				fmt.Fprintf(os.Stderr, "⚠️ [Gmail Watcher %s] Session error: %v (retrying in %v)\n", w.account.Alias, err, backoff)
-				time.Sleep(backoff)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(backoff):
+				}
 				backoff = minDuration(backoff*2, w.config.BackoffMax)
 			} else {
 				backoff = w.config.BackoffMin

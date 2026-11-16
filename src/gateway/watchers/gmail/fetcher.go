@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"assistant/src/tools/tools/workspace"
+	"assistant/src/tools/workspace"
 )
 
 // GoogleMailFetcher implements MailFetcher via the Gmail REST API.

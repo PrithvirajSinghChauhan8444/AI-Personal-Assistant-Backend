@@ -11,13 +11,14 @@ import (
 	"assistant/src/bridge/supervisor"
 	"assistant/src/gateway"
 	"assistant/src/gateway/watchers/gmail"
+	"assistant/src/mcp"
 	"assistant/src/orchestrator"
 	"assistant/src/orchestrator/manifest"
 	"assistant/src/orchestrator/safety"
 	"assistant/src/orchestrator/session"
 	"assistant/src/tools"
 	"assistant/src/tools/dispatcher"
-	"assistant/src/tools/tools/workspace"
+	"assistant/src/tools/workspace"
 )
 
 // Config defines the unified runtime configuration for the assistant application.
@@ -49,6 +50,7 @@ type Stack struct {
 	Orchestrator *orchestrator.Orchestrator
 	Gateway      *gateway.Gateway
 	MailWatcher  *gmail.WatcherManager
+	MCPHub       *mcp.Hub
 }
 
 // DefaultConfig returns production default configurations.
@@ -117,6 +119,7 @@ func BuildStack(ctx context.Context, cfg Config) (*Stack, func(), error) {
 	var turnExecutor orchestrator.TurnExecutor
 	var bridgeSup *supervisor.Supervisor
 	var toolRegistry *tools.ToolRegistry
+	var mcpHub *mcp.Hub
 
 	if !cfg.Standalone {
 		spillThreshold := cfg.ArtifactSpilloverThreshold
@@ -129,6 +132,12 @@ func BuildStack(ctx context.Context, cfg Config) (*Stack, func(), error) {
 		if err := dispatcher.RegisterAllTools(toolRegistry, cfg.ConfigDir); err != nil {
 			// Non-fatal warning logged to stderr
 			_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to register some native tools: %v\n", err)
+		}
+
+		var mcpErr error
+		mcpHub, mcpErr = dispatcher.RegisterMCPTools(ctx, toolRegistry, cfg.ConfigDir)
+		if mcpErr != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to initialize MCP hub tools: %v\n", mcpErr)
 		}
 
 		// Load user-defined tool toggles from config/tools.json if present
@@ -209,19 +218,36 @@ func BuildStack(ctx context.Context, cfg Config) (*Stack, func(), error) {
 		Orchestrator: orch,
 		Gateway:      gw,
 		MailWatcher:  mailWatcher,
+		MCPHub:       mcpHub,
 	}
 
 	cleanup := func() {
-		if mailWatcher != nil {
-			_ = mailWatcher.Stop()
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			if mailWatcher != nil {
+				_ = mailWatcher.Stop()
+			}
+			if gw != nil {
+				gw.Close()
+			}
+			if bridgeSup != nil {
+				_ = bridgeSup.Stop()
+			}
+			if mcpHub != nil {
+				mcpHub.Close()
+			}
+			store.Close()
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			// Timeout safeguard: force-kill python bridge subprocess if still running
+			if bridgeSup != nil {
+				_ = bridgeSup.Stop()
+			}
 		}
-		if gw != nil {
-			gw.Close()
-		}
-		if bridgeSup != nil {
-			_ = bridgeSup.Stop()
-		}
-		store.Close()
 	}
 
 	return stack, cleanup, nil
