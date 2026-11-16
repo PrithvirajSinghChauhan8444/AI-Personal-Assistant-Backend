@@ -189,6 +189,10 @@ func (g *Gatekeeper) registerDefaults() {
 		{"gmail_list", "email"},
 		{"gmail_read", "email"},
 		{"calendar_list", "calendar"},
+		{"classroom_list_courses", "classroom"},
+		{"classroom_list_assignments", "classroom"},
+		{"classroom_get_assignment", "classroom"},
+		{"classroom_list_announcements", "classroom"},
 		{"memory_search", "memory"},
 	}
 	for _, t := range lowRiskTools {

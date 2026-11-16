@@ -224,6 +224,70 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         },
     ),
 
+    # Google Classroom Tools
+    ToolDefinition(
+        name="classroom_list_courses",
+        category="workspace",
+        description="Lists active Google Classroom courses that the user is enrolled in or teaching.",
+        risk="LOW",
+        prompt_usage_tip="Use to discover course IDs and names for coursework lookups.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "account": {"type": "string", "description": "Account alias (e.g. email1, email2) or email"},
+                "limit": {"type": "integer", "description": "Maximum courses to retrieve (default: 20)", "default": 20},
+            },
+        },
+    ),
+    ToolDefinition(
+        name="classroom_list_assignments",
+        category="workspace",
+        description="Lists coursework assignments, due dates, and point values for a specified Google Classroom course.",
+        risk="LOW",
+        prompt_usage_tip="Use to inspect upcoming homework, projects, and due dates for a course.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "account": {"type": "string", "description": "Account alias (e.g. email1, email2) or email"},
+                "course_id": {"type": "string", "description": "Google Classroom course ID"},
+                "limit": {"type": "integer", "description": "Maximum assignments to return (default: 20)", "default": 20},
+            },
+            "required": ["course_id"],
+        },
+    ),
+    ToolDefinition(
+        name="classroom_get_assignment",
+        category="workspace",
+        description="Retrieves complete details, description, due date, and points for a specific Google Classroom assignment.",
+        risk="LOW",
+        prompt_usage_tip="Use after obtaining assignment IDs from classroom_list_assignments to inspect complete instructions.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "account": {"type": "string", "description": "Account alias (e.g. email1, email2) or email"},
+                "course_id": {"type": "string", "description": "Google Classroom course ID"},
+                "assignment_id": {"type": "string", "description": "Coursework assignment ID"},
+            },
+            "required": ["course_id", "assignment_id"],
+        },
+    ),
+    ToolDefinition(
+        name="classroom_list_announcements",
+        category="workspace",
+        description="Lists teacher announcements, stream notices, and updates for a Google Classroom course.",
+        risk="LOW",
+        prompt_usage_tip="Use to check instructor announcements, notices, and stream updates.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "account": {"type": "string", "description": "Account alias (e.g. email1, email2) or email"},
+                "course_id": {"type": "string", "description": "Google Classroom course ID"},
+                "limit": {"type": "integer", "description": "Maximum announcements to retrieve (default: 20)", "default": 20},
+            },
+            "required": ["course_id"],
+        },
+    ),
+
     # System Time
     ToolDefinition(
         name="sys_get_time",
@@ -235,5 +299,84 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
             "type": "object",
             "properties": {},
         },
+    ),
+    # Visual Diagrams & Mindmaps (Excalidraw MCP)
+    ToolDefinition(
+        name="excalidraw__create_diagram",
+        category="mcp",
+        description="Generates an Excalidraw architecture diagram or mindmap with nodes and edges and saves it to workspace/artifacts/.",
+        risk="LOW",
+        prompt_usage_tip="Use when user asks to visually map, chart, or diagram a system, concept, or workflow.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Filename without extension (e.g. system_architecture)"},
+                "title": {"type": "string", "description": "Diagram title header"},
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "label": {"type": "string"},
+                            "type": {"type": "string", "enum": ["rectangle", "ellipse", "diamond"], "default": "rectangle"},
+                            "color": {"type": "string", "enum": ["blue", "green", "orange", "red", "purple", "yellow", "gray"], "default": "blue"},
+                        },
+                        "required": ["id", "label"],
+                    },
+                    "description": "List of node boxes/shapes to place on canvas",
+                },
+                "edges": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "from_id": {"type": "string"},
+                            "to_id": {"type": "string"},
+                            "label": {"type": "string"},
+                        },
+                        "required": ["from_id", "to_id"],
+                    },
+                    "description": "Directed arrows connecting from_id to to_id",
+                },
+            },
+            "required": ["name", "nodes"],
+        },
+    ),
+    ToolDefinition(
+        name="excalidraw__create_flowchart",
+        category="mcp",
+        description="Creates a top-down visual flowchart from sequential steps (start, step, decision, end).",
+        risk="LOW",
+        prompt_usage_tip="Use to generate visual flowcharts of algorithms, decision flows, or business processes.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Filename without extension (e.g. login_flow)"},
+                "title": {"type": "string", "description": "Flowchart title header"},
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "text": {"type": "string"},
+                            "type": {"type": "string", "enum": ["start", "step", "decision", "end"], "default": "step"},
+                        },
+                        "required": ["id", "text"],
+                    },
+                    "description": "Sequential steps of the process",
+                },
+            },
+            "required": ["name", "steps"],
+        },
+    ),
+    ToolDefinition(
+        name="excalidraw__list_diagrams",
+        category="mcp",
+        description="Lists all saved Excalidraw diagram files in workspace/artifacts/.",
+        risk="LOW",
+        prompt_usage_tip="Use to check existing diagram files or verify file creation.",
+        parameters={"type": "object", "properties": {}},
     ),
 ]

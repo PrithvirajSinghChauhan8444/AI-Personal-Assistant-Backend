@@ -775,6 +775,11 @@ func (c *Controller) executeSubTask(
 				subtaskOutput.WriteString(ev.TextDelta)
 				accumulator.WriteString(ev.TextDelta)
 			}
+			// Subtask execution completes a subtask, not the entire turn.
+			// Prevent inner bridge completion or error from prematurely finalizing the gateway turn.
+			if ev.Type == gateway.EventTurnComplete || ev.Type == gateway.EventTurnError {
+				continue
+			}
 			eventCh <- ev
 		}
 	}()
@@ -1043,6 +1048,10 @@ func (c *Controller) runSummarizer(
 			}
 			if ev.Type == gateway.EventTokenChunk && ev.TextDelta != "" {
 				summaryAccumulator.WriteString(ev.TextDelta)
+			}
+			// Top-level turn completion is emitted by Orchestrate with telemetry metrics.
+			if ev.Type == gateway.EventTurnComplete || ev.Type == gateway.EventTurnError {
+				continue
 			}
 			eventCh <- ev
 		}

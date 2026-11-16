@@ -39,9 +39,9 @@ var DefaultWorkerCapabilities = []WorkerCapability{
 	},
 	{
 		Name:        "productivity",
-		Description: "Personal communication and scheduling: searching and reading Gmail, drafting emails, and creating/updating Google Calendar events.",
+		Description: "Personal communication, scheduling, and coursework: searching and reading Gmail, creating/updating Google Calendar events, and inspecting Google Classroom courses, assignments, and announcements.",
 		RoutingRules: []string{
-			"Assign for all email (Gmail) inquiries, calendar events, meeting scheduling, and personal agendas.",
+			"Assign for all email (Gmail) inquiries, calendar events, meeting scheduling, personal agendas, and Google Classroom coursework or announcements.",
 		},
 	},
 	{

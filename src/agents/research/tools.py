@@ -98,4 +98,49 @@ RESEARCH_TOOLS: List[ToolDefinition] = [
             "required": ["fact"],
         },
     ),
+    ToolDefinition(
+        name="youtube__get_transcript",
+        category="mcp",
+        description="Fetches the full spoken transcript of a YouTube video given its URL or ID.",
+        risk="LOW",
+        prompt_usage_tip="Use when user provides a YouTube link or asks to summarize a video.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "url_or_id": {"type": "string", "description": "YouTube video URL (e.g. https://www.youtube.com/watch?v=...) or 11-char ID"},
+                "include_timestamps": {"type": "boolean", "description": "Whether to prepend timestamps (e.g. [02:15]) to transcript lines", "default": False},
+                "languages": {"type": "array", "items": {"type": "string"}, "description": "List of language codes to try in preference order (default: ['en'])", "default": ["en"]},
+            },
+            "required": ["url_or_id"],
+        },
+    ),
+    ToolDefinition(
+        name="youtube__get_video_info",
+        category="mcp",
+        description="Retrieves metadata for a YouTube video: title, channel, duration, and view count.",
+        risk="LOW",
+        prompt_usage_tip="Use to inspect video details or author channel without loading full transcript.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "url_or_id": {"type": "string", "description": "YouTube video URL or 11-char ID"},
+            },
+            "required": ["url_or_id"],
+        },
+    ),
+    ToolDefinition(
+        name="youtube__search_videos",
+        category="mcp",
+        description="Searches YouTube for videos matching a query keyword and returns titles, channels, and URLs.",
+        risk="LOW",
+        prompt_usage_tip="Use when finding relevant video references or tutorials on a topic.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search keyword or topic"},
+                "max_results": {"type": "integer", "description": "Maximum videos to return (1-10, default: 5)", "default": 5},
+            },
+            "required": ["query"],
+        },
+    ),
 ]

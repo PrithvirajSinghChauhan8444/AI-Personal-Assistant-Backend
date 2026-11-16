@@ -8,16 +8,21 @@
     "prod",
     "mail",
     "gmail",
-    "calendar"
+    "calendar",
+    "classroom",
+    "school",
+    "coursework",
+    "courses",
+    "assignments"
   ],
   "fallback_capability": "system",
   "model": {
     "default": "google:gemini-3.5-flash-lite",
     "temperature": 0.0
   },
-  "description": "Personal communication and scheduling: searching and reading Gmail, drafting emails, and creating/updating Google Calendar events.",
+  "description": "Personal communication, scheduling, and coursework: searching and reading Gmail, creating/updating Google Calendar events, and inspecting Google Classroom courses, assignments, and announcements.",
   "routing_rules": [
-    "Assign for all email (Gmail) inquiries, calendar events, meeting scheduling, and personal agendas."
+    "Assign for all email (Gmail) inquiries, calendar events, meeting scheduling, personal agendas, and Google Classroom coursework or announcements."
   ],
   "tools": [
     {
@@ -112,11 +117,60 @@
       "required_capability": "workspace"
     },
     {
+      "name": "classroom_list_courses",
+      "description": "Lists active Google Classroom courses enrolled in or taught.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "workspace"
+    },
+    {
+      "name": "classroom_list_assignments",
+      "description": "Lists coursework assignments and due dates for a Google Classroom course.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "workspace"
+    },
+    {
+      "name": "classroom_get_assignment",
+      "description": "Retrieves complete details and description for a specific Google Classroom assignment.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "workspace"
+    },
+    {
+      "name": "classroom_list_announcements",
+      "description": "Lists instructor announcements and updates for a Google Classroom course.",
+      "risk": "LOW",
+      "execution_domain": "go_native",
+      "required_capability": "workspace"
+    },
+    {
       "name": "sys_get_time",
       "description": "Gets exact local and UTC time, date, weekday, and timezone.",
       "risk": "LOW",
       "execution_domain": "go_native",
       "required_capability": "general"
+    },
+    {
+      "name": "excalidraw__create_diagram",
+      "description": "Generates an Excalidraw architecture diagram or mindmap with nodes and edges.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:excalidraw"
+    },
+    {
+      "name": "excalidraw__create_flowchart",
+      "description": "Creates a top-down visual flowchart from sequential steps.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:excalidraw"
+    },
+    {
+      "name": "excalidraw__list_diagrams",
+      "description": "Lists all saved Excalidraw diagram files in workspace/artifacts/.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:excalidraw"
     }
   ]
 }

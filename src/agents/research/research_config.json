@@ -59,6 +59,27 @@
       "risk": "LOW",
       "execution_domain": "python_local",
       "required_capability": "memory"
+    },
+    {
+      "name": "youtube__get_transcript",
+      "description": "Fetches the full spoken transcript of a YouTube video given its URL or ID.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:youtube"
+    },
+    {
+      "name": "youtube__get_video_info",
+      "description": "Retrieves metadata for a YouTube video: title, channel, duration, and view count.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:youtube"
+    },
+    {
+      "name": "youtube__search_videos",
+      "description": "Searches YouTube for videos matching a query keyword.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:youtube"
     }
   ]
 }

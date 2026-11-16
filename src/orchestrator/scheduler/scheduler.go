@@ -80,7 +80,7 @@ func (s *TaskScheduler) GetExecutableTasks() []*planner.SubTask {
 		return nil
 	}
 
-	return s.selectDispatchableTasks(readyTasks)
+	return s.selectDispatchableTasks(readyTasks, len(inProgressTasks))
 }
 
 func (s *TaskScheduler) areDependenciesMet(st *planner.SubTask, completed map[string]bool) bool {
@@ -92,18 +92,20 @@ func (s *TaskScheduler) areDependenciesMet(st *planner.SubTask, completed map[st
 	return true
 }
 
-func (s *TaskScheduler) selectDispatchableTasks(ready []*planner.SubTask) []*planner.SubTask {
+func (s *TaskScheduler) selectDispatchableTasks(ready []*planner.SubTask, inProgressCount int) []*planner.SubTask {
 	var toDispatch []*planner.SubTask
-	agentsSeen := make(map[string]bool)
+	maxSlots := s.maxParallel - inProgressCount
+	if !s.allowParallel {
+		maxSlots = 1 - inProgressCount
+	}
+	if maxSlots <= 0 {
+		return nil
+	}
 
 	for _, st := range ready {
-		worker := st.GetWorker()
-		if !agentsSeen[worker] {
-			agentsSeen[worker] = true
-			toDispatch = append(toDispatch, st)
-			if !s.allowParallel || len(toDispatch) >= s.maxParallel {
-				break
-			}
+		toDispatch = append(toDispatch, st)
+		if len(toDispatch) >= maxSlots {
+			break
 		}
 	}
 	return toDispatch

@@ -60,9 +60,9 @@ DEFAULT_WORKER_SPECS = [
     },
     {
         "name": "productivity",
-        "description": "Personal communication and scheduling: searching and reading Gmail, drafting emails, and creating/updating Google Calendar events.",
+        "description": "Personal communication, scheduling, and coursework: searching and reading Gmail, creating/updating Google Calendar events, and inspecting Google Classroom courses, assignments, and announcements.",
         "routing_rules": [
-            "Assign for all email (Gmail) inquiries, calendar events, meeting scheduling, and personal agendas."
+            "Assign for all email (Gmail) inquiries, calendar events, meeting scheduling, personal agendas, and Google Classroom coursework or announcements."
         ],
     },
     {
