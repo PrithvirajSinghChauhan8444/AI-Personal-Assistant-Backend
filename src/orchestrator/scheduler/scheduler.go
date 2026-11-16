@@ -3,6 +3,7 @@ package scheduler
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"assistant/src/orchestrator/planner"
@@ -48,6 +49,7 @@ func (s *TaskScheduler) GetExecutableTasks() []*planner.SubTask {
 	defer s.mu.Unlock()
 
 	completedIDs := make(map[string]bool)
+	finishedIDs := make(map[string]bool)
 	var pendingTasks []*planner.SubTask
 	var inProgressTasks []*planner.SubTask
 
@@ -56,6 +58,9 @@ func (s *TaskScheduler) GetExecutableTasks() []*planner.SubTask {
 		switch st.Status {
 		case planner.StatusCompleted:
 			completedIDs[st.ID] = true
+			finishedIDs[st.ID] = true
+		case planner.StatusFailed, planner.StatusAborted:
+			finishedIDs[st.ID] = true
 		case planner.StatusPending:
 			pendingTasks = append(pendingTasks, st)
 		case planner.StatusInProgress:
@@ -69,7 +74,7 @@ func (s *TaskScheduler) GetExecutableTasks() []*planner.SubTask {
 
 	var readyTasks []*planner.SubTask
 	for _, st := range pendingTasks {
-		if s.areDependenciesMet(st, completedIDs) {
+		if s.areDependenciesMet(st, completedIDs, finishedIDs) {
 			readyTasks = append(readyTasks, st)
 		}
 	}
@@ -83,9 +88,13 @@ func (s *TaskScheduler) GetExecutableTasks() []*planner.SubTask {
 	return s.selectDispatchableTasks(readyTasks, len(inProgressTasks))
 }
 
-func (s *TaskScheduler) areDependenciesMet(st *planner.SubTask, completed map[string]bool) bool {
+func (s *TaskScheduler) areDependenciesMet(st *planner.SubTask, completed, finished map[string]bool) bool {
+	checkMap := completed
+	if strings.EqualFold(st.GetWorker(), "summarizer") {
+		checkMap = finished
+	}
 	for _, depID := range st.DependsOn {
-		if !completed[depID] {
+		if !checkMap[depID] {
 			return false
 		}
 	}

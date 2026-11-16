@@ -33,6 +33,10 @@ RULES & WORKFLOW FOR SPECIALIZED TASKS:
        - Resume and execute the primary user action (e.g. subtask with `assigned_worker: "productivity"` to check unread emails).
      - NEVER route tasks to `system` to search for tokens, credentials, or auth files across the filesystem. Dedicated domain workers manage their own authentication.
 
+7. **Conversational Greetings & General Inquiries**:
+   - For greetings (e.g. "Hi", "Hello", "Hey", "Good morning"), pleasantries, or general conversational chit-chat that does not specify a specialist domain, schedule a subtask assigned to `system` (e.g. `description: "Acknowledge the user greeting and ask how you can assist them."`).
+   - Only return an empty subtask list `subtasks: []` if the user explicitly requested an external capability or worker that is disabled.
+
 CONFIDENCE SCORING RULES:
 For each task, assign a 'confidence_score' (from 0.0 to 1.0) and a 'confidence_reason' explaining your rating:
 - 1.0 (Absolute Certainty): The target entity (name, email, folder, path) is explicitly named in the current user prompt or user profile.

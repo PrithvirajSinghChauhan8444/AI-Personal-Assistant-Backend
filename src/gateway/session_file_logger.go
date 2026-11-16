@@ -103,6 +103,9 @@ func (l *SessionFileLogger) OnEvent(ctx context.Context, ev OutboundEvent) {
 	case EventSubtaskComplete:
 		if ev.Subtask != nil {
 			fmt.Fprintf(f, "[%s] [SUBTASK_COMPLETE] Subtask: %s | Worker: %s | Duration: %dms | Artifact: %s\n", isoTime, ev.Subtask.SubtaskID, ev.Subtask.Worker, ev.Subtask.DurationMs, ev.Subtask.ArtifactPath)
+			if strings.TrimSpace(ev.Subtask.Output) != "" {
+				fmt.Fprintf(f, "[%s] [SUBTASK_OUTPUT] Subtask: %s | Worker: %s:\n%s\n", isoTime, ev.Subtask.SubtaskID, ev.Subtask.Worker, strings.TrimSpace(ev.Subtask.Output))
+			}
 		}
 
 	case EventSubtaskFailed:

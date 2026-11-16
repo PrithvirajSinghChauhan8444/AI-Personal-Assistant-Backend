@@ -192,6 +192,7 @@ func (c *Controller) ResumeDAG(
 	}
 
 	turn := *state.TurnContext
+	c.appendTerminalSummarizerIfEnabled(state.Plan, turn)
 	sched := scheduler.NewTaskScheduler(state.Plan, scheduler.Config{
 		AllowParallel:     true,
 		MaxParallel:       4,
@@ -246,10 +247,11 @@ func (c *Controller) ResumeDAG(
 	}
 
 	finalResponse := accumulator.String()
-	if c.isSummarizerEnabled() && sched.IsComplete() && turn.TargetAgent != "summarizer" {
-		summarized, err := c.runSummarizer(ctx, turn, sched, accumulator.String(), eventCh)
-		if err == nil && strings.TrimSpace(summarized) != "" {
-			finalResponse = summarized
+	for i := len(state.Plan.SubTasks) - 1; i >= 0; i-- {
+		st := state.Plan.SubTasks[i]
+		if strings.EqualFold(st.GetWorker(), "summarizer") && st.Status == planner.StatusCompleted && strings.TrimSpace(st.Output) != "" {
+			finalResponse = st.Output
+			break
 		}
 	}
 
@@ -330,6 +332,8 @@ func (c *Controller) Orchestrate(
 		}
 		return "", fmt.Errorf("manager planning failed: %w", err)
 	}
+
+	c.appendTerminalSummarizerIfEnabled(plan, turn)
 
 	// Emit structured PlanCreated event
 	subtaskItems := make([]gateway.SubtaskItemInfo, len(plan.SubTasks))
@@ -414,10 +418,11 @@ func (c *Controller) Orchestrate(
 	c.executeScheduledDAG(ctx, sched, turn, accumulator, eventCh)
 
 	finalResponse := accumulator.String()
-	if c.isSummarizerEnabled() && sched.IsComplete() && turn.TargetAgent != "summarizer" {
-		summarized, err := c.runSummarizer(ctx, turn, sched, accumulator.String(), eventCh)
-		if err == nil && strings.TrimSpace(summarized) != "" {
-			finalResponse = summarized
+	for i := len(plan.SubTasks) - 1; i >= 0; i-- {
+		st := plan.SubTasks[i]
+		if strings.EqualFold(st.GetWorker(), "summarizer") && st.Status == planner.StatusCompleted && strings.TrimSpace(st.Output) != "" {
+			finalResponse = st.Output
+			break
 		}
 	}
 
@@ -724,7 +729,7 @@ func (c *Controller) executeSubTask(
 		}
 	}
 
-	taskPrompt := c.buildTaskPrompt(t, sched)
+	taskPrompt := c.buildTaskPrompt(t, sched, turn.Prompt)
 	taskDecision := router.RouteDecision{
 		Type:        router.RouteFastPath,
 		TargetAgent: targetWorker,
@@ -852,7 +857,11 @@ func (c *Controller) executeSubTask(
 	})
 }
 
-func (c *Controller) buildTaskPrompt(t *planner.SubTask, sched *scheduler.TaskScheduler) string {
+func (c *Controller) buildTaskPrompt(t *planner.SubTask, sched *scheduler.TaskScheduler, userGoal string) string {
+	if strings.EqualFold(t.GetWorker(), "summarizer") {
+		return c.BuildSummarizerPrompt(userGoal, sched, "")
+	}
+
 	prompt := t.Description
 	depOutputs := sched.GetDependencyOutputs(t.ID)
 	if len(depOutputs) > 0 {
@@ -958,6 +967,39 @@ func (c *Controller) isSummarizerEnabled() bool {
 	return c.IsSummarizerEnabled()
 }
 
+// appendTerminalSummarizerIfEnabled attaches a terminal summarizer subtask to the DAG
+// to synthesize and summarize overall results of all preceding subtasks upon task completion.
+func (c *Controller) appendTerminalSummarizerIfEnabled(plan *planner.TaskPlan, turn TurnContext) {
+	if !c.isSummarizerEnabled() || strings.EqualFold(turn.TargetAgent, "summarizer") {
+		return
+	}
+	if plan == nil || len(plan.SubTasks) == 0 {
+		return
+	}
+	// Check if the plan already ends with a summarizer subtask
+	lastTask := plan.SubTasks[len(plan.SubTasks)-1]
+	if strings.EqualFold(lastTask.GetWorker(), "summarizer") {
+		return
+	}
+
+	var depIDs []string
+	for _, st := range plan.SubTasks {
+		depIDs = append(depIDs, st.ID)
+	}
+
+	summaryTaskID := fmt.Sprintf("task_%d", len(plan.SubTasks)+1)
+	plan.SubTasks = append(plan.SubTasks, planner.SubTask{
+		ID:               summaryTaskID,
+		Description:      fmt.Sprintf("Synthesize and summarize the results of all previous subtasks for the user's primary goal: %s", plan.PrimaryGoal),
+		AssignedWorker:   "summarizer",
+		AssignedAgent:    "summarizer",
+		DependsOn:        depIDs,
+		Status:           planner.StatusPending,
+		ConfidenceScore:  1.0,
+		ConfidenceReason: "Terminal DAG synthesis subtask",
+	})
+}
+
 // BuildSummarizerPrompt constructs a concise synthesis prompt from executed subtask outputs.
 func (c *Controller) BuildSummarizerPrompt(
 	userGoal string,
@@ -972,6 +1014,9 @@ func (c *Controller) BuildSummarizerPrompt(
 	subtasks := sched.GetSubtasks()
 	if len(subtasks) > 0 {
 		for _, st := range subtasks {
+			if strings.EqualFold(st.GetWorker(), "summarizer") {
+				continue
+			}
 			sb.WriteString(fmt.Sprintf("- Subtask %s (@%s): %s\n", st.ID, st.GetWorker(), st.Description))
 			sb.WriteString(fmt.Sprintf("  Status: %s\n", st.Status))
 			if st.Output != "" {

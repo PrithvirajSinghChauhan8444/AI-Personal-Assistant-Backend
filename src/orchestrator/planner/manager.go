@@ -123,7 +123,24 @@ func (m *ManagerAgent) validateAndNormalizePlan(plan *TaskPlan, originalGoal str
 	}
 
 	if len(plan.SubTasks) == 0 {
-		return errors.New("no subtasks could be scheduled: required capabilities are disabled or missing from enabled workers in config/agents.json")
+		lowerGoal := strings.ToLower(strings.TrimSpace(originalGoal))
+		isGreeting := lowerGoal == "hi" || lowerGoal == "hello" || lowerGoal == "hey" || lowerGoal == "ho" || lowerGoal == "." || len(lowerGoal) <= 3 || strings.Contains(strings.ToLower(plan.PrimaryGoal), "greet")
+		if isGreeting && knownWorkers["system"] {
+			plan.SubTasks = []SubTask{
+				{
+					ID:               "task_1",
+					Description:      fmt.Sprintf("Respond to user message: %s", originalGoal),
+					AssignedWorker:   "system",
+					AssignedAgent:    "system",
+					Status:           StatusPending,
+					DependsOn:        []string{},
+					ConfidenceScore:  1.0,
+					ConfidenceReason: "Conversational greeting fallback",
+				},
+			}
+		} else {
+			return errors.New("no subtasks could be scheduled: required capabilities are disabled or missing from enabled workers in config/agents.json")
+		}
 	}
 
 	for i := range plan.SubTasks {

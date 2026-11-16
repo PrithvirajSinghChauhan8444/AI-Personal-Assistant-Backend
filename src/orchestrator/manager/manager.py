@@ -344,7 +344,20 @@ class ManagerAgent:
 
         valid_workers = {w["name"].lower() for w in self.workers}
         if not raw_tasks:
-            raise ValueError("No subtasks could be scheduled: required capabilities are disabled or missing from enabled workers in config/agents.json.")
+            lower_goal = original_goal.lower().strip()
+            greetings = {"hi", "hello", "hey", "hola", "howdy", "sup", "yo", "good morning", "good evening", "good afternoon", "ho", ".", "test"}
+            is_greeting = lower_goal in greetings or len(lower_goal) <= 3 or "greet" in primary_goal.lower()
+            if is_greeting and "system" in valid_workers:
+                raw_tasks = [{
+                    "id": "task_1",
+                    "description": f"Respond to user message: {original_goal}",
+                    "assigned_worker": "system",
+                    "depends_on": [],
+                    "confidence_score": 1.0,
+                    "confidence_reason": "Conversational greeting fallback",
+                }]
+            else:
+                raise ValueError("No subtasks could be scheduled: required capabilities are disabled or missing from enabled workers in config/agents.json.")
 
         normalized_tasks: List[Dict[str, Any]] = []
 
