@@ -33,9 +33,10 @@ not_comti
 # CodeLens Graph local index
 .codelens/
 
-# TTS models and temporary generated audio
+# TTS models, temporary generated audio, and browser screenshot captures
 /models/
 *.wav
+*.png
 reference/
 
 # Go build artifacts

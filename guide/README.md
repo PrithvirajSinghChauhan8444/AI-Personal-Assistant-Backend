@@ -14,4 +14,4 @@ This directory contains official integration guides, architecture contracts, and
 
 | Topic / Subfolder | Guide File | Description |
 | :--- | :--- | :--- |
-| **Client Adapters & Observability** | [guide/adapters/OBSERVER_ADAPTER_GUIDE.md](file:///home/prit/Project_Linux/AI-Personal-Assistant-Backend/guide/adapters/OBSERVER_ADAPTER_GUIDE.md) | Full guide on building client adapters (CLI, Web, Telegram, Discord, etc.), subscribing to the Observer API, querying live state snapshots, and handling human approvals without modifying core code. |
+| **Client Adapters & Observability** | [adapters/OBSERVER_ADAPTER_GUIDE.md](adapters/OBSERVER_ADAPTER_GUIDE.md) | Full guide on building client adapters (CLI, Web, Telegram, Discord, etc.), subscribing to the Observer API, querying live state snapshots, and handling human approvals without modifying core code. |
