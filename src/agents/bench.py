@@ -74,13 +74,13 @@ class LiveGoToolBridgeReader(PipeReaderProtocol):
         results: List[ToolCallResult] = []
         for intent in intents:
             if self.mock_tools:
-                results.append(ToolCallResult(call_id=intent.call_id, output=f"Simulated output for {intent.tool_name}"))
+                result = ToolCallResult(call_id=intent.call_id, output=f"Simulated output for {intent.tool_name}")
             elif intent.tool_name.startswith("browser_"):
                 result = await self._run_browser_tool(intent)
-                results.append(result)
             else:
                 result = await asyncio.to_thread(self._run_native_tool, intent)
-                results.append(result)
+            print(f"{Color.GREEN}<<< [{intent.tool_name} Result]: {result.output}{Color.RESET}")
+            results.append(result)
         return results
 
     async def _run_browser_tool(self, intent: ToolCallIntent) -> ToolCallResult:

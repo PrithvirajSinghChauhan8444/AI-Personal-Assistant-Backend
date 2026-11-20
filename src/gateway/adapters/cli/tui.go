@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"assistant/src/gateway"
 	tea "github.com/charmbracelet/bubbletea"
@@ -150,18 +151,33 @@ type TUIModel struct {
 	cleanItems []CleanEntry
 	rawLogs    []RawLogEntry
 
-	// Synchronized scrolling state for Panes 2 & 3
-	scrollOffset int // Lines scrolled up from bottom (0 = live auto-scroll)
-	maxScroll    int // Maximum lines that can be scrolled up
+	// Independent scrolling state per pane
+	scrollOffset       int // Active pane scroll offset (backward compatible with tests)
+	cleanScrollOffset  int // Lines scrolled up in Task Stream (0 = live auto-scroll)
+	rawScrollOffset    int // Lines scrolled up in Raw Telemetry (0 = live auto-scroll)
+	daemonScrollOffset int // Lines scrolled down in Daemons sidepane (0 = top)
+	maxScroll          int // Maximum lines that can be scrolled up for active pane
+	maxCleanScroll     int
+	maxRawScroll       int
+	maxDaemonScroll    int
 
-	// Input buffer
-	input       string
-	cursor      int
-	ghostText   string
-	suggestions []SuggestionItem
-	suggIndex   int
-	suggScroll  int
-	suggOpen    bool
+	// Pane 1 Interactive Navigation
+	daemonSelectedIdx int // Index of selected item in Pane 1 (daemons, agents, cmds)
+
+	// Command / Prompt History
+	history    []string
+	historyIdx int
+	draftInput string
+
+	// Input buffer (Rune-safe with visible cursor)
+	input             string
+	cursor            int // Rune offset (0 to len([]rune(input)))
+	ghostText         string
+	inputScrollOffset int // Viewport line scroll for multi-line inputs
+	suggestions       []SuggestionItem
+	suggIndex         int
+	suggScroll        int
+	suggOpen          bool
 
 	// Active turn tracking
 	executing   bool
@@ -182,7 +198,10 @@ func NewTUIModel(gw *gateway.Gateway, sessionID string, dp DaemonProvider, ctx c
 		activePane:     PaneClean, // Default focus to Center Clean Stream
 		showSidepane:   true,      // Left sidepane visible by default
 		maximized:      -1,
+		width:          80,
+		height:         24,
 		logFilter:      "ALL",
+		historyIdx:     -1,
 		cleanItems: []CleanEntry{
 			{
 				Type:    "system",
@@ -335,10 +354,10 @@ func (m *TUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
-			m.scrollUp(3)
+			m.handleMouseWheel(msg.X, msg.Y, 3, true)
 			return m, nil
 		case tea.MouseButtonWheelDown:
-			m.scrollDown(3)
+			m.handleMouseWheel(msg.X, msg.Y, 3, false)
 			return m, nil
 		}
 
@@ -349,26 +368,212 @@ func (m *TUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *TUIModel) scrollUp(delta int) {
-	m.scrollOffset += delta
-	if m.maxScroll > 0 && m.scrollOffset > m.maxScroll {
-		m.scrollOffset = m.maxScroll
+// handleMouseWheel targets scrolling to the specific pane or input box under the cursor.
+func (m *TUIModel) handleMouseWheel(x, y, delta int, isUp bool) {
+	// If mouse is over bottom dock (input box area)
+	if y > 0 && m.height > 6 && y >= m.height-6 {
+		if isUp {
+			if m.inputScrollOffset > 0 {
+				m.inputScrollOffset--
+			}
+		} else {
+			m.inputScrollOffset++
+		}
+		return
+	}
+
+	targetPane := m.activePane
+	if x > 0 || y > 0 {
+		leftWidth := 28
+		if !m.showSidepane {
+			leftWidth = 0
+		} else if leftWidth > m.width/2 {
+			leftWidth = m.width / 3
+		}
+		rightWidth := m.width - leftWidth
+		centerWidth := (rightWidth * 53) / 100
+
+		if m.showSidepane && x < leftWidth {
+			targetPane = PaneDaemons
+		} else if x < leftWidth+centerWidth {
+			targetPane = PaneClean
+		} else {
+			targetPane = PaneRaw
+		}
+	}
+
+	if isUp {
+		m.scrollPaneUp(targetPane, delta)
+	} else {
+		m.scrollPaneDown(targetPane, delta)
 	}
 }
 
+func (m *TUIModel) scrollPaneUp(pane, delta int) {
+	switch pane {
+	case PaneDaemons:
+		if m.daemonScrollOffset > 0 {
+			m.daemonScrollOffset -= delta
+			if m.daemonScrollOffset < 0 {
+				m.daemonScrollOffset = 0
+			}
+		}
+	case PaneClean:
+		m.cleanScrollOffset += delta
+		if m.maxCleanScroll > 0 && m.cleanScrollOffset > m.maxCleanScroll {
+			m.cleanScrollOffset = m.maxCleanScroll
+		}
+		m.scrollOffset = m.cleanScrollOffset
+	case PaneRaw:
+		m.rawScrollOffset += delta
+		if m.maxRawScroll > 0 && m.rawScrollOffset > m.maxRawScroll {
+			m.rawScrollOffset = m.maxRawScroll
+		}
+		if m.activePane == PaneRaw {
+			m.scrollOffset = m.rawScrollOffset
+		}
+	}
+}
+
+func (m *TUIModel) scrollPaneDown(pane, delta int) {
+	switch pane {
+	case PaneDaemons:
+		m.daemonScrollOffset += delta
+		if m.maxDaemonScroll > 0 && m.daemonScrollOffset > m.maxDaemonScroll {
+			m.daemonScrollOffset = m.maxDaemonScroll
+		}
+	case PaneClean:
+		m.cleanScrollOffset -= delta
+		if m.cleanScrollOffset < 0 {
+			m.cleanScrollOffset = 0
+		}
+		m.scrollOffset = m.cleanScrollOffset
+	case PaneRaw:
+		m.rawScrollOffset -= delta
+		if m.rawScrollOffset < 0 {
+			m.rawScrollOffset = 0
+		}
+		if m.activePane == PaneRaw {
+			m.scrollOffset = m.rawScrollOffset
+		}
+	}
+}
+
+func (m *TUIModel) scrollActiveUp(delta int) {
+	m.scrollPaneUp(m.activePane, delta)
+}
+
+func (m *TUIModel) scrollActiveDown(delta int) {
+	m.scrollPaneDown(m.activePane, delta)
+}
+
+func (m *TUIModel) scrollUp(delta int) {
+	m.scrollActiveUp(delta)
+}
+
 func (m *TUIModel) scrollDown(delta int) {
-	m.scrollOffset -= delta
-	if m.scrollOffset < 0 {
+	m.scrollActiveDown(delta)
+}
+
+func (m *TUIModel) scrollToTop() {
+	switch m.activePane {
+	case PaneDaemons:
+		m.daemonScrollOffset = 0
+	case PaneClean:
+		m.cleanScrollOffset = m.maxCleanScroll
+		m.scrollOffset = m.cleanScrollOffset
+	case PaneRaw:
+		m.rawScrollOffset = m.maxRawScroll
+		m.scrollOffset = m.rawScrollOffset
+	}
+}
+
+func (m *TUIModel) scrollToBottom() {
+	switch m.activePane {
+	case PaneDaemons:
+		m.daemonScrollOffset = m.maxDaemonScroll
+	case PaneClean:
+		m.cleanScrollOffset = 0
+		m.scrollOffset = 0
+	case PaneRaw:
+		m.rawScrollOffset = 0
 		m.scrollOffset = 0
 	}
 }
 
-func (m *TUIModel) scrollToTop() {
-	m.scrollOffset = m.maxScroll
+func (m *TUIModel) syncScrollOffset() {
+	switch m.activePane {
+	case PaneDaemons:
+		m.scrollOffset = m.daemonScrollOffset
+		m.maxScroll = m.maxDaemonScroll
+	case PaneClean:
+		m.scrollOffset = m.cleanScrollOffset
+		m.maxScroll = m.maxCleanScroll
+	case PaneRaw:
+		m.scrollOffset = m.rawScrollOffset
+		m.maxScroll = m.maxRawScroll
+	}
 }
 
-func (m *TUIModel) scrollToBottom() {
-	m.scrollOffset = 0
+// Pane1Item represents an interactive entry in the left sidepane.
+type Pane1Item struct {
+	Category string // "DAEMON", "AGENT", "CMD"
+	Title    string
+	Action   string
+	Detail   string
+	Active   bool
+}
+
+func (m *TUIModel) getPane1Items() []Pane1Item {
+	var items []Pane1Item
+	for _, d := range m.daemons {
+		items = append(items, Pane1Item{
+			Category: "DAEMON",
+			Title:    d.Name,
+			Action:   d.Name,
+			Detail:   d.State,
+			Active:   d.Active,
+		})
+	}
+	if m.agentCatalog != nil && len(m.agentCatalog.Agents) > 0 {
+		keys := make([]string, 0, len(m.agentCatalog.Agents))
+		for k := range m.agentCatalog.Agents {
+			if k != "manager" {
+				keys = append(keys, k)
+			}
+		}
+		sort.Strings(keys)
+		keys = append([]string{"manager"}, keys...)
+
+		for _, k := range keys {
+			ag := m.agentCatalog.Agents[k]
+			items = append(items, Pane1Item{
+				Category: "AGENT",
+				Title:    "@" + ag.Identifier,
+				Action:   "@" + ag.Identifier,
+				Detail:   ag.DisplayName,
+				Active:   ag.Enabled,
+			})
+		}
+	}
+	cmds := []struct{ k, d string }{
+		{"/daemon", "Daemons"},
+		{"/agents", "Catalog"},
+		{"/plan", "Make DAG"},
+		{"/status", "Vitals"},
+		{"/clear", "Reset"},
+		{"/exit", "Quit"},
+	}
+	for _, c := range cmds {
+		items = append(items, Pane1Item{
+			Category: "CMD",
+			Title:    c.k,
+			Action:   c.k,
+			Detail:   c.d,
+			Active:   true,
+		})
+	}
+	return items
 }
 
 // handleKeyInput coordinates keyboard-first navigation and input typing.
@@ -416,10 +621,18 @@ func (m *TUIModel) handleKeyInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "tab":
 		m.activePane = (m.activePane + 1) % numPanes
+		if !m.showSidepane && m.activePane == PaneDaemons {
+			m.activePane = (m.activePane + 1) % numPanes
+		}
+		m.syncScrollOffset()
 		return m, nil
 
 	case "shift+tab":
 		m.activePane = (m.activePane - 1 + numPanes) % numPanes
+		if !m.showSidepane && m.activePane == PaneDaemons {
+			m.activePane = (m.activePane - 1 + numPanes) % numPanes
+		}
+		m.syncScrollOffset()
 		return m, nil
 
 	case "ctrl+d":
@@ -427,6 +640,7 @@ func (m *TUIModel) handleKeyInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !m.showSidepane && m.activePane == PaneDaemons {
 			m.activePane = PaneClean
 		}
+		m.syncScrollOffset()
 		return m, nil
 
 	case "ctrl+l":
@@ -444,47 +658,250 @@ func (m *TUIModel) handleKeyInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "pgup":
-		m.scrollUp(8)
+		m.scrollActiveUp(8)
 		return m, nil
 
 	case "pgdown":
-		m.scrollDown(8)
+		m.scrollActiveDown(8)
 		return m, nil
 
 	case "home":
+		if (m.activePane == PaneClean || m.activePane == PaneRaw) && m.input != "" {
+			m.cursor = 0
+			return m, nil
+		}
 		m.scrollToTop()
 		return m, nil
 
 	case "end":
+		if (m.activePane == PaneClean || m.activePane == PaneRaw) && m.input != "" {
+			m.cursor = len([]rune(m.input))
+			return m, nil
+		}
 		m.scrollToBottom()
 		return m, nil
 
+	case "ctrl+a":
+		m.cursor = 0
+		return m, nil
+
+	case "ctrl+e":
+		m.cursor = len([]rune(m.input))
+		return m, nil
+
+	case "ctrl+u":
+		m.input = ""
+		m.cursor = 0
+		m.suggOpen = false
+		m.ghostText = ""
+		m.historyIdx = -1
+		return m, nil
+
+	case "ctrl+w":
+		runes := []rune(m.input)
+		if m.cursor > 0 {
+			if m.cursor > len(runes) {
+				m.cursor = len(runes)
+			}
+			i := m.cursor
+			for i > 0 && unicode.IsSpace(runes[i-1]) {
+				i--
+			}
+			for i > 0 && !unicode.IsSpace(runes[i-1]) {
+				i--
+			}
+			m.input = string(append(runes[:i], runes[m.cursor:]...))
+			m.cursor = i
+			m.computeSuggestions()
+		}
+		return m, nil
+
+	case "ctrl+k":
+		runes := []rune(m.input)
+		if m.cursor < len(runes) {
+			m.input = string(runes[:m.cursor])
+			m.computeSuggestions()
+		}
+		return m, nil
+
+	case "delete":
+		runes := []rune(m.input)
+		if m.cursor < len(runes) {
+			m.input = string(append(runes[:m.cursor], runes[m.cursor+1:]...))
+			m.computeSuggestions()
+		}
+		return m, nil
+
 	case "ctrl+up", "alt+up", "shift+up":
-		m.scrollUp(2)
+		m.scrollActiveUp(2)
 		return m, nil
 
 	case "ctrl+down", "alt+down", "shift+down":
-		m.scrollDown(2)
+		m.scrollActiveDown(2)
+		return m, nil
+
+	case "alt+enter", "ctrl+j", "shift+enter":
+		// Insert a line break (newline) into the input buffer at cursor position
+		runes := []rune(m.input)
+		if m.cursor > len(runes) {
+			m.cursor = len(runes)
+		}
+		newRunes := make([]rune, 0, len(runes)+1)
+		newRunes = append(newRunes, runes[:m.cursor]...)
+		newRunes = append(newRunes, '\n')
+		newRunes = append(newRunes, runes[m.cursor:]...)
+		m.input = string(newRunes)
+		m.cursor++
+		m.historyIdx = -1
 		return m, nil
 
 	case "up":
-		if m.input == "" || m.activePane == PaneClean || m.activePane == PaneRaw {
-			m.scrollUp(2)
+		if m.activePane == PaneDaemons {
+			items := m.getPane1Items()
+			if len(items) > 0 {
+				if m.daemonSelectedIdx > 0 {
+					m.daemonSelectedIdx--
+				} else {
+					m.daemonSelectedIdx = len(items) - 1
+				}
+				if m.daemonSelectedIdx < m.daemonScrollOffset {
+					m.daemonScrollOffset = m.daemonSelectedIdx
+				}
+			}
 			return m, nil
 		}
+		// If actively browsing command history, continue browsing earlier history
+		if m.historyIdx != -1 {
+			if m.historyIdx > 0 {
+				m.historyIdx--
+				m.input = m.history[m.historyIdx]
+				m.cursor = len([]rune(m.input))
+			}
+			return m, nil
+		}
+		// Multi-line cursor navigation: move cursor up one line if in multi-line prompt
+		if m.input != "" {
+			innerW := m.width - 4
+			if innerW < 20 {
+				innerW = 80
+			}
+			promptLen := 19
+			firstLineWidth := max(10, innerW-promptLen)
+			subseqWidth := max(10, innerW-2)
+			wrapped, cursorLine, cursorOffset := m.getInputCursorPosition(firstLineWidth, subseqWidth)
+			if len(wrapped) > 1 && cursorLine > 0 {
+				prevLine := wrapped[cursorLine-1]
+				prevRunes := []rune(prevLine.text)
+				targetOffset := min(cursorOffset, len(prevRunes))
+				m.cursor = prevLine.runeStart + targetOffset
+				return m, nil
+			}
+			// Cursor is at top line of input: scroll active pane up
+			m.scrollActiveUp(2)
+			return m, nil
+		}
+		// Input is empty: recall last command from history, or scroll active pane up
+		if len(m.history) > 0 {
+			m.draftInput = m.input
+			m.historyIdx = len(m.history) - 1
+			m.input = m.history[m.historyIdx]
+			m.cursor = len([]rune(m.input))
+			return m, nil
+		}
+		m.scrollActiveUp(2)
+		return m, nil
 
 	case "down":
-		if m.input == "" || m.activePane == PaneClean || m.activePane == PaneRaw {
-			m.scrollDown(2)
+		if m.activePane == PaneDaemons {
+			items := m.getPane1Items()
+			if len(items) > 0 {
+				if m.daemonSelectedIdx < len(items)-1 {
+					m.daemonSelectedIdx++
+				} else {
+					m.daemonSelectedIdx = 0
+				}
+			}
 			return m, nil
 		}
+		// If actively browsing command history, advance forward or return to draft
+		if m.historyIdx != -1 {
+			if m.historyIdx < len(m.history)-1 {
+				m.historyIdx++
+				m.input = m.history[m.historyIdx]
+				m.cursor = len([]rune(m.input))
+			} else {
+				m.historyIdx = -1
+				m.input = m.draftInput
+				m.cursor = len([]rune(m.input))
+			}
+			return m, nil
+		}
+		// Multi-line cursor navigation: move cursor down one line if in multi-line prompt
+		if m.input != "" {
+			innerW := m.width - 4
+			if innerW < 20 {
+				innerW = 80
+			}
+			promptLen := 19
+			firstLineWidth := max(10, innerW-promptLen)
+			subseqWidth := max(10, innerW-2)
+			wrapped, cursorLine, cursorOffset := m.getInputCursorPosition(firstLineWidth, subseqWidth)
+			if len(wrapped) > 1 && cursorLine < len(wrapped)-1 {
+				nextLine := wrapped[cursorLine+1]
+				nextRunes := []rune(nextLine.text)
+				targetOffset := min(cursorOffset, len(nextRunes))
+				m.cursor = nextLine.runeStart + targetOffset
+				return m, nil
+			}
+			// Cursor is at bottom line of input: scroll active pane down
+			m.scrollActiveDown(2)
+			return m, nil
+		}
+		m.scrollActiveDown(2)
+		return m, nil
 
 	case "enter":
+		if m.activePane == PaneDaemons {
+			items := m.getPane1Items()
+			if len(items) > 0 && m.daemonSelectedIdx >= 0 && m.daemonSelectedIdx < len(items) {
+				it := items[m.daemonSelectedIdx]
+				switch it.Category {
+				case "DAEMON":
+					m.input = fmt.Sprintf("/daemon restart %s", it.Action)
+					m.cursor = len([]rune(m.input))
+					m.activePane = PaneClean
+					return m, nil
+				case "AGENT", "CMD":
+					m.input = it.Action + " "
+					m.cursor = len([]rune(m.input))
+					m.activePane = PaneClean
+					return m, nil
+				}
+			}
+		}
+		// If input ends with a trailing backslash '\', change line (newline) instead of submitting
+		trimmed := strings.TrimRight(m.input, " \t")
+		if strings.HasSuffix(trimmed, "\\") {
+			runes := []rune(m.input)
+			for i := len(runes) - 1; i >= 0; i-- {
+				if runes[i] == '\\' {
+					newRunes := append(runes[:i], '\n')
+					m.input = string(newRunes)
+					m.cursor = len(newRunes)
+					m.historyIdx = -1
+					return m, nil
+				}
+			}
+		}
 		return m.submitInput()
 
 	case "backspace":
-		if len(m.input) > 0 && m.cursor > 0 {
-			m.input = m.input[:m.cursor-1] + m.input[m.cursor:]
+		runes := []rune(m.input)
+		if len(runes) > 0 && m.cursor > 0 {
+			if m.cursor > len(runes) {
+				m.cursor = len(runes)
+			}
+			m.input = string(append(runes[:m.cursor-1], runes[m.cursor:]...))
 			m.cursor--
 			m.computeSuggestions()
 		}
@@ -497,24 +914,48 @@ func (m *TUIModel) handleKeyInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "right":
-		if m.cursor < len(m.input) {
+		runes := []rune(m.input)
+		if m.cursor < len(runes) {
 			m.cursor++
 		}
 		return m, nil
 
 	case "esc":
+		if m.suggOpen {
+			m.suggOpen = false
+			m.suggScroll = 0
+			m.ghostText = ""
+			return m, nil
+		}
+		if m.ghostText != "" {
+			m.ghostText = ""
+			return m, nil
+		}
+		if m.historyIdx != -1 {
+			m.input = m.draftInput
+			m.historyIdx = -1
+			m.cursor = len([]rune(m.input))
+			return m, nil
+		}
 		m.input = ""
 		m.cursor = 0
-		m.suggOpen = false
-		m.ghostText = ""
 		return m, nil
 	}
 
-	// Normal text entry
+	// Normal text entry (Rune-safe)
 	if len(msg.Runes) > 0 {
-		r := string(msg.Runes)
-		m.input = m.input[:m.cursor] + r + m.input[m.cursor:]
-		m.cursor += len(r)
+		runes := []rune(m.input)
+		if m.cursor > len(runes) {
+			m.cursor = len(runes)
+		}
+		inserted := msg.Runes
+		newRunes := make([]rune, 0, len(runes)+len(inserted))
+		newRunes = append(newRunes, runes[:m.cursor]...)
+		newRunes = append(newRunes, inserted...)
+		newRunes = append(newRunes, runes[m.cursor:]...)
+		m.input = string(newRunes)
+		m.cursor += len(inserted)
+		m.historyIdx = -1
 		m.computeSuggestions()
 	}
 
@@ -578,8 +1019,10 @@ func (m *TUIModel) updateGhostText() {
 	filtered := m.getFilteredSuggestions()
 	if len(filtered) > 0 && m.suggIndex < len(filtered) {
 		top := filtered[m.suggIndex].Token
-		if strings.HasPrefix(strings.ToLower(top), strings.ToLower(m.input)) {
-			m.ghostText = m.input + top[len(m.input):]
+		topRunes := []rune(top)
+		inputRunes := []rune(m.input)
+		if len(topRunes) >= len(inputRunes) && strings.EqualFold(string(topRunes[:len(inputRunes)]), m.input) {
+			m.ghostText = m.input + string(topRunes[len(inputRunes):])
 			return
 		}
 	}
@@ -588,7 +1031,7 @@ func (m *TUIModel) updateGhostText() {
 
 func (m *TUIModel) acceptSuggestion(item SuggestionItem) {
 	m.input = item.Token + " "
-	m.cursor = len(m.input)
+	m.cursor = len([]rune(m.input))
 	m.suggOpen = false
 	m.suggScroll = 0
 	m.ghostText = ""
@@ -602,10 +1045,20 @@ func (m *TUIModel) submitInput() (tea.Model, tea.Cmd) {
 	m.suggOpen = false
 	m.suggScroll = 0
 	m.ghostText = ""
+	m.cleanScrollOffset = 0
+	m.rawScrollOffset = 0
 	m.scrollOffset = 0
+	m.inputScrollOffset = 0
+	m.historyIdx = -1
+	m.draftInput = ""
 
 	if prompt == "" {
 		return m, nil
+	}
+
+	// Append to command history if unique from previous entry
+	if len(m.history) == 0 || m.history[len(m.history)-1] != prompt {
+		m.history = append(m.history, prompt)
 	}
 
 	// Handle HITL approval if waiting
@@ -1274,19 +1727,20 @@ func (m *TUIModel) renderMaximizedPane(width, height int) string {
 
 // Left Sidepane: Live Daemons and Live Agents Catalog
 func (m *TUIModel) renderDaemonsAndHelp(w, h int) string {
-	var b strings.Builder
+	contentH := h - 3
+	if contentH < 2 {
+		contentH = 2
+	}
 
-	// Header bar
-	b.WriteString(stylePaneTitle.Render("[1] DAEMONS & HELP"))
-	b.WriteString("\n")
-	b.WriteString(strings.Repeat("─", w))
-	b.WriteString("\n")
+	var b strings.Builder
 
 	// 1. Live Daemons Block
 	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(tuiMuted).Render("DAEMONS"))
 	b.WriteString("\n")
 
-	for _, d := range m.daemons {
+	daemonCount := len(m.daemons)
+	for i := 0; i < daemonCount; i++ {
+		d := m.daemons[i]
 		dot := "● "
 		dotColor := tuiDotOk
 		if !d.Active {
@@ -1294,11 +1748,18 @@ func (m *TUIModel) renderDaemonsAndHelp(w, h int) string {
 		}
 		dotStyled := lipgloss.NewStyle().Foreground(dotColor).Render(dot)
 
-		name := truncate(d.Name, w-10)
+		name := truncate(d.Name, w-12)
 		stateStyled := lipgloss.NewStyle().Foreground(tuiMuted).Render(d.State)
-		b.WriteString(fmt.Sprintf("%s%-14s %s\n", dotStyled, name, stateStyled))
+		line := fmt.Sprintf("%s%-14s %s", dotStyled, name, stateStyled)
+
+		if m.activePane == PaneDaemons && m.daemonSelectedIdx == i {
+			b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Render("❯ " + line))
+		} else {
+			b.WriteString("  " + line)
+		}
+		b.WriteString("\n")
 		if d.Detail != "" {
-			b.WriteString(lipgloss.NewStyle().Foreground(tuiFaint).Render("  " + truncate(d.Detail, w-4)))
+			b.WriteString(lipgloss.NewStyle().Foreground(tuiFaint).Render("    " + truncate(d.Detail, w-6)))
 			b.WriteString("\n")
 		}
 	}
@@ -1308,6 +1769,8 @@ func (m *TUIModel) renderDaemonsAndHelp(w, h int) string {
 	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(tuiMuted).Render("AGENTS (@)"))
 	b.WriteString("\n")
 
+	agentStartIdx := daemonCount
+	agentEndIdx := daemonCount
 	if m.agentCatalog != nil && len(m.agentCatalog.Agents) > 0 {
 		keys := make([]string, 0, len(m.agentCatalog.Agents))
 		for k := range m.agentCatalog.Agents {
@@ -1317,8 +1780,9 @@ func (m *TUIModel) renderDaemonsAndHelp(w, h int) string {
 		}
 		sort.Strings(keys)
 		keys = append([]string{"manager"}, keys...)
+		agentEndIdx = agentStartIdx + len(keys)
 
-		for _, k := range keys {
+		for i, k := range keys {
 			ag := m.agentCatalog.Agents[k]
 			nameStyled := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render("@" + ag.Identifier)
 			status := "active"
@@ -1328,7 +1792,14 @@ func (m *TUIModel) renderDaemonsAndHelp(w, h int) string {
 				statusColor = tuiDotIdle
 			}
 			statusStyled := lipgloss.NewStyle().Foreground(statusColor).Render(status)
-			b.WriteString(fmt.Sprintf("%-15s %s\n", nameStyled, statusStyled))
+			itemIdx := agentStartIdx + i
+			line := fmt.Sprintf("%-15s %s", nameStyled, statusStyled)
+			if m.activePane == PaneDaemons && m.daemonSelectedIdx == itemIdx {
+				b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Render("❯ " + line))
+			} else {
+				b.WriteString("  " + line)
+			}
+			b.WriteString("\n")
 		}
 	} else {
 		b.WriteString(lipgloss.NewStyle().Foreground(tuiFaint).Render("  (no agents registered)\n"))
@@ -1346,21 +1817,56 @@ func (m *TUIModel) renderDaemonsAndHelp(w, h int) string {
 		{"/clear", "Reset"},
 		{"/exit", "Quit"},
 	}
-	for _, c := range cmds {
-		b.WriteString(fmt.Sprintf("%-11s %s\n",
+	cmdStartIdx := agentEndIdx
+	for i, c := range cmds {
+		itemIdx := cmdStartIdx + i
+		line := fmt.Sprintf("%-11s %s",
 			lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render(c.k),
 			lipgloss.NewStyle().Foreground(tuiFaint).Render(c.d),
-		))
+		)
+		if m.activePane == PaneDaemons && m.daemonSelectedIdx == itemIdx {
+			b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Render("❯ " + line))
+		} else {
+			b.WriteString("  " + line)
+		}
+		b.WriteString("\n")
 	}
 
-	lines := strings.Split(b.String(), "\n")
-	if len(lines) > h {
-		lines = lines[:h]
+	allLines := strings.Split(b.String(), "\n")
+	maxScroll := max(0, len(allLines)-contentH)
+	m.maxDaemonScroll = maxScroll
+
+	offset := m.daemonScrollOffset
+	if offset > maxScroll {
+		offset = maxScroll
 	}
-	for len(lines) < h {
-		lines = append(lines, "")
+	if offset < 0 {
+		offset = 0
 	}
-	return strings.Join(lines, "\n")
+
+	start := offset
+	end := start + contentH
+	if end > len(allLines) {
+		end = len(allLines)
+	}
+	visible := allLines[start:end]
+	for len(visible) < contentH {
+		visible = append(visible, "")
+	}
+
+	var res strings.Builder
+	// Header bar
+	res.WriteString(stylePaneTitle.Render("[1] DAEMONS & HELP"))
+	if maxScroll > 0 {
+		pct := int((float64(offset) / float64(max(1, maxScroll))) * 100)
+		res.WriteString(" ")
+		res.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#FBBF24")).Render(fmt.Sprintf("[%d%%]", pct)))
+	}
+	res.WriteString("\n")
+	res.WriteString(strings.Repeat("─", w))
+	res.WriteString("\n")
+	res.WriteString(strings.Join(visible, "\n"))
+	return res.String()
 }
 
 // buildTaskStreamLines formats the clean turn stream items with rich colors and markdown styling.
@@ -1467,51 +1973,65 @@ func (m *TUIModel) buildRawTelemetryLines(w int) []string {
 	return allRawLines
 }
 
-// Center Pane: Task Stream (Synchronized scroll with Raw Telemetry)
+// Center Pane: Task Stream (Independent scrollable viewport with visual scrollbar)
 func (m *TUIModel) renderTaskStream(w, h int) string {
 	contentH := h - 2
 	if contentH < 2 {
 		contentH = 2
 	}
 
-	lines2 := m.buildTaskStreamLines(w)
-	lines3 := m.buildRawTelemetryLines(w)
+	lines := m.buildTaskStreamLines(w - 2)
+	maxScroll := max(0, len(lines)-contentH)
+	m.maxCleanScroll = maxScroll
 
-	maxScroll2 := max(0, len(lines2)-contentH)
-	maxScroll3 := max(0, len(lines3)-contentH)
-	m.maxScroll = max(maxScroll2, maxScroll3)
-
-	if m.scrollOffset > m.maxScroll {
-		m.scrollOffset = m.maxScroll
+	offset := m.cleanScrollOffset
+	if offset > maxScroll {
+		offset = maxScroll
 	}
-	if m.scrollOffset < 0 {
-		m.scrollOffset = 0
+	if offset < 0 {
+		offset = 0
 	}
 
-	ratio := 0.0
-	if m.maxScroll > 0 {
-		ratio = float64(m.scrollOffset) / float64(m.maxScroll)
+	start := len(lines) - contentH - offset
+	if start < 0 {
+		start = 0
+	}
+	end := start + contentH
+	if end > len(lines) {
+		end = len(lines)
+	}
+	visible := lines[start:end]
+	for len(visible) < contentH {
+		visible = append(visible, "")
 	}
 
-	offset2 := int(ratio * float64(maxScroll2))
-	start2 := len(lines2) - contentH - offset2
-	if start2 < 0 {
-		start2 = 0
-	}
-	end2 := start2 + contentH
-	if end2 > len(lines2) {
-		end2 = len(lines2)
-	}
-	visible2 := lines2[start2:end2]
-	for len(visible2) < contentH {
-		visible2 = append(visible2, "")
+	// Render scrollbar gutter on the right edge if content overflows
+	if len(lines) > contentH {
+		thumbH := max(1, (contentH*contentH)/len(lines))
+		scrollRatio := 0.0
+		if maxScroll > 0 {
+			scrollRatio = float64(maxScroll-offset) / float64(maxScroll)
+		}
+		thumbStart := int(scrollRatio * float64(contentH-thumbH))
+		for i := 0; i < contentH; i++ {
+			gutter := lipgloss.NewStyle().Foreground(tuiBorderDim).Render("│")
+			if i >= thumbStart && i < thumbStart+thumbH {
+				gutter = lipgloss.NewStyle().Foreground(tuiBorderActive).Bold(true).Render("┃")
+			}
+			lineWidth := lipgloss.Width(visible[i])
+			pad := (w - 2) - lineWidth
+			if pad < 0 {
+				pad = 0
+			}
+			visible[i] = visible[i] + strings.Repeat(" ", pad) + gutter
+		}
 	}
 
 	var b strings.Builder
 	b.WriteString(stylePaneTitle.Render("[2] TASK STREAM"))
 	b.WriteString(" ")
-	if m.scrollOffset > 0 {
-		pct := int(ratio * 100)
+	if offset > 0 {
+		pct := int((float64(offset) / float64(max(1, maxScroll))) * 100)
 		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FBBF24")).Render(fmt.Sprintf("[↑ SCROLLED %d%% • 'End' for live]", pct)))
 	} else {
 		b.WriteString(stylePaneMeta.Render("(Clean Summary)"))
@@ -1521,56 +2041,70 @@ func (m *TUIModel) renderTaskStream(w, h int) string {
 	b.WriteString("\n")
 	b.WriteString(strings.Repeat("─", w))
 	b.WriteString("\n")
-	b.WriteString(strings.Join(visible2, "\n"))
+	b.WriteString(strings.Join(visible, "\n"))
 	return b.String()
 }
 
-// Right Pane: Raw Telemetry Stream (Synchronized scroll with Task Stream)
+// Right Pane: Raw Telemetry Stream (Independent scrollable viewport with visual scrollbar)
 func (m *TUIModel) renderRawTelemetry(w, h int) string {
 	contentH := h - 2
 	if contentH < 2 {
 		contentH = 2
 	}
 
-	lines2 := m.buildTaskStreamLines(w)
-	lines3 := m.buildRawTelemetryLines(w)
+	lines := m.buildRawTelemetryLines(w - 2)
+	maxScroll := max(0, len(lines)-contentH)
+	m.maxRawScroll = maxScroll
 
-	maxScroll2 := max(0, len(lines2)-contentH)
-	maxScroll3 := max(0, len(lines3)-contentH)
-	m.maxScroll = max(maxScroll2, maxScroll3)
-
-	if m.scrollOffset > m.maxScroll {
-		m.scrollOffset = m.maxScroll
+	offset := m.rawScrollOffset
+	if offset > maxScroll {
+		offset = maxScroll
 	}
-	if m.scrollOffset < 0 {
-		m.scrollOffset = 0
+	if offset < 0 {
+		offset = 0
 	}
 
-	ratio := 0.0
-	if m.maxScroll > 0 {
-		ratio = float64(m.scrollOffset) / float64(m.maxScroll)
+	start := len(lines) - contentH - offset
+	if start < 0 {
+		start = 0
+	}
+	end := start + contentH
+	if end > len(lines) {
+		end = len(lines)
+	}
+	visible := lines[start:end]
+	for len(visible) < contentH {
+		visible = append(visible, "")
 	}
 
-	offset3 := int(ratio * float64(maxScroll3))
-	start3 := len(lines3) - contentH - offset3
-	if start3 < 0 {
-		start3 = 0
-	}
-	end3 := start3 + contentH
-	if end3 > len(lines3) {
-		end3 = len(lines3)
-	}
-	visible3 := lines3[start3:end3]
-	for len(visible3) < contentH {
-		visible3 = append(visible3, "")
+	// Render scrollbar gutter on the right edge if content overflows
+	if len(lines) > contentH {
+		thumbH := max(1, (contentH*contentH)/len(lines))
+		scrollRatio := 0.0
+		if maxScroll > 0 {
+			scrollRatio = float64(maxScroll-offset) / float64(maxScroll)
+		}
+		thumbStart := int(scrollRatio * float64(contentH-thumbH))
+		for i := 0; i < contentH; i++ {
+			gutter := lipgloss.NewStyle().Foreground(tuiBorderDim).Render("│")
+			if i >= thumbStart && i < thumbStart+thumbH {
+				gutter = lipgloss.NewStyle().Foreground(tuiBorderActive).Bold(true).Render("┃")
+			}
+			lineWidth := lipgloss.Width(visible[i])
+			pad := (w - 2) - lineWidth
+			if pad < 0 {
+				pad = 0
+			}
+			visible[i] = visible[i] + strings.Repeat(" ", pad) + gutter
+		}
 	}
 
 	var b strings.Builder
 	b.WriteString(stylePaneTitle.Render("[3] RAW TELEMETRY"))
 	b.WriteString(" ")
-	if m.scrollOffset > 0 {
-		pct := int(ratio * 100)
-		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FBBF24")).Render(fmt.Sprintf("[↑ SCROLLED %d%% • SYNCED]", pct)))
+	if offset > 0 {
+		pct := int((float64(offset) / float64(max(1, maxScroll))) * 100)
+		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FBBF24")).Render(fmt.Sprintf("[↑ SCROLLED %d%% • 'End' for live]", pct)))
 	} else {
 		b.WriteString(stylePaneMeta.Render(fmt.Sprintf("(%s LOGS)", m.logFilter)))
 		b.WriteString(" ")
@@ -1579,7 +2113,7 @@ func (m *TUIModel) renderRawTelemetry(w, h int) string {
 	b.WriteString("\n")
 	b.WriteString(strings.Repeat("─", w))
 	b.WriteString("\n")
-	b.WriteString(strings.Join(visible3, "\n"))
+	b.WriteString(strings.Join(visible, "\n"))
 	return b.String()
 }
 
@@ -1874,7 +2408,7 @@ func (m *TUIModel) renderBottomDock(width int) string {
 
 	// 3. Status bar with shortcuts and system telemetry
 	shortcuts := lipgloss.NewStyle().Foreground(tuiFaint).Render(
-		"[Tab] Focus • [PgUp/Dn/Wheel] Sync Scroll • [/] Cmds • [@] Agents • [^L] Logs • [^D] Sidepane • [^F] Zoom • [^C] Exit",
+		"[Tab] Focus • [PgUp/Dn/Wheel] Scroll Pane • [/] Cmds • [@] Agents • [^L] Logs • [^D] Sidepane • [^F] Zoom • [^C] Exit",
 	)
 	vitals := lipgloss.NewStyle().Foreground(tuiMuted).Render(
 		fmt.Sprintf("Goroutines: %d • Daemons: %d", runtime.NumGoroutine(), len(m.daemons)),
@@ -1937,7 +2471,128 @@ func (m *TUIModel) renderSuggestionsPopup(width int) string {
 		Render(b.String()) + "\n"
 }
 
-// renderInputBox dynamically auto-grows its height as typed text wraps.
+// wrappedInputLine stores tokenized line chunks with rune boundaries.
+type wrappedInputLine struct {
+	text      string
+	runeStart int
+	runeEnd   int
+}
+
+// wrapInputToLines parses input into lines respecting both hard newlines (\n)
+// and soft wrapping at word boundaries.
+func wrapInputToLines(input string, firstLineWidth, subseqWidth int) []wrappedInputLine {
+	runes := []rune(input)
+	if len(runes) == 0 {
+		return []wrappedInputLine{{text: "", runeStart: 0, runeEnd: 0}}
+	}
+
+	var lines []wrappedInputLine
+	rawStart := 0
+	lineLimit := firstLineWidth
+
+	for rawStart <= len(runes) {
+		nextNL := -1
+		for i := rawStart; i < len(runes); i++ {
+			if runes[i] == '\n' {
+				nextNL = i
+				break
+			}
+		}
+
+		paragraphEnd := len(runes)
+		if nextNL != -1 {
+			paragraphEnd = nextNL
+		}
+		paragraphRunes := runes[rawStart:paragraphEnd]
+
+		if len(paragraphRunes) == 0 {
+			lines = append(lines, wrappedInputLine{
+				text:      "",
+				runeStart: rawStart,
+				runeEnd:   paragraphEnd,
+			})
+		} else {
+			pStart := 0
+			for pStart < len(paragraphRunes) {
+				remLen := len(paragraphRunes) - pStart
+				if remLen <= lineLimit {
+					lines = append(lines, wrappedInputLine{
+						text:      string(paragraphRunes[pStart:]),
+						runeStart: rawStart + pStart,
+						runeEnd:   rawStart + len(paragraphRunes),
+					})
+					break
+				}
+
+				breakAt := -1
+				for i := pStart + lineLimit; i > pStart; i-- {
+					if unicode.IsSpace(paragraphRunes[i]) {
+						breakAt = i
+						break
+					}
+				}
+
+				if breakAt > pStart {
+					lines = append(lines, wrappedInputLine{
+						text:      string(paragraphRunes[pStart:breakAt]),
+						runeStart: rawStart + pStart,
+						runeEnd:   rawStart + breakAt,
+					})
+					pStart = breakAt + 1
+				} else {
+					lines = append(lines, wrappedInputLine{
+						text:      string(paragraphRunes[pStart : pStart+lineLimit]),
+						runeStart: rawStart + pStart,
+						runeEnd:   rawStart + pStart + lineLimit,
+					})
+					pStart += lineLimit
+				}
+				lineLimit = subseqWidth
+			}
+		}
+
+		if nextNL == -1 {
+			break
+		}
+		rawStart = nextNL + 1
+		lineLimit = subseqWidth
+	}
+
+	return lines
+}
+
+// getInputCursorPosition returns the wrapped lines and the (line, col) where cursor lands.
+func (m *TUIModel) getInputCursorPosition(firstLineWidth, subseqWidth int) (wrapped []wrappedInputLine, cursorLine, cursorOffset int) {
+	wrapped = wrapInputToLines(m.input, firstLineWidth, subseqWidth)
+	if len(wrapped) == 0 {
+		return []wrappedInputLine{{text: "", runeStart: 0, runeEnd: 0}}, 0, 0
+	}
+
+	runes := []rune(m.input)
+	cursor := m.cursor
+	if cursor < 0 {
+		cursor = 0
+	}
+	if cursor > len(runes) {
+		cursor = len(runes)
+	}
+
+	for i, l := range wrapped {
+		if cursor >= l.runeStart && cursor <= l.runeEnd {
+			cursorLine = i
+			cursorOffset = cursor - l.runeStart
+			break
+		}
+	}
+	if cursor == len(runes) && len(wrapped) > 0 {
+		cursorLine = len(wrapped) - 1
+		cursorOffset = cursor - wrapped[cursorLine].runeStart
+	}
+	return wrapped, cursorLine, cursorOffset
+}
+
+// renderInputBox dynamically wraps lines at word boundaries with a visible block cursor
+// and internal scrolling for long prompts.
 func (m *TUIModel) renderInputBox(width int) string {
 	promptLabel := stylePromptLabel.Render("assistant:master ❯ ")
 	if m.waitingHITL != nil {
@@ -1954,56 +2609,91 @@ func (m *TUIModel) renderInputBox(width int) string {
 	if firstLineWidth < 10 {
 		firstLineWidth = 10
 	}
-
-	inputText := m.input
-	ghostPart := ""
-	if m.ghostText != "" && len(m.ghostText) > len(m.input) {
-		ghostPart = m.ghostText[len(m.input):]
+	subseqWidth := innerW - 2
+	if subseqWidth < 10 {
+		subseqWidth = 10
 	}
 
-	var lines []string
-	if len(inputText) <= firstLineWidth {
-		line := promptLabel + inputText
-		if ghostPart != "" {
-			if len(inputText)+len(ghostPart) <= firstLineWidth {
-				line += styleGhost.Render(ghostPart)
+	runes := []rune(m.input)
+	cursor := m.cursor
+	if cursor < 0 {
+		cursor = 0
+	}
+	if cursor > len(runes) {
+		cursor = len(runes)
+	}
+
+	ghostPart := ""
+	if m.ghostText != "" && len(m.ghostText) > len(m.input) {
+		topRunes := []rune(m.ghostText)
+		if len(topRunes) > len(runes) {
+			ghostPart = string(topRunes[len(runes):])
+		}
+	}
+
+	styleCursor := lipgloss.NewStyle().
+		Background(lipgloss.Color("#FFFFFF")).
+		Foreground(lipgloss.Color("#000000")).
+		Bold(true)
+
+	wrapped, cursorLine, cursorOffset := m.getInputCursorPosition(firstLineWidth, subseqWidth)
+
+	var renderedLines []string
+	for i, l := range wrapped {
+		lineRunes := []rune(l.text)
+		var lineContent string
+
+		if i == cursorLine {
+			if cursorOffset < len(lineRunes) {
+				before := string(lineRunes[:cursorOffset])
+				curChar := styleCursor.Render(string(lineRunes[cursorOffset]))
+				after := string(lineRunes[cursorOffset+1:])
+				lineContent = before + curChar + after
 			} else {
-				avail := firstLineWidth - len(inputText)
-				if avail > 0 {
-					line += styleGhost.Render(ghostPart[:avail])
+				curChar := styleCursor.Render(" ")
+				after := ""
+				if ghostPart != "" && i == len(wrapped)-1 {
+					after = styleGhost.Render(ghostPart)
 				}
+				lineContent = l.text + curChar + after
 			}
+		} else {
+			lineContent = l.text
 		}
-		lines = append(lines, line)
+
+		if i == 0 {
+			renderedLines = append(renderedLines, promptLabel+lineContent)
+		} else {
+			renderedLines = append(renderedLines, "  "+lineContent)
+		}
+	}
+
+	// Cap display height at 4 visible lines; internally scroll so cursor line is always visible
+	maxVisible := 4
+	visibleLines := renderedLines
+	if len(renderedLines) > maxVisible {
+		startLine := 0
+		if cursorLine >= maxVisible {
+			startLine = cursorLine - maxVisible + 1
+		}
+		// Allow manual scroll adjustment within bounds
+		if m.inputScrollOffset > 0 {
+			startLine = m.inputScrollOffset
+		}
+		if cursorLine < startLine {
+			startLine = cursorLine
+		} else if cursorLine >= startLine+maxVisible {
+			startLine = cursorLine - maxVisible + 1
+		}
+		endLine := startLine + maxVisible
+		if endLine > len(renderedLines) {
+			endLine = len(renderedLines)
+			startLine = max(0, endLine-maxVisible)
+		}
+		visibleLines = renderedLines[startLine:endLine]
+		m.inputScrollOffset = startLine
 	} else {
-		// Multi-line wrapping: first line has prompt
-		lines = append(lines, promptLabel+inputText[:firstLineWidth])
-		rem := inputText[firstLineWidth:]
-
-		indent := "  "
-		subseqWidth := innerW - len(indent)
-		if subseqWidth < 10 {
-			subseqWidth = 10
-		}
-
-		for len(rem) > 0 {
-			if len(rem) <= subseqWidth {
-				lines = append(lines, indent+rem)
-				break
-			}
-			chunk := rem[:subseqWidth]
-			rem = rem[subseqWidth:]
-			lines = append(lines, indent+chunk)
-			if len(lines) >= 5 { // cap dynamic growth at 5 lines
-				if len(rem) > 0 {
-					last := lines[len(lines)-1]
-					if len(last) > 1 {
-						lines[len(lines)-1] = last[:len(last)-1] + "…"
-					}
-				}
-				break
-			}
-		}
+		m.inputScrollOffset = 0
 	}
 
 	inputBorder := tuiBorderDim
@@ -2016,7 +2706,7 @@ func (m *TUIModel) renderInputBox(width int) string {
 		Border(lipgloss.ThickBorder()).
 		BorderForeground(inputBorder).
 		Padding(0, 1).
-		Render(strings.Join(lines, "\n"))
+		Render(strings.Join(visibleLines, "\n"))
 }
 
 func truncate(str string, maxLen int) string {
