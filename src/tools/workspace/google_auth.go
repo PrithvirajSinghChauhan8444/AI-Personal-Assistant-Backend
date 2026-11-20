@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -43,8 +45,7 @@ func (t *GoogleAuthLoginTool) Metadata() tools.ToolMetadata {
 			"properties": {
 				"account": {
 					"type": "string",
-					"description": "Account alias to authenticate: 'email1' (default), 'email2', etc., or raw email address",
-					"default": "email1"
+					"description": "Complete email address to authenticate (e.g. 'user@example.com', 'work@company.com')"
 				},
 				"port": {
 					"type": "integer",
@@ -66,8 +67,8 @@ func (t *GoogleAuthLoginTool) Execute(ctx context.Context, argsJSON string) (*to
 	}
 
 	account := strings.TrimSpace(strings.ToLower(args.Account))
-	if account == "" || account == "default" {
-		account = "email1"
+	if account == "" {
+		account = "auto"
 	}
 
 	port := args.Port
@@ -169,6 +170,17 @@ func (t *GoogleAuthLoginTool) Execute(ctx context.Context, argsJSON string) (*to
 	}
 
 	// 4. Print prominent terminal banner so the user can immediately click/open the auth link
+	actualPort := port
+	if u, err := url.Parse(authURL); err == nil {
+		if redirectURI := u.Query().Get("redirect_uri"); redirectURI != "" {
+			if ru, err := url.Parse(redirectURI); err == nil && ru.Port() != "" {
+				if p, err := strconv.Atoi(ru.Port()); err == nil && p > 0 {
+					actualPort = p
+				}
+			}
+		}
+	}
+
 	tokenDest := filepath.Join(t.configDir, fmt.Sprintf("token_%s.json", account))
 	fmt.Fprintf(os.Stderr, "\n"+
 		"================================================================================\n"+
@@ -179,7 +191,7 @@ func (t *GoogleAuthLoginTool) Execute(ctx context.Context, argsJSON string) (*to
 		"Local callback server listening on port %d...\n"+
 		"Waiting for authorization to complete in your browser (up to 3 minutes)...\n"+
 		"================================================================================\n\n",
-		account, tokenDest, authURL, port)
+		account, tokenDest, authURL, actualPort)
 
 	// 5. Wait for the OAuth local redirect receiver to complete and persist tokens
 	waitCh := make(chan error, 1)

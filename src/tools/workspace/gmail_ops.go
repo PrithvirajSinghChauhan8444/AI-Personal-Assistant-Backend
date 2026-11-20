@@ -51,7 +51,7 @@ func (t *GmailReplyTool) Metadata() tools.ToolMetadata {
 		ParameterSchema: `{
 			"type": "object",
 			"properties": {
-				"account": {"type": "string", "description": "Account alias or email"},
+				"account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},
 				"message_id": {"type": "string", "description": "Original Gmail message ID to reply to"},
 				"body": {"type": "string", "description": "Reply email body content"}
 			},
@@ -174,7 +174,7 @@ func (t *GmailCheckUnreadTool) Metadata() tools.ToolMetadata {
 		ParameterSchema: `{
 			"type": "object",
 			"properties": {
-				"account": {"type": "string", "description": "Account alias or email"},
+				"account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},
 				"limit": {"type": "integer", "description": "Maximum unread emails to retrieve (default: 5)"}
 			}
 		}`,
@@ -289,7 +289,7 @@ func (t *GmailSendTool) Metadata() tools.ToolMetadata {
 		ParameterSchema: `{
 			"type": "object",
 			"properties": {
-				"account": {"type": "string", "description": "Account alias or email"},
+				"account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},
 				"to": {"type": "string", "description": "Recipient email address"},
 				"subject": {"type": "string", "description": "Email subject"},
 				"body": {"type": "string", "description": "Email body content"}

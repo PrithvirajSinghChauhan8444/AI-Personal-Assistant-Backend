@@ -39,7 +39,7 @@ func (t *GmailReadTool) Metadata() tools.ToolMetadata {
 		Name:               "gmail_read",
 		Category:           "workspace",
 		Description:        "Reads full email headers and decoded body content for a specific message ID.",
-		ParameterSchema:    `{"type":"object","properties":{"account":{"type":"string","description":"Account alias or email (primary, college, personal)"},"message_id":{"type":"string","description":"Gmail message ID returned from gmail_list"}},"required":["message_id"]}`,
+		ParameterSchema:    `{"type":"object","properties":{"account":{"type":"string","description":"Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},"message_id":{"type":"string","description":"Gmail message ID returned from gmail_list"}},"required":["message_id"]}`,
 		PromptUsageTip:     "Use gmail_read after obtaining message IDs from gmail_list to review full email conversations.",
 		Risk:               tools.RiskLow,
 		RequiredCapability: "workspace:read",

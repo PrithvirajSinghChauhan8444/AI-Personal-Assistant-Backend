@@ -105,7 +105,7 @@ func (t *CalendarCreateEventTool) Metadata() tools.ToolMetadata {
 		ParameterSchema: `{
 			"type": "object",
 			"properties": {
-				"account": {"type": "string", "description": "Account alias or email (primary, college, personal)"},
+				"account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},
 				"summary": {"type": "string", "description": "Title or summary of the event"},
 				"start_time": {"type": "string", "description": "ISO/RFC3339 timestamp (e.g. '2026-11-14T10:00:00Z')"},
 				"duration_hours": {"type": "number", "description": "Duration in hours (default: 1.0)"},
@@ -210,7 +210,7 @@ func (t *CalendarEditEventTool) Metadata() tools.ToolMetadata {
 		ParameterSchema: `{
 			"type": "object",
 			"properties": {
-				"account": {"type": "string", "description": "Account alias or email"},
+				"account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},
 				"event_id": {"type": "string", "description": "Google Calendar event ID to modify"},
 				"summary": {"type": "string", "description": "Updated event summary/title"},
 				"start_time": {"type": "string", "description": "Updated ISO/RFC3339 start timestamp"},
@@ -298,7 +298,7 @@ func (t *CalendarDeleteEventTool) Metadata() tools.ToolMetadata {
 		ParameterSchema: `{
 			"type": "object",
 			"properties": {
-				"account": {"type": "string", "description": "Account alias or email"},
+				"account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},
 				"event_id": {"type": "string", "description": "Google Calendar event ID to delete"}
 			},
 			"required": ["event_id"]

@@ -55,7 +55,7 @@ func (t *TasksListTool) Metadata() tools.ToolMetadata {
 		ParameterSchema: `{
 			"type": "object",
 			"properties": {
-				"account": {"type": "string", "description": "Account alias or email (primary, college, personal)"},
+				"account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},
 				"task_list_id": {"type": "string", "description": "Optional task list ID (defaults to '@default')"},
 				"limit": {"type": "integer", "description": "Maximum tasks to return (default: 10)"}
 			}
@@ -146,7 +146,7 @@ func (t *TasksCreateTool) Metadata() tools.ToolMetadata {
 		ParameterSchema: `{
 			"type": "object",
 			"properties": {
-				"account": {"type": "string", "description": "Account alias or email"},
+				"account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},
 				"task_list_id": {"type": "string", "description": "Optional task list ID (defaults to '@default')"},
 				"title": {"type": "string", "description": "Title of the task"},
 				"notes": {"type": "string", "description": "Optional task description or notes"},

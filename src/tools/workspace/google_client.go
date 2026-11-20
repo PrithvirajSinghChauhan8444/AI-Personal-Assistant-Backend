@@ -105,8 +105,12 @@ func (gc *GoogleClient) resolveAccountKey(account string) string {
 			if pref := getPreferredAlias(mdPath); pref != "" {
 				return pref
 			}
+			accounts := parseAccountsMarkdown(mdPath)
+			for alias := range accounts {
+				return alias
+			}
 		}
-		return "email1"
+		return "default"
 	}
 
 	// If account is a raw email, resolve its configured alias from accounts.md
@@ -114,7 +118,7 @@ func (gc *GoogleClient) resolveAccountKey(account string) string {
 		if mdPath := findAccountsMarkdownPath(); mdPath != "" {
 			accounts := parseAccountsMarkdown(mdPath)
 			for alias, email := range accounts {
-				if email == account {
+				if strings.EqualFold(email, account) {
 					return alias
 				}
 			}
@@ -250,13 +254,44 @@ func (gc *GoogleClient) loadCredentials() error {
 }
 
 func (gc *GoogleClient) loadTokenFromDisk(accountKey string) (*OAuthToken, error) {
-	candidates := []string{
-		filepath.Join(gc.configDir, fmt.Sprintf("token_%s.json", accountKey)),
-		filepath.Join(gc.configDir, fmt.Sprintf("token_%s.json", sanitizeFilename(accountKey))),
-		filepath.Join(gc.configDir, "token_email1.json"),
-		filepath.Join(gc.configDir, "token_primary.json"),
-		filepath.Join(gc.configDir, "token_default.json"),
-		filepath.Join(gc.configDir, "token.json"),
+	var candidates []string
+
+	if accountKey != "" && accountKey != "default" {
+		candidates = append(candidates,
+			filepath.Join(gc.configDir, fmt.Sprintf("token_%s.json", accountKey)),
+			filepath.Join(gc.configDir, fmt.Sprintf("token_%s.json", sanitizeFilename(accountKey))),
+		)
+	}
+
+	// If accountKey is mapped in accounts.md, resolve its corresponding email or alias
+	if mdPath := findAccountsMarkdownPath(); mdPath != "" {
+		accounts := parseAccountsMarkdown(mdPath)
+		if email, ok := accounts[accountKey]; ok && email != "" {
+			candidates = append(candidates,
+				filepath.Join(gc.configDir, fmt.Sprintf("token_%s.json", email)),
+				filepath.Join(gc.configDir, fmt.Sprintf("token_%s.json", sanitizeFilename(email))),
+			)
+		}
+		for alias, email := range accounts {
+			if strings.EqualFold(email, accountKey) {
+				candidates = append(candidates,
+					filepath.Join(gc.configDir, fmt.Sprintf("token_%s.json", alias)),
+				)
+			}
+		}
+	}
+
+	// Only allow generic fallback tokens if accountKey was explicitly default or empty
+	if accountKey == "" || accountKey == "default" {
+		if mdPath := findAccountsMarkdownPath(); mdPath != "" {
+			if pref := getPreferredAlias(mdPath); pref != "" {
+				candidates = append(candidates, filepath.Join(gc.configDir, fmt.Sprintf("token_%s.json", pref)))
+			}
+		}
+		candidates = append(candidates,
+			filepath.Join(gc.configDir, "token.json"),
+			filepath.Join(gc.configDir, "token_default.json"),
+		)
 	}
 
 	var tokenBytes []byte
@@ -267,31 +302,6 @@ func (gc *GoogleClient) loadTokenFromDisk(accountKey string) (*OAuthToken, error
 			tokenBytes = data
 			loadedPath = cand
 			break
-		}
-	}
-
-	if tokenBytes == nil {
-		if mdPath := findAccountsMarkdownPath(); mdPath != "" {
-			accounts := parseAccountsMarkdown(mdPath)
-			if email, ok := accounts[accountKey]; ok && email != "" {
-				cand := filepath.Join(gc.configDir, fmt.Sprintf("token_%s.json", sanitizeFilename(email)))
-				if data, err := LoadTokenFile(cand); err == nil && len(data) > 0 {
-					tokenBytes = data
-					loadedPath = cand
-				}
-			}
-			if tokenBytes == nil {
-				for alias, email := range accounts {
-					if email == accountKey {
-						cand := filepath.Join(gc.configDir, fmt.Sprintf("token_%s.json", alias))
-						if data, err := LoadTokenFile(cand); err == nil && len(data) > 0 {
-							tokenBytes = data
-							loadedPath = cand
-							break
-						}
-					}
-				}
-			}
 		}
 	}
 

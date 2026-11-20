@@ -121,7 +121,7 @@ func (t *ClassroomListCoursesTool) Metadata() tools.ToolMetadata {
 		ParameterSchema: `{
 			"type": "object",
 			"properties": {
-				"account": {"type": "string", "description": "Account alias or email (e.g. email1, email2)"},
+				"account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},
 				"limit": {"type": "integer", "description": "Maximum courses to retrieve (default: 20, max: 100)"}
 			}
 		}`,
@@ -199,7 +199,7 @@ func (t *ClassroomListAssignmentsTool) Metadata() tools.ToolMetadata {
 		ParameterSchema: `{
 			"type": "object",
 			"properties": {
-				"account": {"type": "string", "description": "Account alias or email"},
+				"account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},
 				"course_id": {"type": "string", "description": "Google Classroom course ID"},
 				"limit": {"type": "integer", "description": "Maximum assignments to return (default: 20, max: 100)"}
 			},
@@ -289,7 +289,7 @@ func (t *ClassroomGetAssignmentTool) Metadata() tools.ToolMetadata {
 		ParameterSchema: `{
 			"type": "object",
 			"properties": {
-				"account": {"type": "string", "description": "Account alias or email"},
+				"account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},
 				"course_id": {"type": "string", "description": "Google Classroom course ID"},
 				"assignment_id": {"type": "string", "description": "Coursework assignment ID"}
 			},
@@ -378,7 +378,7 @@ func (t *ClassroomListAnnouncementsTool) Metadata() tools.ToolMetadata {
 		ParameterSchema: `{
 			"type": "object",
 			"properties": {
-				"account": {"type": "string", "description": "Account alias or email"},
+				"account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},
 				"course_id": {"type": "string", "description": "Google Classroom course ID"},
 				"limit": {"type": "integer", "description": "Maximum announcements to retrieve (default: 20, max: 100)"}
 			},

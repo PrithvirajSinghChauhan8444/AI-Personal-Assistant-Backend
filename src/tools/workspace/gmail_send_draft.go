@@ -33,7 +33,7 @@ func (t *GmailSendDraftTool) Metadata() tools.ToolMetadata {
 		Name:               "gmail_send_draft",
 		Category:           "workspace",
 		Description:        "Creates a new email draft in Gmail without sending it immediately.",
-		ParameterSchema:    `{"type":"object","properties":{"account":{"type":"string","description":"Account alias or email (primary, college, personal)"},"to":{"type":"string","description":"Recipient email address"},"subject":{"type":"string","description":"Email subject line"},"body":{"type":"string","description":"Email message body"}},"required":["to","subject","body"]}`,
+		ParameterSchema:    `{"type":"object","properties":{"account":{"type":"string","description":"Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},"to":{"type":"string","description":"Recipient email address"},"subject":{"type":"string","description":"Email subject line"},"body":{"type":"string","description":"Email message body"}},"required":["to","subject","body"]}`,
 		PromptUsageTip:     "Use gmail_send_draft to prepare email communications. Drafts allow user review before dispatch.",
 		Risk:               tools.RiskMedium,
 		RequiredCapability: "workspace:write",

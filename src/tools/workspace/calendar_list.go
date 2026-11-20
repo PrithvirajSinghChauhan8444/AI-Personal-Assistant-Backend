@@ -41,7 +41,7 @@ func (t *CalendarListTool) Metadata() tools.ToolMetadata {
 		Name:               "calendar_list",
 		Category:           "workspace",
 		Description:        "Lists scheduled Google Calendar events within a specified time window.",
-		ParameterSchema:    `{"type":"object","properties":{"account":{"type":"string","description":"Account alias or email (primary, college, personal)"},"time_min":{"type":"string","description":"RFC3339 timestamp filter start (default: start of today)"},"time_max":{"type":"string","description":"RFC3339 timestamp filter end (default: 7 days ahead)"},"limit":{"type":"integer","description":"Maximum events to return (default: 10)"}}}`,
+		ParameterSchema:    `{"type":"object","properties":{"account":{"type":"string","description":"Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},"time_min":{"type":"string","description":"RFC3339 timestamp filter start (default: start of today)"},"time_max":{"type":"string","description":"RFC3339 timestamp filter end (default: 7 days ahead)"},"limit":{"type":"integer","description":"Maximum events to return (default: 10)"}}}`,
 		PromptUsageTip:     "Use calendar_list to check schedules, meetings, and upcoming deadlines.",
 		Risk:               tools.RiskLow,
 		RequiredCapability: "workspace:read",

@@ -39,7 +39,7 @@ func (t *GmailListTool) Metadata() tools.ToolMetadata {
 		Name:               "gmail_list",
 		Category:           "workspace",
 		Description:        "Lists recent emails matching query via Google Workspace OAuth client.",
-		ParameterSchema:    `{"type":"object","properties":{"account":{"type":"string","description":"Account alias or email (primary, college, personal)"},"query":{"type":"string","description":"Gmail search query (e.g. 'is:unread', 'from:github', default: 'in:inbox')"},"limit":{"type":"integer","description":"Maximum emails to retrieve (default: 10)"}}}`,
+		ParameterSchema:    `{"type":"object","properties":{"account":{"type":"string","description":"Complete email address of the account (e.g. 'user@example.com', 'work@company.com')"},"query":{"type":"string","description":"Gmail search query (e.g. 'is:unread', 'from:github', default: 'in:inbox')"},"limit":{"type":"integer","description":"Maximum emails to retrieve (default: 10)"}}}`,
 		PromptUsageTip:     "Use gmail_list to check incoming mail, search for notifications, or locate message IDs for gmail_read.",
 		Risk:               tools.RiskLow,
 		RequiredCapability: "workspace:read",
