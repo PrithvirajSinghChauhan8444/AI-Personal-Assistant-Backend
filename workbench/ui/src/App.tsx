@@ -10,6 +10,7 @@ import {
   SystemStats,
   ASTScanResult,
   ASTMethod,
+  AgentDetail,
 } from './types';
 import { Header, WorkbenchMode } from './components/Header';
 import { ModuleSelector } from './components/ModuleSelector';
@@ -25,6 +26,7 @@ import { SystemTelemetryViewer } from './components/SystemTelemetryViewer';
 import { ApiRequestsViewer } from './components/ApiRequestsViewer';
 import { GoLogsViewer } from './components/GoLogsViewer';
 import { AstInspectorView } from './components/AstInspectorView';
+import { AgentsCatalogView } from './components/AgentsCatalogView';
 import { ResultViewer } from './components/ResultViewer';
 import { HitlPrompt } from './components/HitlPrompt';
 import { SlidersHorizontal, Code } from 'lucide-react';
@@ -55,6 +57,21 @@ export const App: React.FC = () => {
   // AST Codebase Scanner State
   const [scanResult, setScanResult] = useState<ASTScanResult | null>(null);
   const [scanLoading, setScanLoading] = useState<boolean>(false);
+
+  // Agent Swarm & Tools Catalog State
+  const [agents, setAgents] = useState<AgentDetail[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState<boolean>(false);
+
+  const loadAgents = () => {
+    setAgentsLoading(true);
+    fetch('/api/agents')
+      .then((res) => res.json())
+      .then((data: AgentDetail[]) => {
+        setAgents(data);
+      })
+      .catch((err) => console.error('Failed to load agents:', err))
+      .finally(() => setAgentsLoading(false));
+  };
 
   const parsedFormValues = useMemo(() => {
     try {
@@ -135,6 +152,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     loadModules();
+    loadAgents();
     loadASTScan();
     loadHistory();
     loadTelemetry();
@@ -331,6 +349,7 @@ export const App: React.FC = () => {
         apiCount={apiRequests.length}
         logCount={goLogs.length}
         astMethodCount={scanResult ? (scanResult.summary.method_count + scanResult.summary.function_count) : 0}
+        agentCount={agents.length}
       />
 
       <main className="page-body">
@@ -453,6 +472,7 @@ export const App: React.FC = () => {
                   events={events}
                   record={latestRecord}
                   isRunning={isRunning}
+                  agents={agents}
                 />
               ) : (
                 <div className="card" style={{ padding: '16px' }}>
@@ -463,6 +483,15 @@ export const App: React.FC = () => {
               <ResultViewer record={latestRecord} />
             </div>
           </div>
+        )}
+
+        {/* MODE: AGENTS & TOOLS CATALOG */}
+        {currentMode === 'agents' && (
+          <AgentsCatalogView
+            agents={agents}
+            loading={agentsLoading}
+            onRefresh={loadAgents}
+          />
         )}
 
         {/* MODE: AST CODEBASE SCANNER */}

@@ -189,6 +189,23 @@ func RegisterE2EPipeline(r *engine.Registry, sup *engine.Supervisor) {
 					payload = ev.TextDelta
 				case gateway.EventStatusUpdate:
 					payload = ev.StatusMsg
+				case gateway.EventPhaseChange:
+					payload = map[string]any{
+						"phase":      ev.Phase,
+						"status_msg": ev.StatusMsg,
+					}
+				case gateway.EventPlanCreated:
+					payload = ev.Plan
+				case gateway.EventPlanDiagnostic:
+					payload = ev.Diagnostic
+				case gateway.EventSubtaskStart, gateway.EventSubtaskProgress, gateway.EventSubtaskComplete, gateway.EventSubtaskFailed:
+					payload = ev.Subtask
+				case gateway.EventToolCall:
+					payload = ev.ToolCall
+				case gateway.EventToolResult:
+					payload = ev.ToolResult
+				case gateway.EventSystemLog:
+					payload = ev.Log
 				case gateway.EventHITLRequest:
 					payload = ev.HITL
 				case gateway.EventTurnComplete:
@@ -197,6 +214,12 @@ func RegisterE2EPipeline(r *engine.Registry, sup *engine.Supervisor) {
 				case gateway.EventTurnError:
 					turnError = ev.Error
 					payload = ev.Error
+				default:
+					if ev.TextDelta != "" {
+						payload = ev.TextDelta
+					} else if ev.StatusMsg != "" {
+						payload = ev.StatusMsg
+					}
 				}
 
 				stream <- engine.StreamEvent{

@@ -8,10 +8,12 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
 
+	"assistant/src/orchestrator/manifest"
 	"assistant/workbench/engine"
 )
 
@@ -171,16 +173,29 @@ func RegisterLayer6Agent(r *engine.Registry) {
 				return nil, fmt.Errorf("failed to open stderr pipe: %w", err)
 			}
 
+			// Load agent manifest and prompt for complete traceability
+			promptPath := filepath.Join("src", "agents", in.AgentType, "prompt.md")
+			promptBytes, _ := os.ReadFile(promptPath)
+			var toolsList []manifest.ToolSpec
+			cfgFile := manifest.FindAgentConfigFile(filepath.Join("src", "agents"), in.AgentType)
+			if cfgFile != "" {
+				if mf, err := manifest.LoadManifest(cfgFile); err == nil && mf != nil {
+					toolsList = mf.Tools
+				}
+			}
+
 			stream <- engine.StreamEvent{
 				Index:     1,
 				Timestamp: time.Now(),
 				Type:      "AGENT_INIT",
 				AgentName: fmt.Sprintf("@%s", in.AgentType),
 				Payload: map[string]any{
-					"agent":      in.AgentType,
-					"model_mode": in.ModelMode,
-					"mock_tools": in.MockTools,
-					"prompt":     in.Prompt,
+					"agent":           in.AgentType,
+					"model_mode":      in.ModelMode,
+					"mock_tools":      in.MockTools,
+					"prompt":          in.Prompt,
+					"system_prompt":   string(promptBytes),
+					"available_tools": toolsList,
 				},
 			}
 
@@ -231,6 +246,27 @@ func RegisterLayer6Agent(r *engine.Registry) {
 						Type:      "TOOL_INTENT",
 						AgentName: toolName,
 						Payload:   toolArgs,
+					}
+				} else if strings.HasPrefix(trimmed, "<<< [") {
+					// Tool Result output
+					resPart := strings.TrimPrefix(trimmed, "<<< [")
+					resParts := strings.SplitN(resPart, "]:", 2)
+					toolName := strings.TrimSuffix(strings.TrimSpace(resParts[0]), " Result")
+					toolOutput := ""
+					if len(resParts) > 1 {
+						toolOutput = strings.TrimSpace(resParts[1])
+					}
+					eventIdx++
+					stream <- engine.StreamEvent{
+						Index:     eventIdx,
+						Timestamp: time.Now(),
+						Type:      "TOOL_RESULT",
+						AgentName: toolName,
+						Payload: map[string]any{
+							"tool_name": toolName,
+							"output":    toolOutput,
+							"exit_code": 0,
+						},
 					}
 				} else if strings.Contains(line, "Final Response:") {
 					inFinalResponse = true

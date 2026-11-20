@@ -120,14 +120,32 @@ func RegisterLayer2Orchestrator(r *engine.Registry, sup *engine.Supervisor) {
 
 			for ev := range eventCh {
 				var payload any = ev.TextDelta
-				if ev.StatusMsg != "" {
-					payload = ev.StatusMsg
-				} else if ev.HITL != nil {
+				switch ev.Type {
+				case gateway.EventToolCall:
+					payload = ev.ToolCall
+				case gateway.EventToolResult:
+					payload = ev.ToolResult
+				case gateway.EventPlanCreated:
+					payload = ev.Plan
+				case gateway.EventSubtaskStart, gateway.EventSubtaskProgress, gateway.EventSubtaskComplete, gateway.EventSubtaskFailed:
+					payload = ev.Subtask
+				case gateway.EventPhaseChange:
+					payload = map[string]any{
+						"phase":      ev.Phase,
+						"status_msg": ev.StatusMsg,
+					}
+				case gateway.EventHITLRequest:
 					payload = ev.HITL
-				} else if ev.Metrics != nil {
+				case gateway.EventTurnComplete:
 					payload = ev.Metrics
-				} else if ev.Error != "" {
+				case gateway.EventTurnError:
 					payload = ev.Error
+				default:
+					if ev.StatusMsg != "" {
+						payload = ev.StatusMsg
+					} else if ev.TextDelta != "" {
+						payload = ev.TextDelta
+					}
 				}
 
 				stream <- engine.StreamEvent{

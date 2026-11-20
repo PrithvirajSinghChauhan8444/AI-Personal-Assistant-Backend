@@ -1,7 +1,7 @@
 import React from 'react';
-import { Layers, Rocket, History, Cpu, Network, Terminal, Circle, FileCode2 } from 'lucide-react';
+import { Layers, Rocket, History, Cpu, Network, Terminal, Circle, FileCode2, Bot } from 'lucide-react';
 
-export type WorkbenchMode = 'runner' | 'ast' | 'history' | 'telemetry' | 'apireqs' | 'gologs';
+export type WorkbenchMode = 'runner' | 'agents' | 'ast' | 'history' | 'telemetry' | 'apireqs' | 'gologs';
 
 interface HeaderProps {
   currentMode: WorkbenchMode;
@@ -11,6 +11,7 @@ interface HeaderProps {
   apiCount: number;
   logCount: number;
   astMethodCount?: number;
+  agentCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -21,6 +22,7 @@ export const Header: React.FC<HeaderProps> = ({
   apiCount,
   logCount,
   astMethodCount = 0,
+  agentCount = 0,
 }) => {
   return (
     <header className="app-header">
@@ -48,6 +50,15 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Rocket size={14} />
           <span>Runner &amp; Workbench</span>
+        </button>
+
+        <button
+          className={`nav-tab-btn ${currentMode === 'agents' ? 'active' : ''}`}
+          onClick={() => onSelectMode('agents')}
+        >
+          <Bot size={14} />
+          <span>Agents &amp; Tools</span>
+          {agentCount > 0 && <span className="tab-badge" style={{ background: 'var(--accent-lavender-bg)', color: 'var(--accent-lavender)', borderColor: 'var(--accent-lavender-border)' }}>{agentCount}</span>}
         </button>
 
         <button

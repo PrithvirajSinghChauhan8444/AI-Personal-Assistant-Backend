@@ -193,3 +193,67 @@ export interface ASTScanResult {
   summary: ASTScanSummary;
 }
 
+export interface AgentToolSpec {
+  name: string;
+  description: string;
+  risk: string;
+  execution_domain?: string;
+  required_capability?: string;
+}
+
+export interface AgentDetail {
+  id: string;
+  display_name: string;
+  description: string;
+  model?: {
+    default: string;
+    temperature: number;
+  };
+  tools: AgentToolSpec[];
+  routing_rules?: string[];
+  system_prompt?: string;
+}
+
+export interface SubtaskTraceInfo {
+  subtask_id: string;
+  worker: string;
+  description: string;
+  status: string;
+  depends_on?: string[];
+  input_prompt?: string;
+  input_context?: Record<string, any>;
+  output?: string;
+  artifact_path?: string;
+  duration_ms?: number;
+  error?: string;
+}
+
+export interface PlanTraceInfo {
+  plan_id?: string;
+  primary_goal: string;
+  subtasks: SubtaskTraceInfo[];
+}
+
+export interface ToolCallTraceInfo {
+  call_id?: string;
+  tool_name: string;
+  arguments?: Record<string, any>;
+  args_json?: string;
+  idempotency_key?: string;
+  agent_name?: string;
+  timestamp?: string;
+}
+
+export interface ToolResultTraceInfo {
+  call_id?: string;
+  tool_name?: string;
+  exit_code?: number;
+  output?: string;
+  artifact_path?: string;
+  duration_ms?: number;
+  is_error?: boolean;
+  agent_name?: string;
+  timestamp?: string;
+}
+
+

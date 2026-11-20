@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
 	"assistant/src/gateway"
+	"assistant/src/orchestrator/manifest"
 	"assistant/workbench/engine"
 	"assistant/workbench/modules"
 	"assistant/workbench/web"
@@ -95,6 +97,61 @@ func Start(port int, historyDir string) error {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		mods := registry.List()
 		_ = json.NewEncoder(w).Encode(mods)
+	})
+
+	// API: Agent Manifests, Tools Catalog & System Prompts
+	mux.HandleFunc("GET /api/agents", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		configPath := filepath.Join("config", "agents.json")
+		agentsDir := filepath.Join("src", "agents")
+		manifests, err := manifest.LoadActiveManifests(configPath, agentsDir)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to load agent manifests: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		type AgentDetail struct {
+			ID           string              `json:"id"`
+			DisplayName  string              `json:"display_name"`
+			Description  string              `json:"description"`
+			Model        manifest.ModelSpec  `json:"model"`
+			Tools        []manifest.ToolSpec `json:"tools"`
+			RoutingRules []string            `json:"routing_rules"`
+			SystemPrompt string              `json:"system_prompt,omitempty"`
+		}
+
+		result := make([]AgentDetail, 0, len(manifests)+1)
+		for id, m := range manifests {
+			promptBytes, _ := os.ReadFile(filepath.Join("src", "agents", id, "prompt.md"))
+			result = append(result, AgentDetail{
+				ID:           id,
+				DisplayName:  m.DisplayName,
+				Description:  m.Description,
+				Model:        m.Model,
+				Tools:        m.Tools,
+				RoutingRules: m.RoutingRules,
+				SystemPrompt: string(promptBytes),
+			})
+		}
+
+		// Also include manager agent planner
+		mgrPrompt, _ := os.ReadFile(filepath.Join("src", "orchestrator", "planner", "manager_prompt.md"))
+		if len(mgrPrompt) == 0 {
+			mgrPrompt, _ = os.ReadFile(filepath.Join("src", "orchestrator", "manager", "prompt.md"))
+		}
+		result = append(result, AgentDetail{
+			ID:           "manager",
+			DisplayName:  "Manager Agent (Layer 2 Planner)",
+			Description:  "Decomposes goals into a topological DAG plan and schedules specialist worker agents",
+			Model:        manifest.ModelSpec{Default: "gemini-2.5-pro", Temperature: 0.2},
+			Tools:        []manifest.ToolSpec{},
+			RoutingRules: []string{"Default orchestrator for complex multi-step reasoning"},
+			SystemPrompt: string(mgrPrompt),
+		})
+
+		_ = json.NewEncoder(w).Encode(result)
 	})
 
 	// API: Execute Module with Live SSE Streaming
