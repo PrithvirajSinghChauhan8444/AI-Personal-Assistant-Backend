@@ -84,7 +84,7 @@ class ManagerAgent:
     def __init__(
         self,
         config_path: str = "config/agents.json",
-        prompt_path: str = "config/prompts/manager_prompt.md",
+        prompt_path: str = "src/orchestrator/manager/prompt.md",
         model_override: Optional[str] = None,
         temperature_override: Optional[float] = None,
     ) -> None:
@@ -219,11 +219,13 @@ class ManagerAgent:
         """Loads the markdown prompt template and formats worker capabilities."""
         candidates = [
             Path(self.prompt_path),
+            Path(__file__).resolve().parent / "prompt.md",
+            _PROJECT_ROOT / "src" / "orchestrator" / "manager" / "prompt.md",
+            _PROJECT_ROOT / "src" / "orchestrator" / "planner" / "manager_prompt.md",
+            Path("src/orchestrator/manager/prompt.md"),
+            Path("src/orchestrator/planner/manager_prompt.md"),
             _PROJECT_ROOT / "config" / "prompts" / "manager_prompt.md",
             Path("config/prompts/manager_prompt.md"),
-            Path(__file__).resolve().parent / "prompt.md",
-            _PROJECT_ROOT / "src" / "orchestrator" / "planner" / "manager_prompt.md",
-            Path("src/orchestrator/planner/manager_prompt.md"),
         ]
         template = ""
         for p in candidates:
@@ -268,6 +270,35 @@ class ManagerAgent:
         formatted = formatted.replace("{{ARTIFACTS_DIR}}", art_dir)
         return formatted
 
+    def _load_core_profile(self) -> str:
+        """Loads User Core Profile from memory layer dynamically on every turn."""
+        try:
+            from src.memory.engine import resolve_memory_base_dir
+            base_dir = resolve_memory_base_dir()
+            profile_path = Path(base_dir) / "core_profile.md"
+            if profile_path.is_file():
+                content = profile_path.read_text(encoding="utf-8").strip()
+                if content:
+                    return content
+        except Exception:
+            pass
+
+        # Fallback candidate locations
+        candidates = [
+            Path.home() / ".config" / "ai-assistant" / "memory" / "core_profile.md",
+            _PROJECT_ROOT / "workspace" / "Memory" / "core_profile.md",
+            _PROJECT_ROOT / "Memory" / "core_profile.md",
+        ]
+        for c in candidates:
+            if c.is_file():
+                try:
+                    content = c.read_text(encoding="utf-8").strip()
+                    if content:
+                        return content
+                except Exception:
+                    pass
+        return ""
+
     async def plan(
         self,
         goal: str,
@@ -283,6 +314,12 @@ class ManagerAgent:
             raise ValueError("Cannot plan tasks: no specialist worker agents are currently enabled in config/agents.json. Please enable the required workers in config/agents.json to proceed.")
 
         context_parts = []
+
+        # Dynamically inject User Core Profile & Requirements on every turn
+        core_profile = self._load_core_profile()
+        if core_profile:
+            context_parts.append(f"User Core Profile & Requirements:\n{core_profile}")
+
         if conversation_history:
             history_str = "\n".join(
                 f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in conversation_history

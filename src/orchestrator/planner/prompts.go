@@ -159,8 +159,9 @@ func BuildPlannerSystemPrompt(workers []WorkerCapability, promptFilePath string)
 	} else {
 		// Try default location on disk for live editing
 		candidates := []string{
-			"config/prompts/manager_prompt.md",
+			"src/orchestrator/manager/prompt.md",
 			"src/orchestrator/planner/manager_prompt.md",
+			"config/prompts/manager_prompt.md",
 		}
 		for _, c := range candidates {
 			if content, err := os.ReadFile(c); err == nil && len(content) > 0 {
@@ -210,4 +211,25 @@ func BuildPlannerSystemPrompt(workers []WorkerCapability, promptFilePath string)
 	res = strings.Replace(res, "{{WORKSPACE_DIR}}", wsDir, -1)
 	res = strings.Replace(res, "{{ARTIFACTS_DIR}}", artDir, -1)
 	return res
+}
+
+// LoadCoreProfileMarkdown dynamically locates and reads the user's core_profile.md on each turn.
+func LoadCoreProfileMarkdown() string {
+	var candidates []string
+	if envDir := os.Getenv("AI_ASSISTANT_MEMORY_DIR"); envDir != "" {
+		candidates = append(candidates, filepath.Join(envDir, "core_profile.md"))
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		candidates = append(candidates, filepath.Join(home, ".config", "ai-assistant", "memory", "core_profile.md"))
+	}
+	candidates = append(candidates,
+		filepath.Join("workspace", "Memory", "core_profile.md"),
+		filepath.Join("Memory", "core_profile.md"),
+	)
+	for _, c := range candidates {
+		if content, err := os.ReadFile(c); err == nil && len(content) > 0 {
+			return strings.TrimSpace(string(content))
+		}
+	}
+	return ""
 }

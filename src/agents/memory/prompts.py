@@ -4,9 +4,10 @@ from pathlib import Path
 
 
 def _load_prompt(filename: str, fallback: str) -> str:
-    """Loads markdown prompt from config/prompts directory with fallback."""
+    """Loads markdown prompt from agent directory with fallback."""
     candidates = [
         Path(__file__).resolve().parent / "prompt.md",
+        Path(__file__).resolve().parent / filename,
         Path("config/prompts") / filename,
         Path(__file__).resolve().parent.parent.parent.parent / "config" / "prompts" / filename,
     ]

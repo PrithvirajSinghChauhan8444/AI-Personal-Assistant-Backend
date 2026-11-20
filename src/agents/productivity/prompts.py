@@ -4,9 +4,10 @@ from pathlib import Path
 
 
 def _load_prompt(filename: str, fallback: str) -> str:
-    """Loads markdown prompt from config/prompts directory with fallback."""
+    """Loads markdown prompt from agent directory with fallback."""
     candidates = [
         Path(__file__).resolve().parent / "prompt.md",
+        Path(__file__).resolve().parent / filename,
         Path("config/prompts") / filename,
         Path(__file__).resolve().parent.parent.parent.parent / "config" / "prompts" / filename,
     ]
@@ -62,11 +63,12 @@ Operational Directives & Safe Draft-First Policy:
 - For newsletters, automated transaction receipts, or spam notifications, do NOT draft any replies.
 - When scheduling meetings, check `calendar_list` first to prevent scheduling conflicts.
 - Always check `sys_get_time` when calculating relative dates (e.g. "tomorrow", "next Monday").
-- Explicitly state which account (e.g. 'email1', 'email2', etc.) was accessed or updated.
+- Always supply the complete, full email address for the account parameter (e.g. 'user@example.com', 'work@company.com'). Do NOT use generic aliases or external placeholders (such as 'email1', 'email2', 'primary', or 'college'); fill the exact email address required for the task directly.
+- Explicitly state which full email address was accessed or updated.
 
 Authentication & Automatic Task Resumption Directive:
 - If ANY Gmail, Calendar, or Tasks tool call fails due to authentication or token errors (e.g. "invalid_grant", "Token has been expired or revoked", "unauthorized", or status 400/401):
-  1. Call `google_auth_login` immediately for that account.
+  1. Call `google_auth_login` immediately using the complete email address for that account.
   2. `google_auth_login` will display the verification link directly to the user in their terminal and wait for the browser flow to complete.
   3. When `google_auth_login` returns success, the token is refreshed and active.
   4. CRITICAL: You MUST NOT finish or terminate the turn by just saying login succeeded or asking the user to repeat the command. You MUST immediately execute the pending user operation (such as `gmail_check_unread`, `gmail_list`, etc.) in the SAME turn and present the actual results to the user.

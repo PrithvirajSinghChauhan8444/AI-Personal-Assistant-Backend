@@ -92,6 +92,11 @@ func (m *ManagerAgent) Plan(ctx context.Context, goal string, contextData map[st
 		userPrompt = fmt.Sprintf("Context: %s\n\n%s", string(ctxBytes), userPrompt)
 	}
 
+	coreProfile := LoadCoreProfileMarkdown()
+	if coreProfile != "" {
+		userPrompt = fmt.Sprintf("User Core Profile & Requirements:\n%s\n\n%s", coreProfile, userPrompt)
+	}
+
 	rawOutput, err := m.llm.Generate(ctx, sysPrompt, userPrompt)
 	if err != nil {
 		return nil, fmt.Errorf("manager planning failed: %w", err)
