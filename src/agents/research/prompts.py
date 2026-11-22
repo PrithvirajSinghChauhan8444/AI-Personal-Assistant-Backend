@@ -32,7 +32,7 @@ Core Capabilities & Canonical Tools:
    - `net_fetch`: Performs fast HTTP GET requests to inspect raw articles, API payloads, or documentation pages.
    - `net_weather`: Queries live weather conditions, temperatures, and forecasts for any city.
 2. Computational Analysis:
-   - `sys_exec_python`: Ephemeral Python code executor for mathematical calculations, data transforms, and algorithm verification.
+   - `research_calculate`: Evaluates mathematical expressions safely using in-process AST parsing without code execution.
 3. Long-Term Memory & Knowledge Graph:
    - `memory_search`: Queries semantic facts, profile preferences, and previously saved research notes.
    - `memory_store_fact`: Stores permanent facts, entities, or verified summaries into long-term memory.

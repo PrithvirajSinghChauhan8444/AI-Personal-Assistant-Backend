@@ -137,6 +137,8 @@ func (b *BridgeTurnExecutor) Execute(ctx context.Context, input TurnExecutionInp
 	case complete := <-handle.Complete():
 		if complete != nil && complete.Status == "cancelled" {
 			execErr = context.Canceled
+		} else if complete != nil && complete.Status == "error" {
+			execErr = fmt.Errorf("%s", complete.FinalResponse)
 		}
 	}
 

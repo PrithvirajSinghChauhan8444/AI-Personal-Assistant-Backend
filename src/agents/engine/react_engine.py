@@ -15,8 +15,10 @@ from src.agents.contracts import (
     ReActObserver,
     ToolCallIntent,
     ToolCallResult,
+    ToolExecutionDomain,
     WorkerExecutionSnapshot,
 )
+from src.agents.engine.tool_dispatcher import ToolDispatcher
 from src.models.base import BaseLLMClient
 from src.models.types import ToolCallChunk
 
@@ -78,11 +80,17 @@ class ReActEngine:
         memory_engine: Optional[MemoryEngineProtocol] = None,
         pipe_emitter: Optional[PipeEmitterProtocol] = None,
         pipe_reader: Optional[PipeReaderProtocol] = None,
+        tool_dispatcher: Optional[ToolDispatcher] = None,
     ) -> None:
         self.model_client = model_client
         self.memory_engine = memory_engine
         self.pipe_emitter = pipe_emitter
         self.pipe_reader = pipe_reader
+        self.tool_dispatcher = tool_dispatcher or ToolDispatcher(
+            pipe_emitter=pipe_emitter,
+            pipe_reader=pipe_reader,
+            memory_engine=memory_engine,
+        )
         self._observers: List[ReActObserver] = []
 
     def register_react_observer(self, observer: ReActObserver) -> None:
@@ -112,7 +120,7 @@ class ReActEngine:
             "tokens_streamed": 0,
         }
 
-        messages = ctx.conversation_history
+        messages = [dict(m) for m in ctx.conversation_history]
         messages.append({"role": "user", "content": ctx.user_prompt})
 
         tool_schemas = [t.to_dict() for t in ctx.available_tools] if ctx.available_tools else None
@@ -125,6 +133,10 @@ class ReActEngine:
                 iterations += 1
                 if worker_id in _active_workers:
                     _active_workers[worker_id]["current_iteration"] = iterations
+
+                # 2C: Sliding-window context guardrail to prevent context window overflow
+                if len(messages) > 20:
+                    messages = [messages[0]] + messages[-19:]
 
                 step_text, tool_chunks = await self._stream_model_turn(ctx, messages, tool_schemas)
                 if step_text:
@@ -148,7 +160,20 @@ class ReActEngine:
                 total_tool_calls += len(tool_intents)
 
                 self._record_assistant_turn(messages, step_text, tool_intents)
-                await self._execute_and_record_tools(ctx, messages, tool_intents)
+                challenge = await self._execute_and_record_tools(ctx, messages, tool_intents)
+
+                # 2A: Human-in-the-Loop (HITL) Termination Guardrail
+                if challenge:
+                    return AgentTurnResult(
+                        status="waiting_for_user_confirmation",
+                        final_response=(
+                            f"Action requires user confirmation: {challenge.get('command', 'destructive command')}\n"
+                            f"Reason: {challenge.get('reason', 'Potentially destructive operation')}\n"
+                            f"Please confirm to proceed."
+                        ),
+                        iterations_used=iterations,
+                        tool_calls_executed=total_tool_calls,
+                    )
 
                 for obs in self._get_observers():
                     try:
@@ -249,12 +274,11 @@ class ReActEngine:
 
     async def _execute_and_record_tools(
         self, ctx: AgentContext, messages: List[Dict[str, Any]], intents: List[ToolCallIntent]
-    ) -> None:
-        local_intents = [i for i in intents if self._is_local_tool(i.tool_name)]
-        remote_intents = [i for i in intents if not self._is_local_tool(i.tool_name)]
+    ) -> Optional[Dict[str, Any]]:
         worker_id = (ctx.agent_type.value if hasattr(ctx.agent_type, "value") else str(ctx.agent_type)).lower()
+        pending_challenge: Optional[Dict[str, Any]] = None
 
-        for intent in local_intents:
+        for intent in intents:
             if worker_id in _active_workers:
                 _active_workers[worker_id]["active_tool"] = intent.tool_name
                 _active_workers[worker_id]["total_tool_calls"] += 1
@@ -265,11 +289,12 @@ class ReActEngine:
                 except Exception:
                     pass
 
-            if hasattr(self.pipe_emitter, "emit_local_tool_call"):
+            is_local = self._is_local_tool(intent.tool_name, ctx)
+            if is_local and hasattr(self.pipe_emitter, "emit_local_tool_call"):
                 await self.pipe_emitter.emit_local_tool_call(ctx.turn_id, intent)
 
             start_time = time.perf_counter()
-            result_output = await self._execute_local_tool(intent)
+            tool_res = await self.tool_dispatcher.execute_intent(intent, ctx)
             duration_ms = int((time.perf_counter() - start_time) * 1000)
 
             if worker_id in _active_workers:
@@ -277,85 +302,62 @@ class ReActEngine:
 
             for obs in self._get_observers():
                 try:
-                    obs.on_tool_result(worker_id, ctx.turn_id, intent.tool_name, result_output, duration_ms)
+                    obs.on_tool_result(worker_id, ctx.turn_id, intent.tool_name, tool_res.output, duration_ms)
                 except Exception:
                     pass
 
-            if hasattr(self.pipe_emitter, "emit_local_tool_result"):
+            if is_local and hasattr(self.pipe_emitter, "emit_local_tool_result"):
                 await self.pipe_emitter.emit_local_tool_result(
                     ctx.turn_id,
                     intent.tool_name,
-                    result_output,
+                    tool_res.output,
                     duration_ms,
-                    result_output.startswith("Error"),
+                    tool_res.is_error,
+                )
+
+            # 2A: Check for Human-in-the-Loop confirmation challenges
+            sanitized_output = tool_res.output
+            if "confirmation_required" in tool_res.output:
+                try:
+                    data = json.loads(tool_res.output)
+                    if isinstance(data, dict) and data.get("status") == "confirmation_required":
+                        pending_challenge = data
+                        sanitized_data = {k: v for k, v in data.items() if k != "confirmation_id"}
+                        sanitized_data["notice"] = "PAUSED: Potentially destructive action requires explicit user confirmation."
+                        sanitized_output = json.dumps(sanitized_data, indent=2)
+                except Exception:
+                    pass
+
+            # 2C: Truncate oversized tool output to avoid context overflow
+            max_output_chars = 12000
+            if len(sanitized_output) > max_output_chars:
+                sanitized_output = (
+                    sanitized_output[:max_output_chars]
+                    + f"\n\n[Output truncated: exceeded {max_output_chars} characters limit. Use targeted file/data slicing to inspect specific portions.]"
                 )
 
             messages.append({
                 "role": "tool",
-                "tool_call_id": intent.call_id,
-                "content": result_output,
+                "tool_call_id": tool_res.call_id,
+                "content": sanitized_output,
             })
 
-        if remote_intents:
-            for intent in remote_intents:
-                if worker_id in _active_workers:
-                    _active_workers[worker_id]["active_tool"] = intent.tool_name
-                    _active_workers[worker_id]["total_tool_calls"] += 1
-                for obs in self._get_observers():
-                    try:
-                        obs.on_tool_call(worker_id, ctx.turn_id, intent.tool_name, intent.arguments)
-                    except Exception:
-                        pass
+            if pending_challenge:
+                break
 
-            start_time = time.perf_counter()
-            results = await self._execute_remote_tools(ctx, remote_intents)
-            duration_ms = int((time.perf_counter() - start_time) * 1000)
+        return pending_challenge
 
-            if worker_id in _active_workers:
-                _active_workers[worker_id]["active_tool"] = None
+    def _is_local_tool(self, tool_name: str, ctx: Optional[AgentContext] = None) -> bool:
+        return self.tool_dispatcher.determine_domain(tool_name, ctx) == ToolExecutionDomain.PYTHON_LOCAL
 
-            for res, intent in zip(results, remote_intents):
-                for obs in self._get_observers():
-                    try:
-                        obs.on_tool_result(worker_id, ctx.turn_id, intent.tool_name, res.output, duration_ms)
-                    except Exception:
-                        pass
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": res.call_id,
-                    "content": res.output,
-                })
-
-    def _is_local_tool(self, tool_name: str) -> bool:
-        if self.memory_engine and self.memory_engine.is_memory_tool(tool_name):
-            return True
-        return tool_name.startswith("memory_")
-
-    async def _execute_local_tool(self, intent: ToolCallIntent) -> str:
-        if not self.memory_engine:
-            return f"Error: memory engine unavailable for local tool {intent.tool_name}"
-        try:
-            return await self.memory_engine.execute_tool(intent.tool_name, intent.arguments)
-        except Exception as exc:
-            return f"Error executing local tool {intent.tool_name}: {exc}"
+    async def _execute_local_tool(self, intent: ToolCallIntent, ctx: Optional[AgentContext] = None) -> str:
+        res = await self.tool_dispatcher.execute_intent(intent, ctx)
+        return res.output
 
     async def _execute_remote_tools(
         self, ctx: AgentContext, remote_intents: List[ToolCallIntent]
     ) -> List[ToolCallResult]:
-        if not self.pipe_emitter or not self.pipe_reader:
-            return [
-                ToolCallResult(
-                    call_id=i.call_id,
-                    output=f"Simulation result for remote tool {i.tool_name}",
-                    is_error=False,
-                )
-                for i in remote_intents
-            ]
-
-        for intent in remote_intents:
-            await self.pipe_emitter.emit_tool_call(ctx.turn_id, intent)
-
-        return await self.pipe_reader.wait_for_tool_results(ctx.turn_id, len(remote_intents))
+        return await self.tool_dispatcher.execute_intents(remote_intents, ctx)
 
 
 async def run_worker_agent(
@@ -364,6 +366,7 @@ async def run_worker_agent(
     memory_engine: Optional[MemoryEngineProtocol] = None,
     pipe_emitter: Optional[PipeEmitterProtocol] = None,
     pipe_reader: Optional[PipeReaderProtocol] = None,
+    tool_dispatcher: Optional[ToolDispatcher] = None,
 ) -> AgentTurnResult:
     """Convenience functional entrypoint to execute a worker agent turn."""
     engine = ReActEngine(
@@ -371,5 +374,6 @@ async def run_worker_agent(
         memory_engine=memory_engine,
         pipe_emitter=pipe_emitter,
         pipe_reader=pipe_reader,
+        tool_dispatcher=tool_dispatcher,
     )
     return await engine.run(ctx)

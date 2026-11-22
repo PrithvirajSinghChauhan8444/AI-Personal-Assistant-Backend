@@ -12,10 +12,10 @@
   "cdp_url": "http://localhost:9222",
   "slow_mo_ms": 1000,
   "model": {
-    "default": "google:gemini-3.5-flash-lite",
+    "default": "google:gemini-3.5-flash",
     "temperature": 0.0
   },
-  "description": "Interactive web browser automation: navigating URLs, clicking elements, reading dynamic web pages, and taking screenshots via Playwright.",
+  "description": "Interactive web browser automation using Playwright MCP: navigating URLs, clicking elements, reading accessibility DOM snapshots, taking visual screenshots, and managing tabs.",
   "routing_rules": [
     "Assign when a task requires rendering modern JavaScript websites, logging into web dashboards, or visual UI verification."
   ],
@@ -28,8 +28,8 @@
       "required_capability": "browser"
     },
     {
-      "name": "browser_read_content",
-      "description": "Reads the visible text, headers, and interactive DOM layout of the current browser page.",
+      "name": "browser_snapshot",
+      "description": "Captures the structural accessibility DOM snapshot of the current page with interactive element references.",
       "risk": "LOW",
       "execution_domain": "mcp_bridge",
       "required_capability": "browser"
@@ -56,29 +56,36 @@
       "required_capability": "browser"
     },
     {
-      "name": "browser_screenshot",
-      "description": "Captures a screenshot of the current page and stores it in the artifacts directory.",
-      "risk": "LOW",
-      "execution_domain": "mcp_bridge",
-      "required_capability": "browser"
-    },
-    {
-      "name": "browser_snapshot",
-      "description": "Captures the structural accessibility DOM snapshot of the current page.",
+      "name": "browser_wait_for",
+      "description": "Waits for dynamic text to appear or disappear, or pauses for a specified duration.",
       "risk": "LOW",
       "execution_domain": "mcp_bridge",
       "required_capability": "browser"
     },
     {
       "name": "browser_take_screenshot",
-      "description": "Captures a visual image of the current page for layout verification.",
+      "description": "Captures a visual screenshot of the current page and stores it in the artifacts directory.",
       "risk": "LOW",
       "execution_domain": "mcp_bridge",
       "required_capability": "browser"
     },
     {
-      "name": "browser_get_dom_map",
-      "description": "Extracts clickable interactive elements with their CSS selectors and coordinates.",
+      "name": "browser_tabs",
+      "description": "Manages browser tabs: list, create new, close, or select active tab.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "browser"
+    },
+    {
+      "name": "browser_navigate_back",
+      "description": "Navigates back to the previous page in browser history.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "browser"
+    },
+    {
+      "name": "browser_close",
+      "description": "Closes the current page or active browser session.",
       "risk": "LOW",
       "execution_domain": "mcp_bridge",
       "required_capability": "browser"

@@ -1,13 +1,26 @@
 """Embedding generation abstractions for Layer 5 Memory Layer."""
 
 import hashlib
+import logging
 import math
 from typing import List, Optional
 
 from src.memory.contracts import EmbeddingEngineProtocol
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 DEFAULT_EMBEDDING_DIM = 384
+BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+
+
+def _apply_query_prefix(model_name: str, query: str) -> str:
+    """Applies asymmetric search prefix for models that require it (e.g. BGE)."""
+    clean_query = query.strip()
+    if "bge" in model_name.lower():
+        if not clean_query.startswith(BGE_QUERY_PREFIX):
+            return f"{BGE_QUERY_PREFIX}{clean_query}"
+    return clean_query
 
 
 class DeterministicMockEmbedder:
@@ -15,6 +28,7 @@ class DeterministicMockEmbedder:
 
     def __init__(self, dimension: int = DEFAULT_EMBEDDING_DIM) -> None:
         self._dimension = dimension
+        self.is_fallback = False
 
     @property
     def dimension(self) -> int:
@@ -34,6 +48,9 @@ class DeterministicMockEmbedder:
             return [v / norm for v in vector]
         return [0.0] * self._dimension
 
+    def embed_query(self, query: str) -> List[float]:
+        return self.embed_text(query)
+
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
         return [self.embed_text(t) for t in texts]
 
@@ -47,11 +64,14 @@ class SentenceTransformerEmbedder:
         self._dim = DEFAULT_EMBEDDING_DIM
         self._fallback_mock: Optional[DeterministicMockEmbedder] = None
 
+    @property
+    def is_fallback(self) -> bool:
+        return self._fallback_mock is not None
+
     def _ensure_loaded(self) -> None:
         if self._model is not None or self._fallback_mock is not None:
             return
 
-        import logging
         import os
         import warnings
         from contextlib import redirect_stderr
@@ -90,9 +110,14 @@ class SentenceTransformerEmbedder:
             )
             if callable(get_dim):
                 self._dim = get_dim()
-        except Exception:
-            # Fall back cleanly if offline or model weights cannot be fetched
+        except Exception as exc:
+            logger.warning(
+                "Could not load SentenceTransformer '%s': %s. Degrading to DeterministicMockEmbedder.",
+                self.model_name,
+                exc,
+            )
             self._fallback_mock = DeterministicMockEmbedder(self._dim)
+            self._fallback_mock.is_fallback = True
 
     @property
     def dimension(self) -> int:
@@ -104,6 +129,10 @@ class SentenceTransformerEmbedder:
             return self._fallback_mock.embed_text(text)
         embedding = self._model.encode(text, normalize_embeddings=True, show_progress_bar=False)
         return embedding.tolist()
+
+    def embed_query(self, query: str) -> List[float]:
+        prefixed = _apply_query_prefix(self.model_name, query)
+        return self.embed_text(prefixed)
 
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
         if not texts:
@@ -124,6 +153,10 @@ class FastEmbedEmbedder:
         self._dim = DEFAULT_EMBEDDING_DIM
         self._fallback_mock: Optional[DeterministicMockEmbedder] = None
 
+    @property
+    def is_fallback(self) -> bool:
+        return self._fallback_mock is not None
+
     def _ensure_loaded(self) -> None:
         if self._model is not None or self._fallback_mock is not None:
             return
@@ -133,8 +166,14 @@ class FastEmbedEmbedder:
             self._model = TextEmbedding(model_name=self.model_name)
             probe = list(self._model.embed(["probe"]))[0]
             self._dim = len(probe)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "Could not load FastEmbed model '%s': %s. Degrading to DeterministicMockEmbedder.",
+                self.model_name,
+                exc,
+            )
             self._fallback_mock = DeterministicMockEmbedder(self._dim)
+            self._fallback_mock.is_fallback = True
 
     @property
     def dimension(self) -> int:
@@ -149,6 +188,10 @@ class FastEmbedEmbedder:
         if norm > 0:
             return [float(v / norm) for v in vector]
         return [float(v) for v in vector]
+
+    def embed_query(self, query: str) -> List[float]:
+        prefixed = _apply_query_prefix(self.model_name, query)
+        return self.embed_text(prefixed)
 
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
         if not texts:

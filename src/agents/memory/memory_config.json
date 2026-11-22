@@ -9,7 +9,7 @@
   ],
   "fallback_capability": "system",
   "model": {
-    "default": "google:gemini-3.5-flash-lite",
+    "default": "google:gemini-3.5-flash",
     "temperature": 0.0
   },
   "description": "Personal memory curation and recall: managing core user identity, preferences, rules, and searching/storing long-term episodic facts.",
@@ -25,8 +25,15 @@
       "required_capability": "memory"
     },
     {
+      "name": "memory_update_account",
+      "description": "Adds, updates, or removes connected user accounts and email aliases in accounts.md.",
+      "risk": "LOW",
+      "execution_domain": "python_local",
+      "required_capability": "memory"
+    },
+    {
       "name": "memory_store_fact",
-      "description": "Stores an atomic episodic memory fact or research note with vector embedding in ChromaDB.",
+      "description": "Stores an atomic episodic memory fact or research note with vector embedding in FAISS and SQLite.",
       "risk": "LOW",
       "execution_domain": "python_local",
       "required_capability": "memory"
@@ -40,7 +47,7 @@
     },
     {
       "name": "memory_delete",
-      "description": "Deletes a specific memory record from ChromaDB and SQLite by its unique record ID.",
+      "description": "Deletes a specific memory record from FAISS and SQLite by its unique record ID.",
       "risk": "MEDIUM",
       "execution_domain": "python_local",
       "required_capability": "memory"

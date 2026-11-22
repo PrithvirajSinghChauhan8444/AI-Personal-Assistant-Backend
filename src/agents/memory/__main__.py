@@ -130,14 +130,21 @@ class StandaloneConsoleEmitter(PipeEmitterProtocol, PipeReaderProtocol):
         sys.stdout.flush()
 
     async def wait_for_tool_results(self, turn_id: str, expected_count: int) -> List[ToolCallResult]:
-        return []
+        return [
+            ToolCallResult(
+                call_id=f"standalone_sim_{idx}",
+                output="Standalone CLI notice: Remote tool execution is not connected in standalone mode.",
+                is_error=False,
+            )
+            for idx in range(expected_count)
+        ]
 
 
 async def main() -> None:
     """Runs the Memory Worker in standalone mode (single shot or interactive REPL)."""
     agents_cfg = load_agents_config()
     mem_cfg = agents_cfg.get("memory", {})
-    model_name = mem_cfg.get("model", "google:gemini-3.5-flash-lite")
+    model_name = mem_cfg.get("model", "google:gemini-3.5-flash")
     temperature = float(mem_cfg.get("temperature", 0.0))
 
     model_client = ModelFactory.get_client(model_id=model_name, temperature=temperature)

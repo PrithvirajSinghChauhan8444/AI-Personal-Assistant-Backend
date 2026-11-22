@@ -26,8 +26,13 @@ import psutil
 from cryptography.fernet import Fernet
 from google_auth_oauthlib.flow import InstalledAppFlow
 
+# Relax oauthlib strict scope equality so auto-attached scopes (e.g. openid, incremental consent)
+# do not abort token exchange.
+os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
+
 # Canonical Google Workspace scopes matching assistant tool requirements
 WORKSPACE_SCOPES = [
+    "openid",
     "https://mail.google.com/",
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.send",
@@ -40,6 +45,24 @@ WORKSPACE_SCOPES = [
     "https://www.googleapis.com/auth/classroom.announcements.readonly",
     "https://www.googleapis.com/auth/userinfo.email",
 ]
+
+
+def try_load_dotenv() -> None:
+    """Loads environment variables from .env or config/.env if not already set, matching fernet.go."""
+    for env_candidate in [Path(".env"), Path("config/.env")]:
+        if env_candidate.is_file():
+            try:
+                for line in env_candidate.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, val = line.split("=", 1)
+                    key = key.strip()
+                    val = val.strip().strip("\"'")
+                    if key and key not in os.environ:
+                        os.environ[key] = val
+            except Exception as exc:
+                print(f"⚠️ [Auth] Could not read {env_candidate}: {exc}", file=sys.stderr)
 
 
 def _find_accounts_markdown() -> Optional[Path]:
@@ -132,13 +155,21 @@ def load_accounts_map() -> Tuple[Dict[str, str], Optional[Path]]:
     return mapping, md_path
 
 
-def get_authenticated_email(token: str) -> str:
-    """Queries Google OAuth2 tokeninfo endpoint to retrieve the actual authenticated email."""
+def get_authenticated_email(token: str, expected_client_id: Optional[str] = None) -> str:
+    """Queries Google OAuth2 tokeninfo endpoint to retrieve and verify the actual authenticated email."""
     try:
         url = f"https://oauth2.googleapis.com/tokeninfo?access_token={token}"
         req = urllib.request.Request(url, headers={"User-Agent": "AI-Personal-Assistant"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
+            aud = data.get("aud") or data.get("issued_to", "")
+            if expected_client_id and aud and aud != expected_client_id:
+                print(
+                    f"⚠️ [Auth Security] Client ID mismatch! Token was issued for '{aud}', "
+                    f"expected '{expected_client_id}'. Rejecting token.",
+                    file=sys.stderr,
+                )
+                return ""
             email = data.get("email", "").strip().lower()
             if email:
                 return email
@@ -204,9 +235,18 @@ def append_account_to_markdown(md_path: Path, alias: str, email: str) -> None:
 
 def get_derived_fernet_key() -> bytes:
     """Derives a 32-byte URL-safe base64 key matching Go's GetDerivedFernetKey()."""
+    try_load_dotenv()
     key_str = os.getenv("TOKEN_ENCRYPTION_KEY")
     if not key_str:
-        sys_pw = os.getenv("SYSTEM_PASSWORD") or os.getenv("AGENT_PASSWORD") or "default_secret_fallback_password"
+        sys_pw = os.getenv("SYSTEM_PASSWORD") or os.getenv("AGENT_PASSWORD")
+        if not sys_pw:
+            print(
+                "⚠️ [SECURITY WARNING] Neither TOKEN_ENCRYPTION_KEY, SYSTEM_PASSWORD, nor AGENT_PASSWORD is set.\n"
+                "   Tokens will be encrypted with a known default secret. Set SYSTEM_PASSWORD or TOKEN_ENCRYPTION_KEY in .env!",
+                file=sys.stderr,
+                flush=True,
+            )
+            sys_pw = "default_secret_fallback_password"
         key_bytes = hashlib.sha256(sys_pw.encode("utf-8")).digest()
     else:
         key_bytes = hashlib.sha256(key_str.encode("utf-8")).digest()
@@ -358,6 +398,7 @@ def persist_account_credentials(
     alias: str,
     email: Optional[str] = None,
     preferred_alias: Optional[str] = None,
+    allow_default_fallback_update: bool = True,
 ) -> Path:
     """Saves encrypted credentials under alias and email with strict account isolation."""
     primary_token_path = config_path / f"token_{alias}.json"
@@ -371,9 +412,12 @@ def persist_account_credentials(
         if sanitized_email_path != email_token_path:
             save_token(sanitized_email_path, token_dict)
 
-    # Update default fallback token.json only if no token.json exists yet, or if this alias is explicitly preferred
+    # Update default fallback token.json only if allowed (never on mismatch)
     fallback_path = config_path / "token.json"
-    if not fallback_path.exists() or (preferred_alias and alias == preferred_alias):
+    should_update_default = allow_default_fallback_update and (
+        not fallback_path.exists() or (preferred_alias and alias == preferred_alias)
+    )
+    if should_update_default:
         save_token(fallback_path, token_dict)
         print(f"💾 Default fallback token also updated: {fallback_path}", flush=True)
 
@@ -478,19 +522,11 @@ def authenticate_account(
                 browser=browser_type,
             )
         except Exception as exc:
-            fallback_port = find_available_port(preferred_port=active_port + 1, target_account=active_alias_hint)
-            print(f"⚠️ Port {active_port} failed ({exc}). Retrying on port {fallback_port}...", flush=True)
-            flow.redirect_uri = f"http://localhost:{fallback_port}/"
-            creds = flow.run_local_server(
-                port=fallback_port,
-                access_type="offline",
-                prompt=prompt_option,
-                open_browser=open_browser,
-                browser=browser_type,
-            )
+            print(f"❌ OAuth callback server failed on port {active_port}: {exc}", file=sys.stderr)
+            sys.exit(1)
 
         if not creds:
-            print("❌ Authentication failed: no credentials received.")
+            print("❌ Authentication failed: no credentials received.", file=sys.stderr)
             sys.exit(1)
 
         token_dict = json.loads(creds.to_json())
@@ -498,7 +534,8 @@ def authenticate_account(
             token_dict["access_token"] = token_dict["token"]
 
         actual_token = token_dict.get("access_token") or token_dict.get("token", "")
-        actual_email = get_authenticated_email(actual_token)
+        client_id = flow.client_config.get("client_id")
+        actual_email = get_authenticated_email(actual_token, expected_client_id=client_id)
         print(f"\n🔍 Authenticated Google Account: {actual_email or 'Unknown'}", flush=True)
 
         if not actual_email:
@@ -550,7 +587,8 @@ def authenticate_account(
         print(f"   Target requested       : '{target_alias}' (Expected: {expected_email})", flush=True)
         print(f"   Actual account logged in: '{actual_email}'", flush=True)
 
-        # Do NOT throw away valid credentials! Save them for the actual logged-in account
+        # Do NOT throw away valid credentials! Save them for the actual logged-in account,
+        # but do not overwrite the default fallback token.json
         matched_alias = None
         for al, em in accounts_map.items():
             if em.lower() == actual_email.lower():
@@ -564,6 +602,7 @@ def authenticate_account(
             alias=fallback_alias,
             email=actual_email,
             preferred_alias=preferred_alias,
+            allow_default_fallback_update=False,
         )
         append_account_to_markdown(target_md, fallback_alias, actual_email)
 

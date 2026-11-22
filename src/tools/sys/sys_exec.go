@@ -15,103 +15,99 @@ import (
 	"assistant/src/tools"
 )
 
+// SysExecArgs defines the parameters accepted by sys_exec.
 type SysExecArgs struct {
 	Command        string `json:"command"`
 	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
 	Cwd            string `json:"cwd,omitempty"`
 	Background     bool   `json:"background,omitempty"`
+	Detach         bool   `json:"detach,omitempty"`
 	LogFile        string `json:"log_file,omitempty"`
+	ConfirmationID string `json:"confirmation_id,omitempty"`
 }
 
-type SysExecTool struct{}
+// SysExecTool provides bash command execution with safety tiers and process detachment.
+type SysExecTool struct {
+	registry *ProcessRegistry
+}
 
+// NewSysExecTool constructs a SysExecTool.
 func NewSysExecTool() *SysExecTool {
-	return &SysExecTool{}
+	return &SysExecTool{registry: GlobalProcessRegistry}
 }
 
+// Metadata returns the tool specification.
 func (t *SysExecTool) Metadata() tools.ToolMetadata {
 	return tools.ToolMetadata{
-		Name:     "sys_exec",
-		Category: "system",
-		Description: "Executes a Linux bash or shell command with a timeout deadline, or launches background/GUI processes detached.",
-		ParameterSchema: `{"type":"object","properties":{"command":{"type":"string","description":"Bash or shell command to execute"},"timeout_seconds":{"type":"integer","description":"Command timeout deadline in seconds (default: 30)","default":30},"cwd":{"type":"string","description":"Working directory for the process"},"background":{"type":"boolean","description":"Set to true for long-running daemons, continuous services, or GUI apps that should run detached in the background","default":false},"log_file":{"type":"string","description":"Optional custom path for output log file when running in background"}},"required":["command"]}`,
-		PromptUsageTip:     "Use sys_exec for terminal commands, compiling, and running scripts. For continuous services, long-running daemons, or GUI applications (e.g. steam, games, browsers), set background: true (or append '&') so they run isolated in the background without blocking.",
+		Name:        "sys_exec",
+		Category:    "system",
+		Description: "Executes a Linux bash command synchronously with timeout and safety checks, or spawns detached background/GUI processes.",
+		ParameterSchema: `{"type":"object","properties":{"command":{"type":"string","description":"Bash or shell command to execute"},"timeout_seconds":{"type":"integer","description":"Command timeout deadline in seconds (default: 60)","default":60},"cwd":{"type":"string","description":"Working directory for the process"},"detach":{"type":"boolean","description":"Set to true for GUI apps or background services to run detached without waiting","default":false},"confirmation_id":{"type":"string","description":"Confirmation token returned when a destructive command was challenged"},"log_file":{"type":"string","description":"Optional custom path for output log file when running detached"}},"required":["command"]}`,
+		PromptUsageTip:     "Use sys_exec for shell commands, builds, and tools. Set detach: true for GUI apps or servers. Destructive commands (rm -rf, git reset --hard) will return a confirmation_id requiring user approval.",
 		Risk:               tools.RiskHigh,
 		RequiredCapability: "sys:exec",
 	}
 }
 
+// Execute parses arguments, validates safety, and executes the shell command.
 func (t *SysExecTool) Execute(ctx context.Context, argsJSON string) (*tools.ToolResult, error) {
 	var args SysExecArgs
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return &tools.ToolResult{
-			IsError:  true,
-			ExitCode: 1,
-			Stderr:   fmt.Sprintf("invalid arguments for sys_exec: %v", err),
-		}, nil
+		return failResult(fmt.Sprintf("invalid arguments for sys_exec: %v", err)), nil
 	}
 
 	trimmedCmd := strings.TrimSpace(args.Command)
 	if trimmedCmd == "" {
+		return failResult("command cannot be empty"), nil
+	}
+
+	// Verify command safety tier
+	safety := EvaluateCommandSafety(trimmedCmd)
+	if safety.IsDestructive && !ValidateConfirmation(args.ConfirmationID) {
+		challenge := map[string]interface{}{
+			"status":          "confirmation_required",
+			"tier":            safety.Tier,
+			"reason":          safety.Reason,
+			"command":         trimmedCmd,
+			"confirmation_id": safety.ConfirmationID,
+			"message":         "This command is potentially destructive and requires user confirmation.",
+		}
+		challengeJSON, _ := json.MarshalIndent(challenge, "", "  ")
 		return &tools.ToolResult{
-			IsError:  true,
-			ExitCode: 1,
-			Stderr:   "command cannot be empty",
+			Stdout:   string(challengeJSON),
+			ExitCode: 0,
+			IsError:  false,
 		}, nil
 	}
 
-	shell := "/bin/bash"
-	if _, err := exec.LookPath(shell); err != nil {
-		shell = "/bin/sh"
+	shell := resolveShell()
+	logsDir := ensureLogsDirectory(args.Cwd)
+
+	isDetached := args.Detach || args.Background || strings.HasSuffix(trimmedCmd, "&")
+	if isDetached {
+		return t.executeDetached(trimmedCmd, args, shell, logsDir)
 	}
 
-	logsDir := filepath.Join("workspace", "logs")
-	_ = os.MkdirAll(logsDir, 0755)
-
-	// Check if background execution was requested explicitly or via trailing '&'
-	isBackground := args.Background || strings.HasSuffix(trimmedCmd, "&")
-	if isBackground {
-		return t.executeBackground(trimmedCmd, args, shell, logsDir)
-	}
-
-	return t.executeForeground(ctx, trimmedCmd, args, shell, logsDir)
+	return t.executeSynchronous(ctx, trimmedCmd, args, shell, logsDir)
 }
 
-func (t *SysExecTool) executeBackground(rawCmd string, args SysExecArgs, shell, logsDir string) (*tools.ToolResult, error) {
+func (t *SysExecTool) executeDetached(rawCmd string, args SysExecArgs, shell, logsDir string) (*tools.ToolResult, error) {
 	cleanCmd := strings.TrimSpace(strings.TrimSuffix(rawCmd, "&"))
-
-	logPath := args.LogFile
-	if logPath == "" {
-		sanitized := sanitizeForFilename(cleanCmd)
-		logPath = filepath.Join(logsDir, fmt.Sprintf("exec_bg_%s_%d.log", sanitized, time.Now().Unix()))
-	} else {
-		_ = os.MkdirAll(filepath.Dir(logPath), 0755)
-	}
+	logPath := t.determineLogPath(args.LogFile, cleanCmd, logsDir)
 
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return &tools.ToolResult{
-			IsError:  true,
-			ExitCode: 1,
-			Stderr:   fmt.Sprintf("failed to open background log file %s: %v", logPath, err),
-		}, nil
+		return failResult(fmt.Sprintf("failed to open background log file %s: %v", logPath, err)), nil
 	}
-
-	startTime := time.Now().UTC()
-	startBanner := fmt.Sprintf("=== [%s] Process started: %s (cwd: %s) ===\n", startTime.Format(time.RFC3339), cleanCmd, args.Cwd)
-	_, _ = logFile.WriteString(startBanner)
 
 	cmd := exec.Command(shell, "-c", cleanCmd)
 	if args.Cwd != "" {
 		cmd.Dir = args.Cwd
 	}
 
-	// Detach process group so child lives independently of Go process lifecycle
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
+	// Detach into independent session
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
-	// Detach stdin from terminal
 	devNull, devErr := os.Open(os.DevNull)
 	if devErr == nil {
 		cmd.Stdin = devNull
@@ -122,44 +118,42 @@ func (t *SysExecTool) executeBackground(rawCmd string, args SysExecArgs, shell, 
 
 	if err := cmd.Start(); err != nil {
 		_ = logFile.Close()
-		return &tools.ToolResult{
-			IsError:  true,
-			ExitCode: 1,
-			Stderr:   fmt.Sprintf("failed to start background process: %v", err),
-		}, nil
+		return failResult(fmt.Sprintf("failed to spawn detached process: %v", err)), nil
 	}
 
 	pid := cmd.Process.Pid
-	t.appendAuditLog(logsDir, fmt.Sprintf("[%s] [BACKGROUND_START] pid=%d log=%s cmd=%s\n", startTime.Format(time.RFC3339), pid, logPath, cleanCmd))
+	t.registry.Register(pid, cleanCmd, logPath)
+	t.appendAuditLog(logsDir, fmt.Sprintf("[DETACHED_START] pid=%d log=%s cmd=%s", pid, logPath, cleanCmd))
 
-	// Asynchronously wait for exit to reap zombies and close the log file
-	go func(p *os.Process, f *os.File) {
+	// Asynchronously monitor exit to update registry and flush log
+	go func(p *os.Process, f *os.File, processPID int) {
 		state, _ := p.Wait()
 		exitCode := 0
 		if state != nil {
 			exitCode = state.ExitCode()
 		}
-		endBanner := fmt.Sprintf("\n=== [%s] Process %d exited with code %d ===\n", time.Now().UTC().Format(time.RFC3339), pid, exitCode)
-		_, _ = f.WriteString(endBanner)
+		t.registry.MarkExited(processPID, exitCode)
 		_ = f.Close()
-		t.appendAuditLog(logsDir, fmt.Sprintf("[%s] [BACKGROUND_EXIT] pid=%d exit=%d cmd=%s\n", time.Now().UTC().Format(time.RFC3339), pid, exitCode, cleanCmd))
-	}(cmd.Process, logFile)
+		t.appendAuditLog(logsDir, fmt.Sprintf("[DETACHED_EXIT] pid=%d exit=%d cmd=%s", processPID, exitCode, cleanCmd))
+	}(cmd.Process, logFile, pid)
+
+	result := map[string]interface{}{
+		"status":   "detached",
+		"pid":      pid,
+		"log_file": logPath,
+		"message":  "Process spawned in background successfully.",
+	}
+	data, _ := json.MarshalIndent(result, "", "  ")
 
 	return &tools.ToolResult{
-		Stdout:   fmt.Sprintf("Process spawned in background successfully.\nPID: %d\nLog file: %s", pid, logPath),
+		Stdout:   string(data),
 		ExitCode: 0,
 		IsError:  false,
 	}, nil
 }
 
-func (t *SysExecTool) executeForeground(ctx context.Context, cmdStr string, args SysExecArgs, shell, logsDir string) (*tools.ToolResult, error) {
-	timeoutSec := args.TimeoutSeconds
-	if timeoutSec <= 0 {
-		timeoutSec = 30
-	} else if timeoutSec > 300 {
-		timeoutSec = 300
-	}
-
+func (t *SysExecTool) executeSynchronous(ctx context.Context, cmdStr string, args SysExecArgs, shell, logsDir string) (*tools.ToolResult, error) {
+	timeoutSec := sanitizeTimeout(args.TimeoutSeconds)
 	execCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 
@@ -168,10 +162,7 @@ func (t *SysExecTool) executeForeground(ctx context.Context, cmdStr string, args
 		cmd.Dir = args.Cwd
 	}
 
-	// Set process group and cancel function to ensure process tree cleanup
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.WaitDelay = 2 * time.Second
 	cmd.Cancel = func() error {
 		if cmd.Process != nil {
@@ -179,6 +170,9 @@ func (t *SysExecTool) executeForeground(ctx context.Context, cmdStr string, args
 		}
 		return nil
 	}
+
+	// Environment non-interactive guards
+	cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive", "PAGER=cat")
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
@@ -203,7 +197,7 @@ func (t *SysExecTool) executeForeground(ctx context.Context, cmdStr string, args
 		}
 	}
 
-	t.appendAuditLog(logsDir, fmt.Sprintf("[%s] [FOREGROUND] exit=%d duration=%dms cmd=%s\n", time.Now().UTC().Format(time.RFC3339), exitCode, duration.Milliseconds(), cmdStr))
+	t.appendAuditLog(logsDir, fmt.Sprintf("[SYNC] exit=%d duration=%dms cmd=%s", exitCode, duration.Milliseconds(), cmdStr))
 
 	return &tools.ToolResult{
 		Stdout:   stdoutBuf.String(),
@@ -213,16 +207,52 @@ func (t *SysExecTool) executeForeground(ctx context.Context, cmdStr string, args
 	}, nil
 }
 
+func (t *SysExecTool) determineLogPath(customPath, cmdStr, logsDir string) string {
+	if customPath != "" {
+		_ = os.MkdirAll(filepath.Dir(customPath), 0755)
+		return customPath
+	}
+	cleanName := sanitizeFilename(cmdStr)
+	return filepath.Join(logsDir, fmt.Sprintf("proc_%s_%d.log", cleanName, time.Now().Unix()))
+}
+
 func (t *SysExecTool) appendAuditLog(logsDir, entry string) {
-	auditPath := filepath.Join(logsDir, "commands.log")
+	auditPath := filepath.Join(logsDir, "terminal_audit.log")
 	f, err := os.OpenFile(auditPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err == nil {
-		_, _ = f.WriteString(entry)
+		line := fmt.Sprintf("[%s] %s\n", time.Now().UTC().Format(time.RFC3339), entry)
+		_, _ = f.WriteString(line)
 		_ = f.Close()
 	}
 }
 
-func sanitizeForFilename(s string) string {
+func resolveShell() string {
+	if _, err := exec.LookPath("/bin/bash"); err == nil {
+		return "/bin/bash"
+	}
+	return "/bin/sh"
+}
+
+func ensureLogsDirectory(cwd string) string {
+	logsDir := filepath.Join("workspace", "logs")
+	if cwd != "" {
+		logsDir = filepath.Join(cwd, "logs")
+	}
+	_ = os.MkdirAll(logsDir, 0755)
+	return logsDir
+}
+
+func sanitizeTimeout(seconds int) int {
+	if seconds <= 0 {
+		return 60
+	}
+	if seconds > 300 {
+		return 300
+	}
+	return seconds
+}
+
+func sanitizeFilename(s string) string {
 	parts := strings.Fields(s)
 	if len(parts) == 0 {
 		return "cmd"
@@ -238,4 +268,12 @@ func sanitizeForFilename(s string) string {
 		base = base[:20]
 	}
 	return base
+}
+
+func failResult(msg string) *tools.ToolResult {
+	return &tools.ToolResult{
+		Stderr:   msg,
+		ExitCode: 1,
+		IsError:  true,
+	}
 }

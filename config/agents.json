@@ -2,7 +2,7 @@
   "browser": {
     "config_path": "src/agents/browser/browser_config.json",
     "enabled": true,
-    "model_override": "",
+    "model_override": "google:gemini-2.5-flash",
     "temperature": 0.2
   },
   "manager": {
@@ -10,32 +10,32 @@
     "description": "Layer 2 Cognitive Planner that decomposes user requests into actionable DAG task plans.",
     "enabled": true,
     "max_parallel_workers": 4,
-    "model": "google:gemini-3.5-flash-lite",
+    "model": "google:gemini-3.5-flash",
     "temperature": 0.1
   },
   "memory": {
     "config_path": "src/agents/memory/memory_config.json",
     "enabled": true,
-    "model_override": null
+    "model_override": "google:gemini-3.5-flash"
   },
   "productivity": {
     "config_path": "src/agents/productivity/productivity_config.json",
     "enabled": true,
-    "model_override": null
+    "model_override": "google:gemini-3.5-flash"
   },
   "research": {
     "config_path": "src/agents/research/research_config.json",
     "enabled": true,
-    "model_override": null
+    "model_override": "google:gemini-3.5-flash"
   },
   "summarizer": {
     "config_path": "src/agents/summarizer/summarizer_config.json",
     "enabled": true,
-    "model_override": null
+    "model_override": "google:gemini-3.5-flash"
   },
   "system": {
     "config_path": "src/agents/system/system_config.json",
     "enabled": true,
-    "model_override": null
+    "model_override": "google:gemini-3.5-flash"
   }
 }

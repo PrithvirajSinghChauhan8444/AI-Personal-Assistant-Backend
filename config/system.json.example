@@ -15,6 +15,19 @@
   "max_turn_iterations": 10,
   "artifact_spillover_threshold_bytes": 102400,
   "enable_mail_watcher": true,
+  "models": {
+    "provider": "google",
+    "default_model": "google:gemini-3.5-flash",
+    "active_model": "google:gemini-3.5-flash",
+    "fallback_models": [
+      "google:gemini-3.2-flash",
+      "google:gemini-2.5-flash",
+      "google:gemini-2.5-pro",
+      "google:gemini-2.5-flash-lite",
+      "google:gemini-1.5-flash"
+    ],
+    "auto_fallback_on_quota": true
+  },
   "mail_watcher": {
     "enabled": true,
     "description": "Background proactive Gmail watcher daemon accounts (supports multiple accounts)",

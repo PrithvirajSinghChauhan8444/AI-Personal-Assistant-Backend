@@ -11,7 +11,7 @@ import (
 
 	"assistant/src/bootstrap"
 	"assistant/src/gateway"
-	"assistant/src/gateway/adapters/telegram"
+	"assistant/src/adapters/telegram"
 	"assistant/src/orchestrator/manifest"
 )
 

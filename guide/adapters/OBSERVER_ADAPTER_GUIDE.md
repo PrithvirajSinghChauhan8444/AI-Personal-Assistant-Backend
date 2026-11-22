@@ -188,7 +188,7 @@ gw.SetPersistentStore(mySqliteStore)
 
 ## 6. Built-in Adapters Reference
 
-### A. CLI Adapter (`assistant/src/gateway/adapters/cli`)
+### A. CLI Adapter (`assistant/src/adapters/cli`)
 * **Interactive REPL**:
   ```go
   adapter := cli.NewCLIAdapter(gw, os.Stdin, os.Stdout, sessionID)
@@ -205,7 +205,7 @@ gw.SetPersistentStore(mySqliteStore)
   renderer.Flush()
   ```
 
-### B. Web Adapter (`assistant/src/gateway/adapters/web`)
+### B. Web Adapter (`assistant/src/adapters/web`)
 * **Initialize and Mount**:
   ```go
   webAdapter := web.NewWebAdapter(gw)
@@ -224,7 +224,7 @@ gw.SetPersistentStore(mySqliteStore)
   * `GET /api/stream?session_id=...`: Server-Sent Events (SSE) streaming JSON events.
   * `GET /ws?session_id=...`: RFC 6455 WebSocket streaming JSON events and receiving client inputs.
 
-### C. Telegram Adapter (`assistant/src/gateway/adapters/telegram`)
+### C. Telegram Adapter (`assistant/src/adapters/telegram`)
 * **Initialize**:
   ```go
   client := telegram.NewHTTPBotClient(botToken, nil)
@@ -326,7 +326,7 @@ if snap.ActiveAction != nil {
 
 ## 8. Summary Checklist Before Changing Code
 
-- [ ] Are you adding formatting for a client? **Create or modify an adapter in `src/gateway/adapters/`**, not the orchestrator.
+- [ ] Are you adding formatting for a client? **Create or modify an adapter in `src/adapters/`**, not the orchestrator.
 - [ ] Do you need to know backend state? **Use `gw.GetSnapshot(sessionID)`**, do not query internal SQLite tables or scheduler pointers directly.
 - [ ] Do you need to capture events? **Register an `ExecutionObserver`**, do not intercept internal bridge channels.
 - [ ] Do you need to approve an action? **Call `gw.RespondHITL(ctx, resp)`**.

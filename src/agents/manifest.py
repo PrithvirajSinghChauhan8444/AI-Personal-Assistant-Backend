@@ -21,7 +21,7 @@ class ToolContract:
 @dataclass
 class ModelConfig:
     """Agent LLM model configuration."""
-    default: str = "google:gemini-3.5-flash-lite"
+    default: str = "google:gemini-3.5-flash"
     temperature: float = 0.0
 
 
@@ -42,7 +42,7 @@ class AgentManifest:
     def from_dict(cls, data: Dict[str, Any]) -> AgentManifest:
         model_raw = data.get("model", {})
         model_cfg = ModelConfig(
-            default=model_raw.get("default", "google:gemini-3.5-flash-lite"),
+            default=model_raw.get("default", "google:gemini-3.5-flash"),
             temperature=float(model_raw.get("temperature", 0.0)),
         )
 
@@ -123,7 +123,7 @@ def sync_control_registry(
     if "manager" not in registry:
         registry["manager"] = {
             "enabled": True,
-            "model": "google:gemini-3.5-flash-lite",
+            "model": "google:gemini-3.5-flash",
             "temperature": 0.1,
             "max_parallel_workers": 4,
             "auto_heal_deadlocks": True,

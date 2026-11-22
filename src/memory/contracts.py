@@ -26,6 +26,9 @@ class EpisodicRecord:
     tags: List[str] = field(default_factory=list)
     created_at: int = 0
     updated_at: int = 0
+    is_active: bool = True
+    supersedes: Optional[str] = None
+    version: int = 1
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -39,6 +42,9 @@ class EpisodicRecord:
             "tags": self.tags,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "is_active": self.is_active,
+            "supersedes": self.supersedes,
+            "version": self.version,
         }
 
 
@@ -118,13 +124,14 @@ class MemoryObserver(Protocol):
 @dataclass
 class ReflectionAction:
     """Individual memory mutation action derived from reflection analysis."""
-    action_type: str  # 'update_profile', 'store_fact', or 'noop'
+    action_type: str  # 'update_profile', 'store_fact', 'supersede_fact', 'delete_fact', or 'noop'
     section: Optional[str] = None
     key: Optional[str] = None
     value: Optional[str] = None
     content: Optional[str] = None
     category: Optional[str] = None
     tags: List[str] = field(default_factory=list)
+    target_id: Optional[str] = None
     reason: str = ""
 
 
@@ -139,6 +146,10 @@ class EmbeddingEngineProtocol(Protocol):
 
     def embed_text(self, text: str) -> List[float]:
         """Generates a normalized dense embedding vector for a single text."""
+        ...
+
+    def embed_query(self, query: str) -> List[float]:
+        """Generates a normalized dense embedding vector for an asymmetric search query."""
         ...
 
     def embed_batch(self, texts: List[str]) -> List[List[float]]:

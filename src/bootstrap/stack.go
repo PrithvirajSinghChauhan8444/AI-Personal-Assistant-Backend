@@ -21,20 +21,30 @@ import (
 	"assistant/src/tools/workspace"
 )
 
+// ModelsConfig defines default, active, and fallback LLM models.
+type ModelsConfig struct {
+	Provider            string   `json:"provider"`
+	DefaultModel        string   `json:"default_model"`
+	ActiveModel         string   `json:"active_model"`
+	FallbackModels      []string `json:"fallback_models"`
+	AutoFallbackOnQuota bool     `json:"auto_fallback_on_quota"`
+}
+
 // Config defines the unified runtime configuration for the assistant application.
 type Config struct {
-	WorkspaceDir               string   `json:"workspace_dir"`
-	ArtifactsDir               string   `json:"artifacts_dir"`
-	DatabasePath               string   `json:"database_path"`
-	NotesDir                   string   `json:"notes_dir"`
-	AllowedAccessRoots         []string `json:"allowed_access_roots"`
-	Timezone                   string   `json:"timezone"`
-	LogLevel                   string   `json:"log_level"`
-	MaxTurnIterations          int      `json:"max_turn_iterations"`
-	ArtifactSpilloverThreshold int64    `json:"artifact_spillover_threshold_bytes"`
-	ConfigDir                  string   `json:"config_dir"`
-	Standalone                 bool     `json:"standalone"`
-	EnableMailWatcher          bool     `json:"enable_mail_watcher"`
+	WorkspaceDir               string       `json:"workspace_dir"`
+	ArtifactsDir               string       `json:"artifacts_dir"`
+	DatabasePath               string       `json:"database_path"`
+	NotesDir                   string       `json:"notes_dir"`
+	AllowedAccessRoots         []string     `json:"allowed_access_roots"`
+	Timezone                   string       `json:"timezone"`
+	LogLevel                   string       `json:"log_level"`
+	MaxTurnIterations          int          `json:"max_turn_iterations"`
+	ArtifactSpilloverThreshold int64        `json:"artifact_spillover_threshold_bytes"`
+	ConfigDir                  string       `json:"config_dir"`
+	Standalone                 bool         `json:"standalone"`
+	EnableMailWatcher          bool         `json:"enable_mail_watcher"`
+	Models                     ModelsConfig `json:"models"`
 	ReadyTimeout               time.Duration
 	GracePeriod                time.Duration
 }
@@ -66,6 +76,19 @@ func DefaultConfig() Config {
 		MaxTurnIterations:  10,
 		ConfigDir:          "config",
 		EnableMailWatcher:  true,
+		Models: ModelsConfig{
+			Provider:     "google",
+			DefaultModel: "google:gemini-3.5-flash",
+			ActiveModel:  "google:gemini-3.5-flash",
+			FallbackModels: []string{
+				"google:gemini-3.5-flash",
+				"google:gemini-2.5-flash",
+				"google:gemini-2.5-pro",
+				"google:gemini-2.5-flash-lite",
+				"google:gemini-1.5-flash",
+			},
+			AutoFallbackOnQuota: true,
+		},
 		ReadyTimeout:       15 * time.Second,
 		GracePeriod:        3 * time.Second,
 	}

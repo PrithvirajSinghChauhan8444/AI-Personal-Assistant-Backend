@@ -16,6 +16,11 @@
       },
       "enabled": true
     },
+    "tmux": {
+      "command": "npx",
+      "args": ["-y", "tmux-mcp"],
+      "enabled": true
+    },
     "fetch": {
       "command": "uvx",
       "args": ["mcp-server-fetch"],

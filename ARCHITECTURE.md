@@ -70,7 +70,7 @@ flowchart TD
 ## 2. Layer-by-Layer Concrete Responsibilities
 
 ### Layer 1: Client Adapters & Standard Gateway (Go)
-- **Adapters (`src/gateway/adapters/`):** Translate client-specific protocols (CLI Bubbletea terminal, Telegram Bot API long-polling, REST/WebSocket) into normalized gateway contracts.
+- **Adapters (`src/adapters/`):** Translate client-specific protocols (CLI terminal REPL, TUI split-screen adapter, Telegram Bot API long-polling, REST/WebSocket) into normalized gateway contracts.
 - **Immediate Logging & Heartbeat:** Emits immediate visual feedback upon submission and ticks a 2-second heartbeat during long-running remote operations so the user never stares at a static screen.
 - **Gateway Core (`src/gateway/gateway.go`):** Ingestion normalizer and streaming event egress dispatcher. Guarantees backpressure and turn cancellation channels.
 

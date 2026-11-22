@@ -1,146 +1,32 @@
-"""Tool definitions for ResearchAgent."""
+"""Tool definitions for ResearchAgent (re-exported from AgentTools).
 
-from typing import List
+This file provides backward compatibility for modules importing from
+`src.agents.research.tools`. All canonical definitions and implementations
+now reside in `src.agents.research.AgentTools.tools`.
+"""
 
-from src.agents.contracts import ToolDefinition
+from src.agents.research.AgentTools.tools import (
+    RESEARCH_TOOLS,
+    RESEARCH_TOOLS_REGISTRY,
+    enrich_prompt_with_tools,
+    get_research_local_handlers,
+    get_research_tool_definitions,
+    get_research_tools,
+    register_research_tool,
+    research_calculate,
+    research_extract_keywords,
+    research_format_citations,
+)
 
-RESEARCH_TOOLS: List[ToolDefinition] = [
-    ToolDefinition(
-        name="net_search",
-        category="net",
-        description="Queries web search engines to retrieve relevant search snippets, titles, and URLs.",
-        risk="LOW",
-        prompt_usage_tip="Use to find live documentation, news, facts, and external references.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search keywords or question"},
-                "limit": {"type": "integer", "description": "Maximum results to return (default: 10)", "default": 10},
-            },
-            "required": ["query"],
-        },
-    ),
-    ToolDefinition(
-        name="net_fetch",
-        category="net",
-        description="Executes high-speed HTTP requests with custom headers and response inspection.",
-        risk="LOW",
-        prompt_usage_tip="Use to fetch web pages, raw markdown, or REST API endpoints.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "url": {"type": "string", "description": "Target HTTP/HTTPS URL"},
-                "method": {"type": "string", "description": "HTTP method (default: GET)", "default": "GET"},
-                "headers": {"type": "object", "description": "Optional HTTP headers"},
-                "body": {"type": "string", "description": "Optional request body"},
-                "timeout_seconds": {"type": "integer", "description": "Timeout in seconds (default: 15)", "default": 15},
-            },
-            "required": ["url"],
-        },
-    ),
-    ToolDefinition(
-        name="net_weather",
-        category="net",
-        description="Fetches current weather conditions and temperature for a given city or location.",
-        risk="LOW",
-        prompt_usage_tip="Use to answer queries about current weather, temperature, or forecasts.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "location": {"type": "string", "description": "City name or location (e.g. 'London', 'Agra', 'Tokyo')"},
-                "format": {"type": "string", "enum": ["summary", "detailed"], "description": "Format: 'summary' or 'detailed'", "default": "summary"},
-            },
-            "required": ["location"],
-        },
-    ),
-    ToolDefinition(
-        name="sys_exec_python",
-        category="system",
-        description="Executes an ephemeral Python script safely in a subprocess and returns stdout/stderr.",
-        risk="HIGH",
-        prompt_usage_tip="Use for computational analysis, scientific verification, or data parsing during research.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "code": {"type": "string", "description": "Python source code to execute"},
-                "timeout_seconds": {"type": "integer", "description": "Timeout in seconds (default: 30)", "default": 30},
-            },
-            "required": ["code"],
-        },
-    ),
-    ToolDefinition(
-        name="memory_search",
-        category="memory",
-        description="Searches long-term episodic and semantic memory for relevant facts, profiles, and past answers.",
-        risk="LOW",
-        prompt_usage_tip="Use to recall user preferences, project details, or historical answers.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Semantic search query string"},
-                "limit": {"type": "integer", "description": "Maximum memory records to return (default: 5)", "default": 5},
-            },
-            "required": ["query"],
-        },
-    ),
-    ToolDefinition(
-        name="memory_store_fact",
-        category="memory",
-        description="Persists an important fact, user preference, or research finding into long-term memory.",
-        risk="MEDIUM",
-        prompt_usage_tip="Use to remember user instructions, key facts, or summarized research conclusions.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "fact": {"type": "string", "description": "Factual statement or note to remember"},
-                "category": {"type": "string", "description": "Category tag (e.g. user_preference, tech_spec, meeting_note)"},
-            },
-            "required": ["fact"],
-        },
-    ),
-    ToolDefinition(
-        name="youtube__get_transcript",
-        category="mcp",
-        description="Fetches the full spoken transcript of a YouTube video given its URL or ID.",
-        risk="LOW",
-        prompt_usage_tip="Use when user provides a YouTube link or asks to summarize a video.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "url_or_id": {"type": "string", "description": "YouTube video URL (e.g. https://www.youtube.com/watch?v=...) or 11-char ID"},
-                "include_timestamps": {"type": "boolean", "description": "Whether to prepend timestamps (e.g. [02:15]) to transcript lines", "default": False},
-                "languages": {"type": "array", "items": {"type": "string"}, "description": "List of language codes to try in preference order (default: ['en'])", "default": ["en"]},
-            },
-            "required": ["url_or_id"],
-        },
-    ),
-    ToolDefinition(
-        name="youtube__get_video_info",
-        category="mcp",
-        description="Retrieves metadata for a YouTube video: title, channel, duration, and view count.",
-        risk="LOW",
-        prompt_usage_tip="Use to inspect video details or author channel without loading full transcript.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "url_or_id": {"type": "string", "description": "YouTube video URL or 11-char ID"},
-            },
-            "required": ["url_or_id"],
-        },
-    ),
-    ToolDefinition(
-        name="youtube__search_videos",
-        category="mcp",
-        description="Searches YouTube for videos matching a query keyword and returns titles, channels, and URLs.",
-        risk="LOW",
-        prompt_usage_tip="Use when finding relevant video references or tutorials on a topic.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search keyword or topic"},
-                "max_results": {"type": "integer", "description": "Maximum videos to return (1-10, default: 5)", "default": 5},
-            },
-            "required": ["query"],
-        },
-    ),
+__all__ = [
+    "RESEARCH_TOOLS",
+    "RESEARCH_TOOLS_REGISTRY",
+    "enrich_prompt_with_tools",
+    "get_research_local_handlers",
+    "get_research_tool_definitions",
+    "get_research_tools",
+    "register_research_tool",
+    "research_calculate",
+    "research_extract_keywords",
+    "research_format_citations",
 ]

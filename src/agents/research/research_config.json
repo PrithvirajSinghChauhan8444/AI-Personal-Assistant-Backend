@@ -10,7 +10,7 @@
   "fallback_capability": "system",
   "max_search_results": 5,
   "model": {
-    "default": "google:gemini-3.5-flash-lite",
+    "default": "google:gemini-3.5-flash",
     "temperature": 0.2
   },
   "description": "Deep research, web searching, summarizing articles/papers, fact-checking, and long-term memory retrieval.",
@@ -40,11 +40,25 @@
       "required_capability": "network"
     },
     {
-      "name": "sys_exec_python",
-      "description": "Executes Python code in an isolated subprocess with a timeout.",
-      "risk": "HIGH",
-      "execution_domain": "go_native",
-      "required_capability": "system_exec"
+      "name": "research_calculate",
+      "description": "Performs safe, in-process mathematical calculations (fractions, percentages, statistics) for research data.",
+      "risk": "LOW",
+      "execution_domain": "python_local",
+      "required_capability": "research:calc"
+    },
+    {
+      "name": "research_extract_keywords",
+      "description": "Extracts key technical terms, entities, and frequent topics from research texts or article snippets.",
+      "risk": "LOW",
+      "execution_domain": "python_local",
+      "required_capability": "research:nlp"
+    },
+    {
+      "name": "research_format_citations",
+      "description": "Formats raw research URLs, titles, and snippets into standard bibliography citations.",
+      "risk": "LOW",
+      "execution_domain": "python_local",
+      "required_capability": "research:format"
     },
     {
       "name": "memory_search",

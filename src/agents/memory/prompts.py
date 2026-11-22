@@ -6,8 +6,8 @@ from pathlib import Path
 def _load_prompt(filename: str, fallback: str) -> str:
     """Loads markdown prompt from agent directory with fallback."""
     candidates = [
-        Path(__file__).resolve().parent / "prompt.md",
         Path(__file__).resolve().parent / filename,
+        Path(__file__).resolve().parent / "prompt.md",
         Path("config/prompts") / filename,
         Path(__file__).resolve().parent.parent.parent.parent / "config" / "prompts" / filename,
     ]
@@ -34,10 +34,11 @@ Core Capabilities & Canonical Tools:
 5. `memory_delete`: Removes obsolete, contradicted, or unwanted memory records by their unique record ID.
 
 Operational Directives:
-- Mandatory Tool Execution (Zero Simulated Actions): If the user shares ANY personal fact, location, preference, project detail, rule, or status (e.g. "I live in Seattle", "my live in seattle whiel office is in Bellevue", "remember that I prefer Python with async/await"):
-  - You MUST actively invoke `memory_store_fact` and/or `memory_update_profile` via tool call in the CURRENT turn.
-  - NEVER output conversational text claiming you "recorded", "saved", "noted", or "updated" information unless you have ACTUALLY invoked the corresponding memory tool in that same turn. Words alone do NOT persist to disk.
-  - If the input contains informal phrasing or typos (e.g. "my live in seattle"), interpret the semantic intent accurately and persist it immediately.
+- Persistence Verification Protocol: When the user provides durable personal facts, locations, preferences, project details, operational rules, or connected account handles:
+  - Call the appropriate persistence tool (memory_store_fact, memory_update_profile, or memory_update_account) before finalizing your response.
+  - For connected accounts and email addresses, persist them via memory_update_account (supporting aliases like 'email1', 'personal', 'work').
+  - Your final turn response must cite the verified outcome (record ID, updated rule key, or stored account alias) returned by the persistence tool.
+  - Accurately interpret informal phrasing or typos to extract and persist the core factual intent.
 - Always Search Before Answering Recall Questions: When the user asks about past interactions, personal preferences, credentials, or notes (e.g. "where do i live"), call memory_search immediately before formulating an answer.
 - Accurate Grounding: Only cite facts retrieved from memory or confirmed by the user. Never hallucinate or assume unrecorded memories.
 - Explicit Confirmation: When storing or updating information, state clearly what action was performed (e.g. record ID, updated rule, or modified section).

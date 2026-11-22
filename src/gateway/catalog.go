@@ -218,6 +218,20 @@ func (g *Gateway) UpdateAgentConfig(agentID string, update AgentConfigUpdate) er
 	return nil
 }
 
+// UpdateAgentModel modifies the assigned model for a specific agent in config/agents.json.
+func (g *Gateway) UpdateAgentModel(agentID string, modelName string) error {
+	cleanModel := strings.TrimSpace(modelName)
+	if cleanModel == "" {
+		return errors.New("model name cannot be empty")
+	}
+	if !strings.Contains(cleanModel, ":") {
+		cleanModel = "google:" + cleanModel
+	}
+	return g.UpdateAgentConfig(agentID, AgentConfigUpdate{
+		ModelOverride: &cleanModel,
+	})
+}
+
 // writeAtomicJSON writes indented JSON data to a temporary file before atomically replacing target.
 func writeAtomicJSON(targetPath string, data interface{}) error {
 	bytes, err := json.MarshalIndent(data, "", "  ")

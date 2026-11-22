@@ -15,8 +15,9 @@ import (
 	"assistant/src/bootstrap"
 	"assistant/src/bridge/supervisor"
 	"assistant/src/gateway"
-	"assistant/src/gateway/adapters/cli"
-	"assistant/src/gateway/adapters/telegram"
+	"assistant/src/adapters/cli"
+	"assistant/src/adapters/telegram"
+	"assistant/src/adapters/tui"
 	"assistant/src/gateway/watchers/gmail"
 	"assistant/src/orchestrator/manifest"
 	"assistant/src/orchestrator/planner"
@@ -35,6 +36,7 @@ func main() {
 	artifactsDir := flag.String("artifacts", sysCfg.ArtifactsDir, "Path to artifacts directory")
 	watchMail := flag.Bool("watch-mail", true, "Enable proactive background Gmail watcher daemon")
 	runTelegram := flag.Bool("telegram", false, "Run Telegram Bot ingress gateway daemon")
+	runTUI := flag.Bool("tui", false, "Run full interactive dual-pane TUI adapter")
 	liveLogs := flag.Bool("live-logs", false, "Stream live operational logs directly to the server terminal")
 	flag.Parse()
 
@@ -132,14 +134,33 @@ func main() {
 		return
 	}
 
-	// Full interactive REPL/TUI mode
+	// Interactive dual-pane TUI adapter mode
+	if *runTUI {
+		adapter := tui.NewTUIAdapter(stack.Gateway, os.Stdin, os.Stdout, activeSession)
+		adapter.SetDaemonProvider(&systemDaemonProvider{
+			mailWatcher: stack.MailWatcher,
+			supervisor:  stack.Supervisor,
+			gw:          stack.Gateway,
+		})
+		if err := adapter.StartInteractive(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			fmt.Fprintf(os.Stderr, "TUI session ended with error: %v\n", err)
+			cancel()
+			cleanup()
+			os.Exit(1)
+		}
+		cancel()
+		cleanup()
+		os.Exit(0)
+	}
+
+	// Full interactive REPL mode
 	adapter := cli.NewCLIAdapter(stack.Gateway, os.Stdin, os.Stdout, activeSession)
 	adapter.SetDaemonProvider(&systemDaemonProvider{
 		mailWatcher: stack.MailWatcher,
 		supervisor:  stack.Supervisor,
 		gw:          stack.Gateway,
 	})
-	if err := adapter.StartInteractive(ctx); err != nil {
+	if err := adapter.StartInteractive(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintf(os.Stderr, "Session ended with error: %v\n", err)
 		cancel()
 		cleanup()

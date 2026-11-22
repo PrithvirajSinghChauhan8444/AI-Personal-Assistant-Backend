@@ -4,8 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"time"
+
+	"assistant/src/models/genai"
 )
 
 var (
@@ -24,6 +28,8 @@ type Gateway struct {
 	hub           *ObserverHub
 	activeSession string
 	queue         *PriorityTurnQueue
+	activeAgents  map[string]string // sessionID -> activeAgent
+	modelService  *genai.ModelService
 }
 
 // NewGateway creates a verified Gateway backed by a downstream TurnHandler and an ObserverHub.
@@ -32,8 +38,10 @@ func NewGateway(handler TurnHandler) (*Gateway, error) {
 		return nil, ErrNilHandler
 	}
 	gw := &Gateway{
-		handler: handler,
-		hub:     NewObserverHub(),
+		handler:      handler,
+		hub:          NewObserverHub(),
+		activeAgents: make(map[string]string),
+		modelService: genai.NewModelService(""),
 	}
 	gw.queue = NewPriorityTurnQueue(gw.runTurnPipeline)
 	gw.queue.Start(context.Background())
@@ -52,6 +60,77 @@ func (g *Gateway) GetActiveSession() string {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.activeSession
+}
+
+// SetActiveAgent sets the active default agent targeting for a specific session.
+// Pass "auto", "manager", or "" to reset to orchestrator automatic planning.
+func (g *Gateway) SetActiveAgent(sessionID, agentID string) error {
+	cleanID := strings.ToLower(strings.TrimSpace(agentID))
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if cleanID == "auto" || cleanID == "manager" || cleanID == "none" || cleanID == "" {
+		delete(g.activeAgents, sessionID)
+		return nil
+	}
+
+	if !slices.Contains(validAgents, cleanID) {
+		return fmt.Errorf("unknown agent %q. Valid agents: %s", agentID, strings.Join(validAgents, ", "))
+	}
+
+	g.activeAgents[sessionID] = cleanID
+	return nil
+}
+
+// GetActiveAgent returns the current active agent targeted for a session, or "auto" if unconfigured.
+func (g *Gateway) GetActiveAgent(sessionID string) string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	if agent, ok := g.activeAgents[sessionID]; ok && agent != "" {
+		return agent
+	}
+	return "auto"
+}
+
+// GetModelService returns the attached GenAI model service.
+func (g *Gateway) GetModelService() *genai.ModelService {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.modelService
+}
+
+// ListAvailableModels retrieves available models via google.golang.org/genai.
+func (g *Gateway) ListAvailableModels(ctx context.Context, forceRefresh bool) ([]genai.ModelInfo, error) {
+	if g.modelService == nil {
+		return nil, errors.New("genai model service not initialized")
+	}
+	return g.modelService.ListModels(ctx, forceRefresh)
+}
+
+// IsQuotaExceeded checks if an error message indicates rate limit or quota exhaustion (HTTP 429).
+func (g *Gateway) IsQuotaExceeded(errMsg string) bool {
+	lower := strings.ToLower(errMsg)
+	return strings.Contains(lower, "429") ||
+		strings.Contains(lower, "resource_exhausted") ||
+		strings.Contains(lower, "quotaexceeded") ||
+		strings.Contains(lower, "quota exceeded") ||
+		strings.Contains(lower, "rate limit") ||
+		strings.Contains(lower, "rate_limit") ||
+		strings.Contains(lower, "too many requests")
+}
+
+// FallbackAndRetry applies a fallback model to the targeted agent and re-dispatches the turn.
+func (g *Gateway) FallbackAndRetry(ctx context.Context, raw InboundTurnRequest, fallbackModel string) (<-chan OutboundEvent, InboundTurnRequest, error) {
+	agentID := raw.TargetAgent
+	if agentID == "" || agentID == "auto" {
+		agentID = "manager"
+	}
+
+	if err := g.UpdateAgentModel(agentID, fallbackModel); err != nil {
+		return nil, raw, fmt.Errorf("failed to update agent model to %q: %w", fallbackModel, err)
+	}
+
+	return g.SubmitTurn(ctx, raw)
 }
 
 // RegisterAutonomousConsumer binds a listener to receive autonomous turns for a given session.
@@ -123,6 +202,13 @@ func (g *Gateway) SubmitTurn(ctx context.Context, raw InboundTurnRequest) (<-cha
 
 	if raw.SessionID == "" && activeSess != "" {
 		raw.SessionID = activeSess
+	}
+
+	// Apply active switched agent if request has no explicit agent targeting
+	if (raw.TargetAgent == "" || raw.TargetAgent == "auto") && raw.SessionID != "" {
+		if activeAg := g.GetActiveAgent(raw.SessionID); activeAg != "" && activeAg != "auto" {
+			raw.TargetAgent = activeAg
+		}
 	}
 
 	req, err := NormalizeInbound(raw)

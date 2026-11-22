@@ -1,0 +1,580 @@
+package cli
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	"assistant/src/gateway"
+	"assistant/src/models/genai"
+	"github.com/charmbracelet/lipgloss"
+)
+
+var (
+	// Brand and Palette Styles
+	BrandStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#D97706"))   // Amber
+	AgentStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#38BDF8"))   // Cyan
+	ThoughtStyle = lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("#64748B")) // Dim Slate
+	StatusStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#A855F7"))              // Purple
+	ErrorStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#EF4444"))   // Red
+	SuccessStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#34D399"))              // Emerald
+	DimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8"))              // Slate Dim
+	BoxBorder    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
+)
+
+// AgentBadge renders a color-coded agent identifier badge.
+func AgentBadge(agent string) string {
+	var color lipgloss.Color
+	switch strings.ToLower(agent) {
+	case "manager":
+		color = lipgloss.Color("#F59E0B") // Amber
+	case "scheduler":
+		color = lipgloss.Color("#818CF8") // Indigo
+	case "system", "systemagent":
+		color = lipgloss.Color("#38BDF8") // Sky Cyan
+	case "browser", "browseragent":
+		color = lipgloss.Color("#34D399") // Emerald
+	case "research", "researchagent":
+		color = lipgloss.Color("#A855F7") // Purple
+	case "productivity", "productivityagent":
+		color = lipgloss.Color("#F472B6") // Pink
+	case "memory", "memoryagent":
+		color = lipgloss.Color("#EC4899") // Hot Pink / Fuchsia
+	case "orchestrator":
+		color = lipgloss.Color("#FB923C") // Orange
+	case "cli":
+		color = lipgloss.Color("#94A3B8") // Slate
+	default:
+		color = lipgloss.Color("#38BDF8")
+	}
+	name := agent
+	if name == "" {
+		name = "Agent"
+	}
+	return lipgloss.NewStyle().Bold(true).Foreground(color).Render("[" + name + "]")
+}
+
+// RenderBanner creates the welcome header for the assistant CLI.
+func RenderBanner(sessionID string) string {
+	title := BrandStyle.Render("⚡ AI PERSONAL ASSISTANT — CONTROL PLANE")
+	sub := lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8")).Render("Layer 1 Gateway (Go) • Ready for input • Type /help for guidance")
+	sess := lipgloss.NewStyle().Foreground(lipgloss.Color("#475569")).Render("Session: " + sessionID)
+	return fmt.Sprintf("\n%s\n%s\n%s\n", title, sub, sess)
+}
+
+// RenderHelp returns formatted help text for slash commands and agent targeting.
+func RenderHelp() string {
+	var builder strings.Builder
+	builder.WriteString(BrandStyle.Render("\nAvailable Commands & Syntax:\n"))
+	builder.WriteString("  /help                          - Display this assistance guide\n")
+	builder.WriteString("  /session                       - Display the active session ID\n")
+	builder.WriteString("  /status                        - Display system vitals & runtime metrics\n")
+	builder.WriteString("  /daemons, /daemon list         - Inspect background daemon services\n")
+	builder.WriteString("  /daemon start <name>           - Start a background daemon\n")
+	builder.WriteString("  /daemon stop <name>            - Stop a background daemon\n")
+	builder.WriteString("  /daemon restart <name>         - Restart a background daemon\n")
+	builder.WriteString("  /agents                        - List registered agents, models, and tools\n")
+	builder.WriteString("  /switch <agent>                - Switch active session agent (e.g. browser, auto)\n")
+	builder.WriteString("  /agent switch <agent>          - Switch active session agent\n")
+	builder.WriteString("  /agent enable <id>             - Enable a specialist agent\n")
+	builder.WriteString("  /agent disable <id>            - Disable a specialist agent\n")
+	builder.WriteString("  /agent model <id> <model>      - Update assigned model for an agent\n")
+	builder.WriteString("  /models, /model list           - View available Google GenAI models\n")
+	builder.WriteString("  /model set <agent> <model>     - Update assigned model for an agent\n")
+	builder.WriteString("  /checkpoint                    - Save session snapshot\n")
+	builder.WriteString("  /clear                         - Clear the terminal screen\n")
+	builder.WriteString("  /exit, /quit                   - Terminate the assistant session\n\n")
+	builder.WriteString(AgentStyle.Render("Direct Agent Addressing:\n"))
+	builder.WriteString("  @system <cmd>                  - Invoke System Agent for local shell & OS commands\n")
+	builder.WriteString("  @browser <query>               - Invoke Browser Agent for web automation\n")
+	builder.WriteString("  @research <topic>              - Invoke Research Agent for deep investigation\n")
+	builder.WriteString("  @productivity <task>           - Invoke Productivity Agent for email/calendar\n")
+	builder.WriteString("  @memory <task>                 - Invoke Memory Agent for personal memory & rules\n")
+	builder.WriteString("  <query>                        - Auto-routed or sent to currently switched agent\n\n")
+	return builder.String()
+}
+
+// RenderModelsCatalog renders a clean terminal table of available Google GenAI models.
+func RenderModelsCatalog(models []genai.ModelInfo) string {
+	var b strings.Builder
+	b.WriteString(BrandStyle.Render(fmt.Sprintf("\n🌐 GOOGLE GENAI AVAILABLE MODELS (%d Discovered via google.golang.org/genai):\n", len(models))))
+	b.WriteString(DimStyle.Render(strings.Repeat("─", 82)) + "\n")
+	b.WriteString(fmt.Sprintf("  %-30s %-24s %-12s %-8s\n",
+		AgentStyle.Render("MODEL NAME"),
+		"DISPLAY NAME",
+		"INPUT LIMIT",
+		"THINKING",
+	))
+	b.WriteString(DimStyle.Render(strings.Repeat("─", 82)) + "\n")
+
+	for _, m := range models {
+		thinkingTag := DimStyle.Render("no")
+		if m.Thinking {
+			thinkingTag = SuccessStyle.Render("yes")
+		}
+		inTokens := fmt.Sprintf("%dK", m.InputTokenLimit/1024)
+		if m.InputTokenLimit >= 1048576 {
+			inTokens = fmt.Sprintf("%dM", m.InputTokenLimit/1048576)
+		}
+		disp := m.DisplayName
+		if len(disp) > 23 {
+			disp = disp[:20] + "..."
+		}
+		b.WriteString(fmt.Sprintf("  • %-28s %-24s %-12s %-8s\n",
+			m.Name,
+			disp,
+			inTokens,
+			thinkingTag,
+		))
+	}
+	b.WriteString(DimStyle.Render(strings.Repeat("─", 82)) + "\n")
+	b.WriteString(DimStyle.Render("Set model: '/model set <agent> <model>' • e.g. '/model set manager gemini-2.5-flash'\n\n"))
+	return b.String()
+}
+
+// RenderQuotaFallbackPrompt formats an alert when rate limits or quotas are reached.
+func RenderQuotaFallbackPrompt(failedModel, targetAgent string, fallbackModels []string) string {
+	var b strings.Builder
+	b.WriteString("\n" + ErrorStyle.Render("⚠️  RATE LIMIT / QUOTA EXCEEDED (429 RESOURCE_EXHAUSTED)") + "\n")
+	b.WriteString(DimStyle.Render(strings.Repeat("─", 74)) + "\n")
+	b.WriteString(fmt.Sprintf("  Model: %s | Target Agent: @%s\n", ErrorStyle.Render(failedModel), AgentStyle.Render(targetAgent)))
+	b.WriteString("  The model has exceeded its rate limit or quota on your current billing plan.\n")
+	b.WriteString("  You can switch to a fallback model below and automatically retry this prompt:\n\n")
+	for i, m := range fallbackModels {
+		rec := ""
+		if i == 0 {
+			rec = SuccessStyle.Render(" (Recommended)")
+		}
+		b.WriteString(fmt.Sprintf("    [%d] %-30s%s\n", i+1, m, rec))
+	}
+	b.WriteString(fmt.Sprintf("    [%s] Enter a custom model name\n", DimStyle.Render("name")))
+	b.WriteString(fmt.Sprintf("    [%s] Cancel and return to prompt\n", DimStyle.Render("c")))
+	b.WriteString(DimStyle.Render(strings.Repeat("─", 74)) + "\n")
+	b.WriteString(BrandStyle.Render("Choose fallback option [1-" + fmt.Sprintf("%d", len(fallbackModels)) + "/name/c]: "))
+	return b.String()
+}
+
+// RenderThought formats internal agent reasoning chunks.
+func RenderThought(agent string, text string) string {
+	tag := ThoughtStyle.Render(fmt.Sprintf("💭 [%s thought]", agent))
+	content := ThoughtStyle.Render(strings.TrimSpace(text))
+	return fmt.Sprintf("%s %s\n", tag, content)
+}
+
+// RenderThoughtHeader creates the opening indicator for streaming thoughts.
+func RenderThoughtHeader(agent string) string {
+	return ThoughtStyle.Render(fmt.Sprintf("💭 [%s thought] ", agent))
+}
+
+// RenderStatus formats operational status notifications in Claude Code style.
+func RenderStatus(agent string, statusMsg string) string {
+	timeStr := ThoughtStyle.Render(time.Now().Format("15:04:05"))
+	agentBadge := AgentBadge(agent)
+
+	var icon string
+	switch {
+	case strings.Contains(statusMsg, "completed successfully"):
+		icon = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#34D399")).Render("✔")
+	case strings.Contains(statusMsg, "failed") || strings.Contains(statusMsg, "error"):
+		icon = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#EF4444")).Render("✖")
+	case strings.HasPrefix(statusMsg, "Executing subtask"):
+		icon = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#38BDF8")).Render("➜")
+	case strings.Contains(statusMsg, "spilled to artifact"):
+		icon = lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")).Render("📁")
+	case strings.HasPrefix(statusMsg, "Walking DAG") || strings.HasPrefix(statusMsg, "Decomposing"):
+		icon = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#A855F7")).Render("✻")
+	default:
+		icon = StatusStyle.Render("●")
+	}
+
+	return fmt.Sprintf("%s %s %s %s\n", icon, timeStr, agentBadge, statusMsg)
+}
+
+// RenderHeartbeat formats an activity heartbeat indicator for ongoing operations.
+func RenderHeartbeat(elapsed time.Duration) string {
+	dot := StatusStyle.Render("⋯")
+	timeStr := ThoughtStyle.Render(time.Now().Format("15:04:05"))
+	msg := ThoughtStyle.Render(fmt.Sprintf("Still processing... (%s elapsed)", elapsed))
+	return fmt.Sprintf("%s %s %s\n", dot, timeStr, msg)
+}
+
+// RenderToolCall formats an agent's tool invocation into a Claude Code styled block.
+func RenderToolCall(agent, toolName, argsJSON, callID string) string {
+	var builder strings.Builder
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#64748B"))
+	toolStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#38BDF8"))
+	argLabelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8"))
+	argValStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F1F5F9"))
+
+	name := toolName
+	if name == "" {
+		name = "tool"
+	}
+
+	badge := AgentBadge(agent)
+	header := fmt.Sprintf("%s 🛠  %s Tool Call: %s", borderStyle.Render("╭─"), badge, toolStyle.Render(name))
+	builder.WriteString(header + "\n")
+
+	// Parse arguments if valid JSON
+	var parsedArgs map[string]any
+	if argsJSON != "" && json.Unmarshal([]byte(argsJSON), &parsedArgs) == nil && len(parsedArgs) > 0 {
+		primaryKeys := []string{"cmd", "command", "query", "url", "path", "file_path", "prompt", "pattern"}
+		var primaryKey string
+		for _, pk := range primaryKeys {
+			if _, ok := parsedArgs[pk]; ok {
+				primaryKey = pk
+				break
+			}
+		}
+
+		if primaryKey != "" {
+			valStr := fmt.Sprintf("%v", parsedArgs[primaryKey])
+			builder.WriteString(fmt.Sprintf("%s  %s: %s\n",
+				borderStyle.Render("│"),
+				argLabelStyle.Render(primaryKey),
+				argValStyle.Render(valStr),
+			))
+		}
+
+		count := 0
+		for k, v := range parsedArgs {
+			if k == primaryKey {
+				continue
+			}
+			count++
+			if count > 4 {
+				builder.WriteString(fmt.Sprintf("%s  %s\n",
+					borderStyle.Render("│"),
+					argLabelStyle.Render("..."),
+				))
+				break
+			}
+			valBytes, _ := json.Marshal(v)
+			builder.WriteString(fmt.Sprintf("%s  %s: %s\n",
+				borderStyle.Render("│"),
+				argLabelStyle.Render(k),
+				argValStyle.Render(string(valBytes)),
+			))
+		}
+	} else if argsJSON != "" && argsJSON != "{}" {
+		truncated := argsJSON
+		if len(truncated) > 160 {
+			truncated = truncated[:157] + "..."
+		}
+		builder.WriteString(fmt.Sprintf("%s  %s: %s\n",
+			borderStyle.Render("│"),
+			argLabelStyle.Render("args"),
+			argValStyle.Render(truncated),
+		))
+	}
+
+	return builder.String()
+}
+
+// RenderToolResult formats tool execution completion into a Claude Code styled block.
+func RenderToolResult(agent, toolName string, exitCode int, output, artifactPath string, durationMs int64, isError bool) string {
+	var builder strings.Builder
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#64748B"))
+	successGlyph := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#34D399")).Render("✔")
+	errorGlyph := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#EF4444")).Render("✖")
+	metaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8"))
+	outputStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#CBD5E1"))
+	artifactStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B"))
+
+	name := toolName
+	if name == "" {
+		name = "tool"
+	}
+
+	if isError || exitCode != 0 {
+		statusText := fmt.Sprintf("%s failed (%dms", name, durationMs)
+		if exitCode != 0 {
+			statusText += fmt.Sprintf(", exit code %d", exitCode)
+		}
+		statusText += ")"
+		builder.WriteString(fmt.Sprintf("%s %s %s\n",
+			borderStyle.Render("╰─"),
+			errorGlyph,
+			lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#EF4444")).Render(statusText),
+		))
+		if output != "" {
+			errPreview := strings.TrimSpace(output)
+			lines := strings.Split(errPreview, "\n")
+			for i, l := range lines {
+				if i >= 3 {
+					builder.WriteString(fmt.Sprintf("   %s\n", metaStyle.Render(fmt.Sprintf("... (%d more lines)", len(lines)-3))))
+					break
+				}
+				builder.WriteString(fmt.Sprintf("   %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("#FCA5A5")).Render(l)))
+			}
+		}
+		return builder.String()
+	}
+
+	// Success case
+	statusText := fmt.Sprintf("%s completed (%dms)", name, durationMs)
+	builder.WriteString(fmt.Sprintf("%s %s %s\n",
+		borderStyle.Render("╰─"),
+		successGlyph,
+		SuccessStyle.Render(statusText),
+	))
+
+	if artifactPath != "" {
+		builder.WriteString(fmt.Sprintf("   %s %s\n",
+			artifactStyle.Render("📁 Spilled to artifact:"),
+			metaStyle.Render(artifactPath),
+		))
+	}
+
+	if output != "" {
+		trimmed := strings.TrimSpace(output)
+		lines := strings.Split(trimmed, "\n")
+		if len(lines) == 1 && len(lines[0]) <= 120 {
+			builder.WriteString(fmt.Sprintf("   %s %s\n",
+				metaStyle.Render("Output:"),
+				outputStyle.Render(lines[0]),
+			))
+		} else if len(lines) > 0 {
+			builder.WriteString(fmt.Sprintf("   %s\n",
+				metaStyle.Render(fmt.Sprintf("Output (%d lines):", len(lines))),
+			))
+			maxShow := 3
+			for i := 0; i < len(lines) && i < maxShow; i++ {
+				linePreview := lines[i]
+				if len(linePreview) > 120 {
+					linePreview = linePreview[:117] + "..."
+				}
+				builder.WriteString(fmt.Sprintf("   %s %s\n",
+					borderStyle.Render("│"),
+					outputStyle.Render(linePreview),
+				))
+			}
+			if len(lines) > maxShow {
+				builder.WriteString(fmt.Sprintf("   %s %s\n",
+					borderStyle.Render("│"),
+					metaStyle.Render(fmt.Sprintf("... and %d more line(s)", len(lines)-maxShow)),
+				))
+			}
+		}
+	}
+
+	return builder.String()
+}
+
+// RenderHITLPrompt formats an approval prompt for human clearance.
+func RenderHITLPrompt(prompt *gateway.HITLApprovalPrompt) string {
+	if prompt == nil {
+		return ""
+	}
+	header := ErrorStyle.Render("⚠️  HUMAN APPROVAL REQUIRED")
+	tool := fmt.Sprintf("Tool:   %s", AgentStyle.Render(prompt.ToolName))
+	reason := fmt.Sprintf("Reason: %s", prompt.Reason)
+	args := fmt.Sprintf("Args:   %s", prompt.ArgumentsJSON)
+	promptText := BrandStyle.Render("Approve this action? [y/N]: ")
+
+	content := fmt.Sprintf("%s\n%s\n%s\n%s\n\n%s", header, tool, reason, args, promptText)
+	return BoxBorder.BorderForeground(lipgloss.Color("#F59E0B")).Render(content) + "\n"
+}
+
+// RenderTurnMetrics formats telemetry metrics when a turn completes.
+func RenderTurnMetrics(metrics *gateway.TurnMetrics) string {
+	if metrics == nil {
+		return ""
+	}
+	durationStr := fmt.Sprintf("%dms", metrics.TotalDurationMs)
+	if metrics.TotalDurationMs >= 1000 {
+		durationStr = fmt.Sprintf("%.2fs", float64(metrics.TotalDurationMs)/1000.0)
+	}
+
+	modelStr := metrics.ModelName
+	if modelStr == "" {
+		modelStr = "assistant-pipeline"
+	}
+
+	info := fmt.Sprintf(
+		"Model: %s | Tokens: in=%d, out=%d, cached=%d | TTFT: %dms | Duration: %s",
+		modelStr,
+		metrics.PromptTokens,
+		metrics.CompletionTokens,
+		metrics.CachedTokens,
+		metrics.TimeToFirstByteMs,
+		durationStr,
+	)
+	bar := lipgloss.NewStyle().Foreground(lipgloss.Color("#475569")).Render("── ")
+	body := lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8")).Render(info)
+	end := lipgloss.NewStyle().Foreground(lipgloss.Color("#475569")).Render(" ──")
+	return fmt.Sprintf("\n%s%s%s\n", bar, body, end)
+}
+
+// RenderError formats error messages cleanly for terminal display.
+func RenderError(errText string) string {
+	glyph := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#EF4444")).Render("✖")
+	msg := ErrorStyle.Render(fmt.Sprintf("Error: %s", errText))
+	return fmt.Sprintf("\n%s %s\n", glyph, msg)
+}
+
+// RenderPlanCreated formats a decomposed execution plan DAG into a structured box.
+func RenderPlanCreated(plan *gateway.PlanInfo) string {
+	if plan == nil {
+		return ""
+	}
+
+	var b strings.Builder
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#F59E0B"))
+	goalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F1F5F9"))
+	subtaskIDStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#38BDF8"))
+	depStyle := lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("#64748B"))
+	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#CBD5E1"))
+
+	b.WriteString(titleStyle.Render("📋 TASK EXECUTION PLAN"))
+	if plan.PrimaryGoal != "" {
+		b.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8")).Render("Goal: ") + goalStyle.Render(plan.PrimaryGoal))
+	}
+	b.WriteString("\n\n" + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#94A3B8")).Render("Subtasks:"))
+
+	for i, st := range plan.SubTasks {
+		num := fmt.Sprintf(" %d. ", i+1)
+		workerBadge := AgentBadge(st.AssignedWorker)
+		depText := ""
+		if len(st.DependsOn) > 0 {
+			depText = depStyle.Render(fmt.Sprintf(" (after %s)", strings.Join(st.DependsOn, ", ")))
+		}
+
+		b.WriteString(fmt.Sprintf("\n%s%s %s %s%s",
+			num,
+			subtaskIDStyle.Render(st.ID),
+			workerBadge,
+			descStyle.Render(st.Description),
+			depText,
+		))
+	}
+
+	return "\n" + BoxBorder.BorderForeground(lipgloss.Color("#818CF8")).Render(b.String()) + "\n"
+}
+
+// RenderPlanDiagnostic formats planner diagnostics or fallback notifications.
+func RenderPlanDiagnostic(diag *gateway.PlanDiagnosticInfo) string {
+	if diag == nil {
+		return ""
+	}
+	var b strings.Builder
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#F59E0B")).Render("⚠️  PLANNING DIAGNOSTIC")
+	b.WriteString(title + "\n")
+	b.WriteString(fmt.Sprintf("Reason: %s\n", diag.Reason))
+	if diag.FallbackTriggered {
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#38BDF8")).Render("Fallback: Autonomous fallback strategy activated.\n"))
+	}
+	if diag.Error != "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Render(fmt.Sprintf("Error: %s\n", diag.Error)))
+	}
+	return "\n" + BoxBorder.BorderForeground(lipgloss.Color("#F59E0B")).Render(b.String()) + "\n"
+}
+
+// RenderSubtaskStart formats a subtask start notification.
+func RenderSubtaskStart(subtask *gateway.SubtaskEventInfo) string {
+	if subtask == nil {
+		return ""
+	}
+	icon := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#38BDF8")).Render("➜")
+	badge := AgentBadge(subtask.Worker)
+	timeStr := ThoughtStyle.Render(time.Now().Format("15:04:05"))
+	idStr := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#38BDF8")).Render(subtask.SubtaskID)
+	return fmt.Sprintf("%s %s %s Starting subtask %s: %s\n", icon, timeStr, badge, idStr, subtask.Description)
+}
+
+// RenderSubtaskComplete formats subtask completion details.
+func RenderSubtaskComplete(subtask *gateway.SubtaskEventInfo) string {
+	if subtask == nil {
+		return ""
+	}
+	icon := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#34D399")).Render("✔")
+	badge := AgentBadge(subtask.Worker)
+	timeStr := ThoughtStyle.Render(time.Now().Format("15:04:05"))
+	idStr := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#34D399")).Render(subtask.SubtaskID)
+	durationStr := fmt.Sprintf("(%dms)", subtask.DurationMs)
+
+	res := fmt.Sprintf("%s %s %s Subtask %s completed %s\n", icon, timeStr, badge, idStr, ThoughtStyle.Render(durationStr))
+	if subtask.ArtifactPath != "" {
+		res += fmt.Sprintf("   %s %s\n",
+			lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")).Render("📁 Artifact:"),
+			subtask.ArtifactPath,
+		)
+	}
+	return res
+}
+
+// RenderSubtaskFailed formats subtask failure details.
+func RenderSubtaskFailed(subtask *gateway.SubtaskEventInfo) string {
+	if subtask == nil {
+		return ""
+	}
+	icon := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#EF4444")).Render("✖")
+	badge := AgentBadge(subtask.Worker)
+	timeStr := ThoughtStyle.Render(time.Now().Format("15:04:05"))
+	idStr := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#EF4444")).Render(subtask.SubtaskID)
+	return fmt.Sprintf("%s %s %s Subtask %s failed: %s\n", icon, timeStr, badge, idStr, subtask.Error)
+}
+
+// RenderThoughtComplete formats a subtle boundary marker when reasoning finishes.
+func RenderThoughtComplete(agent, statusMsg string) string {
+	badge := AgentBadge(agent)
+	msg := statusMsg
+	if msg == "" {
+		msg = "Reasoning concluded. Beginning action."
+	}
+	return fmt.Sprintf("%s %s %s\n",
+		ThoughtStyle.Render("💭"),
+		badge,
+		ThoughtStyle.Render(msg),
+	)
+}
+
+// RenderPhaseChange formats an execution phase transition banner.
+func RenderPhaseChange(phase gateway.ExecutionPhase, agent, statusMsg string) string {
+	var phaseColor lipgloss.Color
+	switch phase {
+	case gateway.PhasePlanning:
+		phaseColor = lipgloss.Color("#A855F7") // Purple
+	case gateway.PhaseExecuting:
+		phaseColor = lipgloss.Color("#38BDF8") // Cyan
+	case gateway.PhaseWaitingApproval:
+		phaseColor = lipgloss.Color("#F59E0B") // Amber
+	case gateway.PhaseCompleted:
+		phaseColor = lipgloss.Color("#34D399") // Emerald
+	case gateway.PhaseFailed:
+		phaseColor = lipgloss.Color("#EF4444") // Red
+	default:
+		phaseColor = lipgloss.Color("#94A3B8")
+	}
+
+	badge := lipgloss.NewStyle().Bold(true).Foreground(phaseColor).Render(fmt.Sprintf("[%s]", phase))
+	timeStr := ThoughtStyle.Render(time.Now().Format("15:04:05"))
+	msg := statusMsg
+	if msg == "" {
+		msg = fmt.Sprintf("Phase transitioned to %s", phase)
+	}
+	return fmt.Sprintf("%s %s %s %s\n", StatusStyle.Render("✦"), timeStr, badge, msg)
+}
+
+// RenderSystemLog formats an operational log message.
+func RenderSystemLog(log *gateway.LogEntry) string {
+	if log == nil {
+		return ""
+	}
+	var sevColor lipgloss.Color
+	switch log.Severity {
+	case gateway.LogSeverityError:
+		sevColor = lipgloss.Color("#EF4444")
+	case gateway.LogSeverityWarn:
+		sevColor = lipgloss.Color("#F59E0B")
+	case gateway.LogSeverityDebug:
+		sevColor = lipgloss.Color("#64748B")
+	default:
+		sevColor = lipgloss.Color("#38BDF8")
+	}
+	sevBadge := lipgloss.NewStyle().Bold(true).Foreground(sevColor).Render(fmt.Sprintf("[%s]", log.Severity))
+	compBadge := lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8")).Render(fmt.Sprintf("[%s]", log.Component))
+	timeStr := ThoughtStyle.Render(log.Timestamp.Format("15:04:05"))
+	return fmt.Sprintf("%s %s %s %s\n", timeStr, sevBadge, compBadge, log.Message)
+}

@@ -195,7 +195,7 @@ For developers and contributors, Me2 is engineered as a clean two-engine system 
 ```mermaid
 flowchart TD
     subgraph ClientLayer ["Client Ingress (Go)"]
-        CLI["💻 CLI Terminal Adapter (Bubbletea REPL & Single-Prompt)"]
+        CLI["💻 CLI Terminal Adapter (Clean Streaming REPL & Single-Prompt)"]
     end
 
     subgraph GoPlane ["Control Plane & Native Tools (Go)"]

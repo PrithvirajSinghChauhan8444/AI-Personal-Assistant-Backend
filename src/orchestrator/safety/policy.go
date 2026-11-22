@@ -213,6 +213,7 @@ func (g *Gatekeeper) registerDefaults() {
 		{"gmail_send_draft", "email"},
 		{"memory_store_fact", "memory"},
 		{"memory_update_profile", "memory"},
+		{"memory_update_account", "memory"},
 	}
 	for _, t := range mediumRiskTools {
 		g.RegisterPolicy(ToolPolicy{

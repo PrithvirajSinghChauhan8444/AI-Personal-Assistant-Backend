@@ -30,6 +30,7 @@ workspace/artifacts/*
 Skills/
 not_comit
 not_comti
+not_comit_archive
 # CodeLens Graph local index
 .codelens/
 

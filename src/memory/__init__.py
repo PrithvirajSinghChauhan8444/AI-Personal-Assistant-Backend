@@ -1,41 +1,54 @@
-"""Layer 5 Cognitive Memory Layer package."""
+"""Unified Layer 5 Memory Layer Package."""
 
 from src.memory.contracts import (
     EpisodicRecord,
-    MemoryCategory,
+    MemoryContextSnapshot,
+    MemoryMutationEvent,
+    MemoryObserver,
     MemorySearchResponse,
     MemorySearchResult,
     ReflectionAction,
-    RetrievalTelemetry,
+    RetrievedFactSnapshot,
 )
 from src.memory.embeddings import (
     DeterministicMockEmbedder,
     EmbeddingEngineProtocol,
+    FastEmbedEmbedder,
     SentenceTransformerEmbedder,
     create_embedder,
 )
-from src.memory.engine import MemoryEngine
+from src.memory.engine import MemoryEngine, resolve_memory_base_dir
+from src.memory.profiles import AccountsContextManager, UserProfileManager
 from src.memory.reflection import MemoryReflectionAgent
-from src.memory.tier1_profile import UserProfileManager
-from src.memory.tier2_accounts import AccountsContextManager
-from src.memory.tier3_storage import EpisodicMemoryStore
-from src.memory.tools import MEMORY_TOOLS
+from src.memory.storage import (
+    DEFAULT_SIMILARITY_THRESHOLD,
+    RECENCY_HALF_LIFE_DAYS,
+    EpisodicMemoryStore,
+)
+from src.memory.tools import MEMORY_TOOLS, MemoryToolExecutor
 
 __all__ = [
-    "MemoryEngine",
-    "UserProfileManager",
     "AccountsContextManager",
+    "DEFAULT_SIMILARITY_THRESHOLD",
+    "DeterministicMockEmbedder",
+    "EmbeddingEngineProtocol",
     "EpisodicMemoryStore",
-    "MemoryReflectionAgent",
-    "MEMORY_TOOLS",
     "EpisodicRecord",
-    "MemoryCategory",
+    "FastEmbedEmbedder",
+    "MemoryContextSnapshot",
+    "MemoryEngine",
+    "MemoryMutationEvent",
+    "MemoryObserver",
+    "MemoryReflectionAgent",
     "MemorySearchResponse",
     "MemorySearchResult",
-    "RetrievalTelemetry",
+    "MemoryToolExecutor",
+    "MEMORY_TOOLS",
+    "RECENCY_HALF_LIFE_DAYS",
     "ReflectionAction",
-    "EmbeddingEngineProtocol",
+    "RetrievedFactSnapshot",
     "SentenceTransformerEmbedder",
-    "DeterministicMockEmbedder",
+    "UserProfileManager",
     "create_embedder",
+    "resolve_memory_base_dir",
 ]

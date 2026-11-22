@@ -1,4 +1,4 @@
-"""Unified Layer 5 Memory Engine coordinating 3-tier memory persistence."""
+"""Unified Layer 5 Memory Engine coordinating profile, accounts, episodic storage, and reflection."""
 
 import asyncio
 import os
@@ -19,10 +19,10 @@ from src.memory.contracts import (
     RetrievedFactSnapshot,
 )
 from src.memory.embeddings import EmbeddingEngineProtocol, create_embedder
+from src.memory.profiles import AccountsContextManager, UserProfileManager
 from src.memory.reflection import MemoryReflectionAgent
-from src.memory.tier1_profile import UserProfileManager
-from src.memory.tier2_accounts import AccountsContextManager
-from src.memory.tier3_storage import EpisodicMemoryStore
+from src.memory.storage import EpisodicMemoryStore
+from src.memory.tools import MemoryToolExecutor
 from src.models.base import BaseLLMClient
 
 DEFAULT_MEMORY_BASE_DIR = "~/.config/ai-assistant/memory"
@@ -78,7 +78,7 @@ def load_memory_config() -> Dict[str, Any]:
 
 
 class MemoryEngine(MemoryEngineProtocol):
-    """Orchestrates Tier 1 Profile, Tier 2 Accounts, Tier 3 Vector RAG, and Reflection."""
+    """Orchestrates User Profile, Accounts Context, Episodic Storage, and Reflection."""
 
     def __init__(
         self,
@@ -109,6 +109,9 @@ class MemoryEngine(MemoryEngineProtocol):
         )
         self.reflector = MemoryReflectionAgent(model_client=reflection_client)
         self._observers: List[MemoryObserver] = []
+        self._background_tasks: set[asyncio.Task[Any]] = set()
+        self._recent_turn_facts: set[str] = set()
+        self._tool_executor = MemoryToolExecutor(self)
 
     def register_memory_observer(self, observer: MemoryObserver) -> None:
         """Registers a listener for real-time memory state mutations."""
@@ -135,7 +138,7 @@ class MemoryEngine(MemoryEngineProtocol):
     def get_context_snapshot(
         self, user_id: str = "default", query: Optional[str] = None
     ) -> MemoryContextSnapshot:
-        """Assembles a structured, explainable snapshot across all 3 memory tiers."""
+        """Assembles a structured snapshot across user profile, accounts, and episodic memory."""
         profile_attrs = dict(self.profile.sections)
 
         accounts_data = self.accounts.get_accounts_data()
@@ -177,7 +180,7 @@ class MemoryEngine(MemoryEngineProtocol):
 
     # MemoryEngineProtocol Implementation
     def is_memory_tool(self, tool_name: str) -> bool:
-        """Determines if the given tool identifier belongs to Layer 5 local cognitive tools."""
+        """Determines if tool name belongs to Layer 5 local memory tools."""
         return tool_name in (
             "memory_update_profile",
             "memory_update_account",
@@ -186,23 +189,23 @@ class MemoryEngine(MemoryEngineProtocol):
             "memory_delete",
         )
 
-    async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
-        """Executes a local memory tool in-process with 0ms IPC latency."""
-        if tool_name == "memory_update_profile":
-            return self._handle_update_profile(arguments)
-        elif tool_name == "memory_update_account":
-            return self._handle_update_account(arguments)
-        elif tool_name == "memory_store_fact":
-            return self._handle_store_fact(arguments)
-        elif tool_name == "memory_search":
-            return self._handle_search(arguments)
-        elif tool_name == "memory_delete":
-            return self._handle_delete(arguments)
-        else:
-            return f"Error: Unknown memory tool '{tool_name}'."
+    async def execute_tool(
+        self,
+        tool_name: str,
+        arguments: Dict[str, Any],
+        session_id: Optional[str] = None,
+        turn_id: Optional[str] = None,
+    ) -> str:
+        """Delegates tool execution to MemoryToolExecutor."""
+        return await self._tool_executor.execute(
+            tool_name=tool_name,
+            arguments=arguments,
+            session_id=session_id,
+            turn_id=turn_id,
+        )
 
     def build_grounding_prompt(self) -> str:
-        """Assembles Tier 1 Core Profile and Tier 2 Accounts into the agent grounding context."""
+        """Assembles User Profile and Connected Accounts into the agent grounding context."""
         parts = [
             "=== User Context and Memory Grounding ===",
             "",
@@ -219,13 +222,16 @@ class MemoryEngine(MemoryEngineProtocol):
         recent_history: Optional[List[Dict[str, Any]]] = None,
     ) -> asyncio.Task[None]:
         """Spawns an asynchronous background task to evaluate and curate memory."""
-        return asyncio.create_task(
+        task = asyncio.create_task(
             self.evaluate_turn_and_commit(
                 user_prompt=user_prompt,
                 assistant_response=assistant_response,
                 recent_history=recent_history,
             )
         )
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        return task
 
     async def evaluate_turn_and_commit(
         self,
@@ -240,6 +246,7 @@ class MemoryEngine(MemoryEngineProtocol):
             recent_history=recent_history,
         )
 
+        committed_actions: List[ReflectionAction] = []
         for action in actions:
             if action.action_type == "update_profile" and action.section and action.key:
                 self.profile.update_profile(
@@ -247,101 +254,30 @@ class MemoryEngine(MemoryEngineProtocol):
                     key=action.key,
                     value=action.value or "",
                 )
+                committed_actions.append(action)
             elif action.action_type == "store_fact" and action.content:
+                clean_fact = action.content.strip().lower()
+                if clean_fact in self._recent_turn_facts:
+                    continue
                 self.storage.store_fact(
                     content=action.content,
                     category=action.category or "note",
                     tags=action.tags,
                 )
+                committed_actions.append(action)
+            elif action.action_type == "supersede_fact" and action.target_id and action.content:
+                self.storage.delete(action.target_id, reason="superseded_by_reflection")
+                self.storage.store_fact(
+                    content=action.content,
+                    category=action.category or "note",
+                    tags=action.tags,
+                )
+                committed_actions.append(action)
+            elif action.action_type == "delete_fact" and action.target_id:
+                self.storage.delete(action.target_id, reason=action.reason or "reflection_deleted")
+                committed_actions.append(action)
 
-        if actions:
-            self._notify_observers("reflection_completed", {"actions_count": len(actions)})
+        if committed_actions:
+            self._notify_observers("reflection_completed", {"actions_count": len(committed_actions)})
 
-        return actions
-
-    # Internal Tool Handlers
-    def _handle_update_profile(self, args: Dict[str, Any]) -> str:
-        section = str(args.get("section", "")).strip()
-        key = str(args.get("key", "")).strip()
-        value = str(args.get("value", "")).strip()
-
-        if not section or not key:
-            return "Error: 'section' and 'key' are required for memory_update_profile."
-
-        result = self.profile.update_profile(section, key, value)
-        self._notify_observers("profile_updated", {"section": section, "key": key, "value": value})
-        return result
-
-    def _handle_update_account(self, args: Dict[str, Any]) -> str:
-        alias = str(args.get("alias", "")).strip().lower()
-        email = str(args.get("email", "")).strip().lower()
-        provider = str(args.get("provider", "google")).strip().lower()
-
-        if not email:
-            if not alias:
-                return "Error: 'alias' or 'email' parameter is required for memory_update_account."
-            deleted = self.accounts.delete_account(alias)
-            if deleted:
-                self._notify_observers("account_updated", {"action": "delete", "alias": alias})
-                return f"Successfully removed account alias '{alias}' from accounts.md."
-            return f"Account alias '{alias}' was not found in accounts.md."
-
-        assigned_alias = self.accounts.update_account(alias=alias or None, email=email, provider=provider)
-        self._notify_observers(
-            "account_updated",
-            {"action": "upsert", "alias": assigned_alias, "email": email, "provider": provider},
-        )
-        return f"Successfully saved account '{assigned_alias}' ({email}, provider: {provider}) to accounts.md."
-
-    def _handle_store_fact(self, args: Dict[str, Any]) -> str:
-        # Accepts 'content' with fallback alias 'fact'
-        content = str(args.get("content") or args.get("fact") or "").strip()
-        if not content:
-            return "Error: 'content' (or 'fact') is required for memory_store_fact."
-
-        category = str(args.get("category", "note")).strip()
-        tags = args.get("tags") or []
-        if isinstance(tags, str):
-            tags = [t.strip() for t in tags.split(",") if t.strip()]
-
-        record = self.storage.store_fact(
-            content=content,
-            category=category,
-            tags=tags,
-        )
-        self._notify_observers(
-            "fact_stored",
-            {"id": record.id, "category": record.category, "tags": record.tags},
-        )
-        return f"Stored memory record successfully: [ID: {record.id}, Category: {record.category}]"
-
-    def _handle_search(self, args: Dict[str, Any]) -> str:
-        query = str(args.get("query", "")).strip()
-        if not query:
-            return "Error: 'query' parameter is required for memory_search."
-
-        category = args.get("category")
-        if category is not None:
-            category = str(category).strip() or None
-
-        # Accepts 'top_k' with fallback alias 'limit'
-        top_k_raw = args.get("top_k", args.get("limit", 3))
-        try:
-            top_k = int(top_k_raw)
-        except (ValueError, TypeError):
-            top_k = 3
-
-        response = self.storage.search(query=query, category=category, top_k=top_k)
-        return response.format_text()
-
-    def _handle_delete(self, args: Dict[str, Any]) -> str:
-        mem_id = str(args.get("memory_id", "")).strip()
-        if not mem_id:
-            return "Error: 'memory_id' is required for memory_delete."
-
-        reason = args.get("reason")
-        success = self.storage.delete(memory_id=mem_id, reason=reason)
-        if success:
-            self._notify_observers("fact_deleted", {"memory_id": mem_id, "reason": reason})
-            return f"Deleted memory record '{mem_id}'."
-        return f"Memory record '{mem_id}' not found."
+        return committed_actions

@@ -1,5 +1,6 @@
 """Layer 6: Agent Layer Package."""
 
+from src.agents.Base import BaseAgent
 from src.agents.browser.agent import BrowserAgent
 from src.agents.contracts import (
     AgentContext,
@@ -11,8 +12,14 @@ from src.agents.contracts import (
     ToolCallIntent,
     ToolCallResult,
     ToolDefinition,
+    ToolExecutionDomain,
 )
 from src.agents.engine.react_engine import ReActEngine, run_worker_agent
+from src.agents.engine.tool_dispatcher import (
+    MCPClientProtocol,
+    ToolDispatcher,
+    ToolTurnExecutionResult,
+)
 from src.agents.factory import (
     create_agent,
     create_all_agents,
@@ -28,7 +35,9 @@ __all__ = [
     "AgentContext",
     "AgentTurnResult",
     "AgentType",
+    "BaseAgent",
     "BrowserAgent",
+    "MCPClientProtocol",
     "MemoryAgent",
     "MemoryEngineProtocol",
     "PipeEmitterProtocol",
@@ -40,6 +49,9 @@ __all__ = [
     "ToolCallIntent",
     "ToolCallResult",
     "ToolDefinition",
+    "ToolDispatcher",
+    "ToolExecutionDomain",
+    "ToolTurnExecutionResult",
     "create_agent",
     "create_all_agents",
     "load_agents_config",

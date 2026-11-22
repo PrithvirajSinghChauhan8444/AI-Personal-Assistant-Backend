@@ -11,17 +11,221 @@ SYSTEM_TOOLS: List[ToolDefinition] = [
         category="system",
         description="Executes a Linux bash or shell command with a timeout deadline, or launches background/GUI processes detached.",
         risk="HIGH",
-        prompt_usage_tip="Use for terminal commands and running scripts. For continuous services, daemons, or GUI apps (e.g. steam, browsers), set background=true so they run detached without blocking.",
+        prompt_usage_tip="Use for terminal commands and running scripts. Set detach=true for GUI apps or daemons. Destructive commands (rm -rf, git reset --hard) return confirmation_id requiring human approval.",
         parameters={
             "type": "object",
             "properties": {
                 "command": {"type": "string", "description": "Bash or shell command to execute"},
-                "timeout_seconds": {"type": "integer", "description": "Timeout in seconds (default: 30)", "default": 30},
+                "timeout_seconds": {"type": "integer", "description": "Timeout in seconds (default: 60)", "default": 60},
                 "cwd": {"type": "string", "description": "Working directory for the process"},
-                "background": {"type": "boolean", "description": "Set to true to run long-running daemons, services, or GUI apps detached in the background without waiting", "default": False},
-                "log_file": {"type": "string", "description": "Optional custom log file path for background command output"},
+                "detach": {"type": "boolean", "description": "Set to true to run GUI apps or background services detached without waiting", "default": False},
+                "background": {"type": "boolean", "description": "Alias for detach", "default": False},
+                "confirmation_id": {"type": "string", "description": "Confirmation token returned when a destructive command was challenged"},
+                "log_file": {"type": "string", "description": "Optional custom log file path for detached command output"},
             },
             "required": ["command"],
+        },
+    ),
+    # Tmux MCP Session & Terminal Management (tmux-mcp)
+    ToolDefinition(
+        name="tmux__list-sessions",
+        category="mcp",
+        description="List all active tmux sessions.",
+        risk="LOW",
+        prompt_usage_tip="Use to discover all running tmux sessions before interacting with a specific session.",
+        parameters={"type": "object", "properties": {}},
+    ),
+    ToolDefinition(
+        name="tmux__find-session",
+        category="mcp",
+        description="Find a tmux session by name.",
+        risk="LOW",
+        prompt_usage_tip="Use to check if a specific session name exists.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Name of the tmux session to find"},
+            },
+            "required": ["name"],
+        },
+    ),
+    ToolDefinition(
+        name="tmux__list-windows",
+        category="mcp",
+        description="List windows in a tmux session.",
+        risk="LOW",
+        prompt_usage_tip="Use to inspect window IDs and titles within a tmux session.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "sessionId": {"type": "string", "description": "ID of the tmux session"},
+            },
+            "required": ["sessionId"],
+        },
+    ),
+    ToolDefinition(
+        name="tmux__list-panes",
+        category="mcp",
+        description="List panes in a tmux window.",
+        risk="LOW",
+        prompt_usage_tip="Use to inspect active pane IDs in a window before sending commands or capturing output.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "windowId": {"type": "string", "description": "ID of the tmux window"},
+            },
+            "required": ["windowId"],
+        },
+    ),
+    ToolDefinition(
+        name="tmux__capture-pane",
+        category="mcp",
+        description="Capture content from a tmux pane with configurable lines count and optional color preservation.",
+        risk="LOW",
+        prompt_usage_tip="Use to read terminal output or check logs and execution results inside a tmux pane.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "paneId": {"type": "string", "description": "ID of the tmux pane"},
+                "lines": {"type": "string", "description": "Number of lines to capture"},
+                "colors": {"type": "boolean", "description": "Include color/escape sequences for text and background attributes in output"},
+            },
+            "required": ["paneId"],
+        },
+    ),
+    ToolDefinition(
+        name="tmux__create-session",
+        category="mcp",
+        description="Create a new tmux session.",
+        risk="LOW",
+        prompt_usage_tip="Use to spawn a new isolated persistent terminal session.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Name for the new tmux session"},
+            },
+            "required": ["name"],
+        },
+    ),
+    ToolDefinition(
+        name="tmux__create-window",
+        category="mcp",
+        description="Create a new window in a tmux session.",
+        risk="LOW",
+        prompt_usage_tip="Use to create a dedicated window within an existing session.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "sessionId": {"type": "string", "description": "ID of the tmux session"},
+                "name": {"type": "string", "description": "Name for the new window"},
+            },
+            "required": ["sessionId", "name"],
+        },
+    ),
+    ToolDefinition(
+        name="tmux__kill-session",
+        category="mcp",
+        description="Kill a tmux session by ID.",
+        risk="HIGH",
+        prompt_usage_tip="Use to terminate and clean up a completed session.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "sessionId": {"type": "string", "description": "ID of the tmux session to kill"},
+            },
+            "required": ["sessionId"],
+        },
+    ),
+    ToolDefinition(
+        name="tmux__kill-window",
+        category="mcp",
+        description="Kill a tmux window by ID.",
+        risk="HIGH",
+        prompt_usage_tip="Use to close a window by ID within a tmux session.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "windowId": {"type": "string", "description": "ID of the tmux window to kill"},
+            },
+            "required": ["windowId"],
+        },
+    ),
+    ToolDefinition(
+        name="tmux__kill-pane",
+        category="mcp",
+        description="Kill a tmux pane by ID.",
+        risk="HIGH",
+        prompt_usage_tip="Use to terminate a specific pane within a window.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "paneId": {"type": "string", "description": "ID of the tmux pane to kill"},
+            },
+            "required": ["paneId"],
+        },
+    ),
+    ToolDefinition(
+        name="tmux__split-pane",
+        category="mcp",
+        description="Split a tmux pane horizontally or vertically.",
+        risk="MEDIUM",
+        prompt_usage_tip="Use to split a pane for side-by-side or stacked terminal multitasking.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "paneId": {"type": "string", "description": "ID of the tmux pane to split"},
+                "direction": {"type": "string", "enum": ["horizontal", "vertical"], "description": "Split direction: 'horizontal' (side by side) or 'vertical' (top/bottom). Default is 'vertical'"},
+                "size": {"type": "number", "minimum": 1, "maximum": 99, "description": "Size of the new pane as percentage (1-99). Default is 50%"},
+            },
+            "required": ["paneId"],
+        },
+    ),
+    ToolDefinition(
+        name="tmux__execute-command",
+        category="mcp",
+        description="Execute a command in a tmux pane and get results. For interactive applications (REPLs, editors), use rawMode=true. Avoid heredoc syntax (cat << EOF) when rawMode=false.",
+        risk="MEDIUM",
+        prompt_usage_tip="Use to run shell commands inside an existing tmux pane. Set rawMode=true for interactive REPLs or TUI apps.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "paneId": {"type": "string", "description": "ID of the tmux pane"},
+                "command": {"type": "string", "description": "Command to execute"},
+                "rawMode": {"type": "boolean", "description": "Execute command without wrapper markers for REPL/interactive compatibility. Disables get-command-result status tracking. Use capture-pane after execution to verify command outcome."},
+                "noEnter": {"type": "boolean", "description": "Send keystrokes without pressing Enter. For TUI navigation in apps like btop, vim, less. Supports special keys and strings. Automatically applies rawMode."},
+            },
+            "required": ["paneId", "command"],
+        },
+    ),
+    ToolDefinition(
+        name="tmux__get-command-result",
+        category="mcp",
+        description="Get the result of an executed command from tmux-mcp.",
+        risk="LOW",
+        prompt_usage_tip="Use to retrieve exit status and output for commands run with execute-command.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "commandId": {"type": "string", "description": "ID of the executed command"},
+            },
+            "required": ["commandId"],
+        },
+    ),
+    ToolDefinition(
+        name="sys_process",
+        category="system",
+        description="Manages tracked background processes: list active jobs, inspect their output logs, or terminate them cleanly.",
+        risk="LOW",
+        prompt_usage_tip="Use to monitor background servers or GUI apps, inspect their live logs, or terminate them by PID.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["list", "kill", "logs"], "description": "Action to perform"},
+                "pid": {"type": "integer", "description": "Target process ID (required for kill and logs)"},
+                "signal": {"type": "string", "enum": ["SIGTERM", "SIGKILL"], "description": "Signal to send (default: SIGTERM)", "default": "SIGTERM"},
+                "lines": {"type": "integer", "description": "Number of trailing log lines to read (default: 50)", "default": 50},
+            },
+            "required": ["action"],
         },
     ),
     ToolDefinition(
@@ -67,139 +271,6 @@ SYSTEM_TOOLS: List[ToolDefinition] = [
             },
             "required": ["code"],
         },
-    ),
-
-    # Hardware & Audio Controls
-    ToolDefinition(
-        name="sys_volume_get",
-        category="system",
-        description="Gets the current system audio volume percentage and mute status.",
-        risk="LOW",
-        prompt_usage_tip="Use to inspect current audio volume and mute state.",
-        parameters={"type": "object", "properties": {}},
-    ),
-    ToolDefinition(
-        name="sys_volume_set",
-        category="system",
-        description="Sets the system audio volume to a specific percentage (0-100).",
-        risk="LOW",
-        prompt_usage_tip="Use to adjust speaker or headphone volume.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "level": {"type": "integer", "description": "Target volume percentage (0 to 100)"},
-            },
-            "required": ["level"],
-        },
-    ),
-    ToolDefinition(
-        name="sys_volume_mute",
-        category="system",
-        description="Toggles system audio mute state on or off.",
-        risk="LOW",
-        prompt_usage_tip="Use to silence or unsilence sound.",
-        parameters={"type": "object", "properties": {}},
-    ),
-
-    # Display Controls
-    ToolDefinition(
-        name="sys_brightness_get",
-        category="system",
-        description="Gets the current screen brightness percentage.",
-        risk="LOW",
-        prompt_usage_tip="Use to inspect display brightness level.",
-        parameters={"type": "object", "properties": {}},
-    ),
-    ToolDefinition(
-        name="sys_brightness_set",
-        category="system",
-        description="Sets the screen brightness to a specific percentage (1-100).",
-        risk="LOW",
-        prompt_usage_tip="Use to adjust screen backlight intensity.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "level": {"type": "integer", "description": "Target brightness percentage (1 to 100)"},
-            },
-            "required": ["level"],
-        },
-    ),
-
-    # Desktop State, Power & Diagnostics
-    ToolDefinition(
-        name="sys_lock",
-        category="system",
-        description="Locks the active desktop session using the desktop lock screen.",
-        risk="MEDIUM",
-        prompt_usage_tip="Use when the user requests locking the screen.",
-        parameters={"type": "object", "properties": {}},
-    ),
-    ToolDefinition(
-        name="sys_suspend",
-        category="system",
-        description="Suspends the system into low-power sleep state (suspend to RAM).",
-        risk="HIGH",
-        prompt_usage_tip="Requires explicit confirmation before putting the system to sleep.",
-        parameters={"type": "object", "properties": {}},
-    ),
-    ToolDefinition(
-        name="sys_health",
-        category="system",
-        description="Reports real-time system health including CPU usage, RAM utilization, root disk space, and battery status.",
-        risk="LOW",
-        prompt_usage_tip="Use to check resource utilization, memory limits, or battery level.",
-        parameters={"type": "object", "properties": {}},
-    ),
-
-    # Clipboard & Launcher
-    ToolDefinition(
-        name="sys_clipboard_copy",
-        category="system",
-        description="Copies text to the system clipboard using Wayland (wl-copy) or X11 (xclip/xsel).",
-        risk="LOW",
-        prompt_usage_tip="Use when asked to copy text, links, or code for the user.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "text": {"type": "string", "description": "Text to place into system clipboard"},
-            },
-            "required": ["text"],
-        },
-    ),
-    ToolDefinition(
-        name="sys_clipboard_paste",
-        category="system",
-        description="Retrieves and returns text content from the system clipboard.",
-        risk="LOW",
-        prompt_usage_tip="Use to inspect what the user currently has copied.",
-        parameters={"type": "object", "properties": {}},
-    ),
-    ToolDefinition(
-        name="sys_launch_app",
-        category="system",
-        description="Launches an application, URI, or directory path detached on the desktop session.",
-        risk="MEDIUM",
-        prompt_usage_tip="Use to open GUI apps, browser, editor, or folder targets.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "app_name": {"type": "string", "description": "Application name or path (e.g. 'code', 'firefox', 'vlc', or directory)"},
-                "arguments": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Optional CLI arguments or file targets",
-                },
-            },
-            "required": ["app_name"],
-        },
-    ),
-    ToolDefinition(
-        name="sys_get_time",
-        category="system",
-        description="Returns the current system timestamp in both local time and UTC.",
-        risk="LOW",
-        prompt_usage_tip="Use to check exact date, time, weekday, or timezone.",
-        parameters={"type": "object", "properties": {}},
     ),
 
     # Filesystem Category

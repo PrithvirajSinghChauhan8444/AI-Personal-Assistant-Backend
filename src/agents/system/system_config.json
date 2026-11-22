@@ -13,7 +13,7 @@
   ],
   "fallback_capability": "research",
   "model": {
-    "default": "google:gemini-3.5-flash-lite",
+    "default": "google:gemini-3.5-flash",
     "temperature": 0.0
   },
   "description": "Local Linux OS operations: file reading/writing/deletion, shell execution, process monitoring, git version control, and Hyprland window manager automation.",
@@ -26,6 +26,104 @@
       "name": "sys_exec",
       "description": "Executes a Linux bash or shell command with a timeout deadline, or launches background/GUI processes detached.",
       "risk": "HIGH",
+      "execution_domain": "go_native",
+      "required_capability": "system_exec"
+    },
+    {
+      "name": "tmux__list-sessions",
+      "description": "List all active tmux sessions.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:tmux"
+    },
+    {
+      "name": "tmux__find-session",
+      "description": "Find a tmux session by name.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:tmux"
+    },
+    {
+      "name": "tmux__list-windows",
+      "description": "List windows in a tmux session.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:tmux"
+    },
+    {
+      "name": "tmux__list-panes",
+      "description": "List panes in a tmux window.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:tmux"
+    },
+    {
+      "name": "tmux__capture-pane",
+      "description": "Capture content from a tmux pane with configurable lines count and optional color preservation.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:tmux"
+    },
+    {
+      "name": "tmux__create-session",
+      "description": "Create a new tmux session.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:tmux"
+    },
+    {
+      "name": "tmux__create-window",
+      "description": "Create a new window in a tmux session.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:tmux"
+    },
+    {
+      "name": "tmux__kill-session",
+      "description": "Kill a tmux session by ID.",
+      "risk": "HIGH",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:tmux"
+    },
+    {
+      "name": "tmux__kill-window",
+      "description": "Kill a tmux window by ID.",
+      "risk": "HIGH",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:tmux"
+    },
+    {
+      "name": "tmux__kill-pane",
+      "description": "Kill a tmux pane by ID.",
+      "risk": "HIGH",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:tmux"
+    },
+    {
+      "name": "tmux__split-pane",
+      "description": "Split a tmux pane horizontally or vertically.",
+      "risk": "MEDIUM",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:tmux"
+    },
+    {
+      "name": "tmux__execute-command",
+      "description": "Execute a command in a tmux pane and get results. Use rawMode=true for interactive REPLs or editors.",
+      "risk": "MEDIUM",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:tmux"
+    },
+    {
+      "name": "tmux__get-command-result",
+      "description": "Get the result of an executed command from tmux-mcp.",
+      "risk": "LOW",
+      "execution_domain": "mcp_bridge",
+      "required_capability": "mcp:tmux"
+    },
+    {
+      "name": "sys_process",
+      "description": "Manages tracked background processes: list active jobs, inspect output logs, or terminate them.",
+      "risk": "LOW",
       "execution_domain": "go_native",
       "required_capability": "system_exec"
     },
@@ -49,90 +147,6 @@
       "risk": "HIGH",
       "execution_domain": "go_native",
       "required_capability": "system_exec"
-    },
-    {
-      "name": "sys_volume_get",
-      "description": "Gets current master audio volume percentage and mute status via pactl or amixer.",
-      "risk": "LOW",
-      "execution_domain": "go_native",
-      "required_capability": "hardware"
-    },
-    {
-      "name": "sys_volume_set",
-      "description": "Sets master audio volume percentage.",
-      "risk": "LOW",
-      "execution_domain": "go_native",
-      "required_capability": "hardware"
-    },
-    {
-      "name": "sys_volume_mute",
-      "description": "Toggles or sets master audio mute state.",
-      "risk": "LOW",
-      "execution_domain": "go_native",
-      "required_capability": "hardware"
-    },
-    {
-      "name": "sys_brightness_get",
-      "description": "Gets current display brightness percentage.",
-      "risk": "LOW",
-      "execution_domain": "go_native",
-      "required_capability": "hardware"
-    },
-    {
-      "name": "sys_brightness_set",
-      "description": "Sets display brightness percentage.",
-      "risk": "LOW",
-      "execution_domain": "go_native",
-      "required_capability": "hardware"
-    },
-    {
-      "name": "sys_lock",
-      "description": "Locks the Linux desktop session immediately.",
-      "risk": "MEDIUM",
-      "execution_domain": "go_native",
-      "required_capability": "system_exec"
-    },
-    {
-      "name": "sys_suspend",
-      "description": "Suspends the system into sleep mode.",
-      "risk": "HIGH",
-      "execution_domain": "go_native",
-      "required_capability": "system_exec"
-    },
-    {
-      "name": "sys_health",
-      "description": "Collects full Linux system health diagnostics.",
-      "risk": "LOW",
-      "execution_domain": "go_native",
-      "required_capability": "process"
-    },
-    {
-      "name": "sys_clipboard_copy",
-      "description": "Copies text to Linux clipboard using xclip or wl-copy.",
-      "risk": "LOW",
-      "execution_domain": "go_native",
-      "required_capability": "system_exec"
-    },
-    {
-      "name": "sys_clipboard_paste",
-      "description": "Pastes text from Linux clipboard using xclip or wl-paste.",
-      "risk": "LOW",
-      "execution_domain": "go_native",
-      "required_capability": "system_exec"
-    },
-    {
-      "name": "sys_launch_app",
-      "description": "Launches a desktop GUI application detached in background.",
-      "risk": "MEDIUM",
-      "execution_domain": "go_native",
-      "required_capability": "system_exec"
-    },
-    {
-      "name": "sys_get_time",
-      "description": "Gets exact local and UTC time, date, weekday, and timezone.",
-      "risk": "LOW",
-      "execution_domain": "go_native",
-      "required_capability": "general"
     },
     {
       "name": "fs_read",

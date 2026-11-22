@@ -173,7 +173,7 @@ func SyncControlRegistry(configPath, agentsDir string) error {
 	if _, exists := rawData["manager"]; !exists {
 		rawData["manager"] = map[string]interface{}{
 			"enabled":              true,
-			"model":                "google:gemini-3.5-flash-lite",
+			"model":                "google:gemini-3.5-flash",
 			"temperature":          0.1,
 			"max_parallel_workers": 4,
 			"auto_heal_deadlocks":  true,
@@ -229,6 +229,8 @@ func ResolvePath(path string) string {
 		filepath.Join("..", path),
 		filepath.Join("..", "..", path),
 		filepath.Join("..", "..", "..", path),
+		filepath.Join("..", "..", "..", "..", path),
+		filepath.Join("..", "..", "..", "..", "..", path),
 	}
 	for _, cand := range candidates {
 		if _, err := os.Stat(cand); err == nil {

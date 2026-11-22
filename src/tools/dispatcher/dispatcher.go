@@ -6,13 +6,13 @@ import (
 	"os"
 	"path/filepath"
 
+	researchtools "assistant/src/agents/research/AgentTools"
 	"assistant/src/mcp"
 	"assistant/src/tools"
 	"assistant/src/tools/browser"
 	"assistant/src/tools/fs"
 	"assistant/src/tools/git"
 	"assistant/src/tools/hyprland"
-	"assistant/src/tools/net"
 	"assistant/src/tools/sys"
 	"assistant/src/tools/workspace"
 )
@@ -28,6 +28,7 @@ func RegisterAllTools(registry *tools.ToolRegistry, configDir string) error {
 	allTools := []tools.Tool{
 		// System Category
 		sys.NewSysExecTool(),
+		sys.NewSysProcessTool(),
 		sys.NewSysPsTool(),
 		sys.NewSysKillTool(),
 		sys.NewSysVolumeGetTool(),
@@ -58,11 +59,6 @@ func RegisterAllTools(registry *tools.ToolRegistry, configDir string) error {
 		git.NewGitDiffTool(),
 		git.NewGitCommitTool(),
 
-		// Net Category
-		net.NewNetFetchTool(),
-		net.NewNetSearchTool(),
-		net.NewNetWeatherTool(),
-
 		// Workspace Category
 		workspace.NewGmailListTool(googleClient),
 		workspace.NewGmailReadTool(googleClient),
@@ -83,6 +79,8 @@ func RegisterAllTools(registry *tools.ToolRegistry, configDir string) error {
 		workspace.NewGoogleAuthLoginTool(configDir),
 	}
 
+	// Research Agent Tools (from AgentTools/tools.go)
+	allTools = append(allTools, researchtools.GetAllTools()...)
 	allTools = append(allTools, browser.GetAllBrowserTools(nil)...)
 	allTools = append(allTools, hyprland.GetAllHyprlandTools()...)
 

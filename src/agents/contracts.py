@@ -16,6 +16,13 @@ class AgentType(str, Enum):
     SUMMARIZER = "summarizer"
 
 
+class ToolExecutionDomain(str, Enum):
+    """Supported execution domains for polyglot tool routing."""
+    PYTHON_LOCAL = "python_local"
+    GO_NATIVE = "go_native"
+    MCP_BRIDGE = "mcp_bridge"
+
+
 @dataclass
 class ToolDefinition:
     """Cognitive specification of a tool exposed to the language model."""
@@ -25,6 +32,8 @@ class ToolDefinition:
     prompt_usage_tip: str = ""
     category: str = "general"
     risk: str = "LOW"
+    execution_domain: Union[ToolExecutionDomain, str] = ToolExecutionDomain.PYTHON_LOCAL
+    required_capability: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         """Converts into standard function-calling tool schema."""
@@ -82,6 +91,7 @@ class AgentContext:
     available_tools: List[ToolDefinition] = field(default_factory=list)
     max_iterations: int = 10
     metadata: Dict[str, Any] = field(default_factory=dict)
+    local_handlers: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

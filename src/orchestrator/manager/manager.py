@@ -96,7 +96,7 @@ class ManagerAgent:
         self.agent_config = self.all_agents_config.get("manager", {})
         self.workers = self._discover_and_filter_workers()
 
-        self.model_id = model_override or self.agent_config.get("model", "google:gemini-3.5-flash-lite")
+        self.model_id = model_override or self.agent_config.get("model", "google:gemini-3.5-flash")
         self.temperature = (
             temperature_override
             if temperature_override is not None
@@ -299,6 +299,25 @@ class ManagerAgent:
                     pass
         return ""
 
+    def _load_active_terminal_sessions(self) -> str:
+        """Discovers active persistent terminal sessions from tmux."""
+        try:
+            import subprocess
+            res = subprocess.run(
+                ["tmux", "list-sessions", "-F", "#{session_name}\t#{session_attached}"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            if res.returncode != 0 or not res.stdout.strip():
+                return ""
+            lines = [f"- `{line.split('\t')[0]}`" for line in res.stdout.strip().splitlines() if line.strip()]
+            if lines:
+                return "Active Terminal Sessions on Host:\n" + "\n".join(lines) + "\n(Note: Prefer routing tasks to existing sessions where appropriate)"
+        except Exception:
+            pass
+        return ""
+
     async def plan(
         self,
         goal: str,
@@ -319,6 +338,11 @@ class ManagerAgent:
         core_profile = self._load_core_profile()
         if core_profile:
             context_parts.append(f"User Core Profile & Requirements:\n{core_profile}")
+
+        # Dynamically inject live active terminal sessions on host
+        active_sessions = self._load_active_terminal_sessions()
+        if active_sessions:
+            context_parts.append(active_sessions)
 
         if conversation_history:
             history_str = "\n".join(

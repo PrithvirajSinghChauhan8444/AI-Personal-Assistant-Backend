@@ -18,6 +18,7 @@ from src.agents.productivity.agent import ProductivityAgent
 from src.agents.research.agent import ResearchAgent
 from src.agents.summarizer.agent import SummarizerAgent
 from src.agents.system.agent import SystemAgent
+from src.agents.engine.tool_dispatcher import ToolDispatcher
 from src.models.base import BaseLLMClient
 from src.models.factory import ModelFactory
 
@@ -86,7 +87,7 @@ def _resolve_model_client(
 
     manifest = load_manifest(manifest_file) if manifest_file else None
 
-    default_model = manifest.model.default if manifest else "google:gemini-3.5-flash-lite"
+    default_model = manifest.model.default if manifest else "google:gemini-3.5-flash"
     default_temp = manifest.model.temperature if manifest else 0.0
 
     agent_cfg = (config or {}).get(agent_name, {})
@@ -128,8 +129,9 @@ def create_agent(
     agent_type: Union[AgentType, str],
     model_client: Optional[BaseLLMClient] = None,
     config: Optional[Dict[str, Any]] = None,
+    tool_dispatcher: Optional[ToolDispatcher] = None,
 ) -> Any:
-    """Instantiates a specialist worker agent dynamically with configured LLM client."""
+    """Instantiates a specialist worker agent dynamically with configured LLM client and optional tool dispatcher."""
     agent_name = _resolve_agent_name(agent_type)
     if config is not None:
         agent_cfg = config.get(agent_name, {})
@@ -145,14 +147,20 @@ def create_agent(
     if not agent_cls:
         raise ValueError(f"Unknown or unresolvable worker agent type: {agent_type}")
 
-    return agent_cls(model_client=model_client)
+    sig = inspect.signature(agent_cls)
+    kwargs: Dict[str, Any] = {"model_client": model_client}
+    if tool_dispatcher is not None and "tool_dispatcher" in sig.parameters:
+        kwargs["tool_dispatcher"] = tool_dispatcher
+
+    return agent_cls(**kwargs)
 
 
 def create_all_agents(
     model_client: Optional[BaseLLMClient] = None,
     config_path: str = "config/agents.json",
+    tool_dispatcher: Optional[ToolDispatcher] = None,
 ) -> Dict[Any, Any]:
-    """Instantiates all active Layer 6 specialist worker agents."""
+    """Instantiates all active Layer 6 specialist worker agents with optional shared tool dispatcher."""
     agents_dir = Path("src/agents")
     sync_control_registry(config_path, agents_dir)
     config = load_agents_config(config_path)
@@ -182,7 +190,10 @@ def create_all_agents(
     instantiated: Dict[Any, Any] = {}
     for name in discovered_agents:
         try:
-            worker = create_agent(name, model_client, config)
+            if tool_dispatcher is not None:
+                worker = create_agent(name, model_client, config, tool_dispatcher=tool_dispatcher)
+            else:
+                worker = create_agent(name, model_client, config)
             try:
                 enum_key = AgentType(name)
                 instantiated[enum_key] = worker

@@ -129,7 +129,7 @@ func (m *MockTurnHandler) ExecuteTurn(ctx context.Context, req gateway.InboundTu
 		Type:      gateway.EventTurnComplete,
 		AgentName: "Orchestrator",
 		Metrics: &gateway.TurnMetrics{
-			ModelName:         "mock-gemini-3.8-flash",
+			ModelName:         "mock-gemini-3.5-flash",
 			PromptTokens:      42,
 			CompletionTokens:  18,
 			CachedTokens:      12,
