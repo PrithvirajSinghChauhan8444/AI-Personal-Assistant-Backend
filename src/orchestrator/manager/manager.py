@@ -96,7 +96,7 @@ class ManagerAgent:
         self.agent_config = self.all_agents_config.get("manager", {})
         self.workers = self._discover_and_filter_workers()
 
-        self.model_id = model_override or self.agent_config.get("model", "google:gemini-3.5-flash")
+        self.model_id = model_override or self.agent_config.get("model", "google:gemini-3.5-flash-lite")
         self.temperature = (
             temperature_override
             if temperature_override is not None

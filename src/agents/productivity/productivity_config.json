@@ -17,7 +17,7 @@
   ],
   "fallback_capability": "system",
   "model": {
-    "default": "google:gemini-3.5-flash",
+    "default": "google:gemini-3.5-flash-lite",
     "temperature": 0.0
   },
   "description": "Personal communication, scheduling, and coursework: searching and reading Gmail, creating/updating Google Calendar events, and inspecting Google Classroom courses, assignments, and announcements.",
@@ -171,6 +171,13 @@
       "risk": "LOW",
       "execution_domain": "mcp_bridge",
       "required_capability": "mcp:excalidraw"
+    },
+    {
+      "name": "consult_memory",
+      "description": "Queries the central MemoryAgent for user preferences, machine details, system paths, or stored knowledge.",
+      "risk": "LOW",
+      "execution_domain": "python_local",
+      "required_capability": "memory"
     }
   ]
 }

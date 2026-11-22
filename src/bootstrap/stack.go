@@ -78,10 +78,10 @@ func DefaultConfig() Config {
 		EnableMailWatcher:  true,
 		Models: ModelsConfig{
 			Provider:     "google",
-			DefaultModel: "google:gemini-3.5-flash",
-			ActiveModel:  "google:gemini-3.5-flash",
+			DefaultModel: "google:gemini-3.5-flash-lite",
+			ActiveModel:  "google:gemini-3.5-flash-lite",
 			FallbackModels: []string{
-				"google:gemini-3.5-flash",
+				"google:gemini-3.5-flash-lite",
 				"google:gemini-2.5-flash",
 				"google:gemini-2.5-pro",
 				"google:gemini-2.5-flash-lite",

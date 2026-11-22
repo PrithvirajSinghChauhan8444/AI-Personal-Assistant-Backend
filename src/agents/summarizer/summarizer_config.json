@@ -10,7 +10,7 @@
   ],
   "fallback_capability": "system",
   "model": {
-    "default": "google:gemini-3.5-flash",
+    "default": "google:gemini-3.5-flash-lite",
     "temperature": 0.1
   },
   "description": "Specialist summarizer agent that synthesizes execution results, subtask outputs, and complex data into clean, well-structured, human-readable final responses.",

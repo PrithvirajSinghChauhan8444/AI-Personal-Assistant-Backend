@@ -21,6 +21,7 @@ class ToolExecutionDomain(str, Enum):
     PYTHON_LOCAL = "python_local"
     GO_NATIVE = "go_native"
     MCP_BRIDGE = "mcp_bridge"
+    MCP = "mcp_bridge"
 
 
 @dataclass
@@ -32,7 +33,7 @@ class ToolDefinition:
     prompt_usage_tip: str = ""
     category: str = "general"
     risk: str = "LOW"
-    execution_domain: Union[ToolExecutionDomain, str] = ToolExecutionDomain.PYTHON_LOCAL
+    execution_domain: Optional[Union[ToolExecutionDomain, str]] = None
     required_capability: str = ""
 
     def to_dict(self) -> Dict[str, Any]:

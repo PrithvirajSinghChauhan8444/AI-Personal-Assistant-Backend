@@ -23,6 +23,7 @@ class GoogleClient(BaseLLMClient):
         model_name: str = "gemini-2.5-flash",
         temperature: float = 0.0,
         api_key: Optional[str] = None,
+        fallback_models: Optional[List[str]] = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(model_name=model_name, temperature=temperature, **kwargs)
@@ -33,69 +34,124 @@ class GoogleClient(BaseLLMClient):
         from google import genai
         self._client = genai.Client(api_key=self.api_key)
 
+        if fallback_models is None:
+            fallbacks: List[str] = []
+            try:
+                from src.agents.factory import load_system_config
+                sys_cfg = load_system_config()
+                raw_fallbacks = sys_cfg.get("models", {}).get("fallback_models", [])
+                for fb in raw_fallbacks:
+                    fb_clean = fb.split(":")[-1].strip()
+                    if fb_clean and fb_clean not in fallbacks:
+                        fallbacks.append(fb_clean)
+            except Exception:
+                pass
+            if not fallbacks:
+                fallbacks = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"]
+            fallback_models = fallbacks
+        self.fallback_models = fallback_models
+
     async def stream_chat(
         self,
         system_prompt: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Streams text deltas, thoughts, and tool call invocations from Gemini."""
+        """Streams text deltas, thoughts, and tool call invocations from Gemini with automatic quota fallback."""
         from google.genai import types
 
         formatted_contents = self._format_messages(types, messages)
         config = self._build_config(types, system_prompt, tools)
 
-        try:
-            response_stream = await self._client.aio.models.generate_content_stream(
-                model=self.model_name,
-                contents=formatted_contents,
-                config=config,
-            )
+        models_to_try = [self.model_name]
+        for fb in self.fallback_models:
+            if fb != self.model_name and fb not in models_to_try:
+                models_to_try.append(fb)
 
-            async for chunk in response_stream:
-                for candidate in getattr(chunk, "candidates", []) or []:
-                    content = getattr(candidate, "content", None)
-                    if not content or not getattr(content, "parts", None):
-                        continue
+        for attempt_idx, candidate_model in enumerate(models_to_try):
+            streamed_any_chunks = False
+            try:
+                response_stream = await self._client.aio.models.generate_content_stream(
+                    model=candidate_model,
+                    contents=formatted_contents,
+                    config=config,
+                )
 
-                    for part in content.parts:
-                        # Extract reasoning thought delta if present
-                        if getattr(part, "thought", False) and getattr(part, "text", None):
-                            yield StreamChunk(thought=part.text)
-                        elif getattr(part, "text", None):
-                            yield StreamChunk(text_delta=part.text)
+                async for chunk in response_stream:
+                    for candidate in getattr(chunk, "candidates", []) or []:
+                        content = getattr(candidate, "content", None)
+                        if not content or not getattr(content, "parts", None):
+                            continue
 
-                        # Extract function/tool call intents
-                        function_call = getattr(part, "function_call", None)
-                        if function_call:
-                            call_id = getattr(function_call, "id", None) or f"call_{uuid4().hex[:12]}"
-                            tool_name = getattr(function_call, "name", "")
-                            args_dict = dict(getattr(function_call, "args", {}) or {})
-                            thought_sig = getattr(part, "thought_signature", None)
+                        for part in content.parts:
+                            # Extract reasoning thought delta if present
+                            if getattr(part, "thought", False) and getattr(part, "text", None):
+                                streamed_any_chunks = True
+                                yield StreamChunk(thought=part.text)
+                            elif getattr(part, "text", None):
+                                streamed_any_chunks = True
+                                yield StreamChunk(text_delta=part.text)
+
+                            # Extract function/tool call intents
+                            function_call = getattr(part, "function_call", None)
+                            if function_call:
+                                streamed_any_chunks = True
+                                call_id = getattr(function_call, "id", None) or f"call_{uuid4().hex[:12]}"
+                                tool_name = getattr(function_call, "name", "")
+                                args_dict = dict(getattr(function_call, "args", {}) or {})
+                                thought_sig = getattr(part, "thought_signature", None)
+                                yield StreamChunk(
+                                    tool_calls=[
+                                        ToolCallChunk(
+                                            call_id=call_id,
+                                            tool_name=tool_name,
+                                            arguments_json=json.dumps(args_dict),
+                                            thought_signature=thought_sig,
+                                        )
+                                    ]
+                                )
+
+                    # Track token usage if reported in chunk metadata
+                    usage = getattr(chunk, "usage_metadata", None)
+                    if usage:
+                        prompt_tokens = getattr(usage, "prompt_token_count", None)
+                        completion_tokens = getattr(usage, "candidates_token_count", None)
+                        if prompt_tokens or completion_tokens:
                             yield StreamChunk(
-                                tool_calls=[
-                                    ToolCallChunk(
-                                        call_id=call_id,
-                                        tool_name=tool_name,
-                                        arguments_json=json.dumps(args_dict),
-                                        thought_signature=thought_sig,
-                                    )
-                                ]
+                                prompt_tokens=prompt_tokens,
+                                completion_tokens=completion_tokens,
                             )
 
-                # Track token usage if reported in chunk metadata
-                usage = getattr(chunk, "usage_metadata", None)
-                if usage:
-                    prompt_tokens = getattr(usage, "prompt_token_count", None)
-                    completion_tokens = getattr(usage, "candidates_token_count", None)
-                    if prompt_tokens or completion_tokens:
-                        yield StreamChunk(
-                            prompt_tokens=prompt_tokens,
-                            completion_tokens=completion_tokens,
-                        )
+                # Successful stream completion
+                return
 
-        except Exception as exc:
-            self._handle_exception(exc)
+            except Exception as exc:
+                err_msg = str(exc).lower()
+                is_recoverable = (
+                    "429" in err_msg
+                    or "quota" in err_msg
+                    or "resource_exhausted" in err_msg
+                    or "503" in err_msg
+                    or "unavailable" in err_msg
+                    or "high demand" in err_msg
+                    or "500" in err_msg
+                    or "internal" in err_msg
+                    or "502" in err_msg
+                    or "504" in err_msg
+                    or "bad gateway" in err_msg
+                    or "gateway timeout" in err_msg
+                )
+                if is_recoverable and attempt_idx + 1 < len(models_to_try):
+                    next_model = models_to_try[attempt_idx + 1]
+                    import sys
+                    sys.stderr.write(
+                        f"[GoogleClient] Model '{candidate_model}' returned transient error ({exc}). "
+                        f"Auto-falling back to '{next_model}'...\n"
+                    )
+                    await asyncio.sleep(0.5)
+                    continue
+
+                self._handle_exception(exc)
 
     def _format_messages(self, types_module: Any, messages: List[Dict[str, Any]]) -> List[Any]:
         """Converts generic chat history into Gemini contents format with function call & response support."""
@@ -136,13 +192,15 @@ class GoogleClient(BaseLLMClient):
                     call_name_map[tc["id"]] = fn_name
 
                 thought_sig = tc.get("thought_signature")
-                if thought_sig:
-                    parts.append(types_module.Part(
-                        function_call=types_module.FunctionCall(name=fn_name, args=args),
-                        thought_signature=thought_sig,
-                    ))
-                else:
-                    parts.append(types_module.Part.from_function_call(name=fn_name, args=args))
+                if isinstance(thought_sig, str):
+                    thought_sig = thought_sig.encode("utf-8")
+                elif not thought_sig:
+                    thought_sig = b"\x00"
+
+                parts.append(types_module.Part(
+                    function_call=types_module.FunctionCall(name=fn_name, args=args),
+                    thought_signature=thought_sig,
+                ))
 
             if parts:
                 mapped_role = "model" if role in ("assistant", "model") else "user"

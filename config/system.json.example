@@ -17,8 +17,8 @@
   "enable_mail_watcher": true,
   "models": {
     "provider": "google",
-    "default_model": "google:gemini-3.5-flash",
-    "active_model": "google:gemini-3.5-flash",
+    "default_model": "google:gemini-3.5-flash-lite",
+    "active_model": "google:gemini-3.5-flash-lite",
     "fallback_models": [
       "google:gemini-3.2-flash",
       "google:gemini-2.5-flash",

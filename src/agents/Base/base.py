@@ -23,7 +23,11 @@ from src.agents.contracts import (
     ToolDefinition,
 )
 from src.agents.engine.react_engine import run_worker_agent
-from src.agents.engine.tool_dispatcher import ToolDispatcher, ToolTurnExecutionResult
+from src.agents.engine.tool_dispatcher import (
+    MCPClientProtocol,
+    ToolDispatcher,
+    ToolTurnExecutionResult,
+)
 from src.agents.manifest import AgentManifest, find_agent_config, load_manifest
 from src.models.base import BaseLLMClient
 
@@ -46,6 +50,9 @@ class BaseAgent:
         metadata: Optional[Dict[str, Any]] = None,
         local_handlers: Optional[Dict[str, Any]] = None,
         tool_dispatcher: Optional[ToolDispatcher] = None,
+        pipe_emitter: Optional[PipeEmitterProtocol] = None,
+        pipe_reader: Optional[PipeReaderProtocol] = None,
+        mcp_client: Optional[Union[MCPClientProtocol, Any]] = None,
         **kwargs: Any,
     ) -> None:
         if model_client is None:
@@ -54,6 +61,9 @@ class BaseAgent:
         self._model_client = model_client
         self.model_client = model_client
         self._memory_engine = memory_engine
+        self._pipe_emitter = pipe_emitter
+        self._pipe_reader = pipe_reader
+        self._mcp_client = mcp_client
         self._max_iterations = max(1, max_iterations)
         self._metadata = dict(metadata or {})
         self.tool_dispatcher = tool_dispatcher
@@ -130,6 +140,9 @@ class BaseAgent:
                 tools=self.get_tools(),
                 local_handlers=self.local_handlers,
                 memory_engine=self._memory_engine,
+                pipe_emitter=self._pipe_emitter,
+                pipe_reader=self._pipe_reader,
+                mcp_client=self._mcp_client,
             )
 
         # 7. Lifecycle Hooks
@@ -174,8 +187,8 @@ class BaseAgent:
                 ctx=ctx,
                 model_client=self._model_client,
                 memory_engine=memory_engine or self._memory_engine,
-                pipe_emitter=pipe_emitter,
-                pipe_reader=pipe_reader,
+                pipe_emitter=pipe_emitter or self._pipe_emitter,
+                pipe_reader=pipe_reader or self._pipe_reader,
                 tool_dispatcher=tool_dispatcher or getattr(self, "tool_dispatcher", None),
             )
             return self.after_turn(result, ctx)
@@ -232,6 +245,19 @@ class BaseAgent:
             self._max_iterations,
             manifest=self.manifest,
         )
+
+    # Infrastructure & Polyglot Protocols
+    @property
+    def pipe_emitter(self) -> Optional[PipeEmitterProtocol]:
+        return self._pipe_emitter
+
+    @property
+    def pipe_reader(self) -> Optional[PipeReaderProtocol]:
+        return self._pipe_reader
+
+    @property
+    def mcp_client(self) -> Optional[Union[MCPClientProtocol, Any]]:
+        return self._mcp_client
 
     # Prompt Accessors
     @property

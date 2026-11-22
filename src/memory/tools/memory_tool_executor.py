@@ -17,7 +17,19 @@ class MemoryToolExecutor:
         turn_id: Optional[str] = None,
     ) -> str:
         """Executes a memory tool and formats the response."""
-        if tool_name == "memory_update_profile":
+        # Universal Vault Tools
+        if tool_name == "memory_read":
+            return self._handle_vault_read(arguments)
+        elif tool_name == "memory_add":
+            return self._handle_vault_add(arguments)
+        elif tool_name == "memory_remove":
+            return self._handle_vault_remove(arguments)
+        elif tool_name == "memory_create":
+            return self._handle_vault_create(arguments)
+        elif tool_name == "consult_memory":
+            return self._handle_consult_memory(arguments)
+        # Legacy Memory Tools
+        elif tool_name == "memory_update_profile":
             return self._handle_update_profile(arguments)
         elif tool_name == "memory_update_account":
             return self._handle_update_account(arguments)
@@ -29,6 +41,44 @@ class MemoryToolExecutor:
             return self._handle_delete(arguments)
         else:
             return f"Error: Unknown memory tool '{tool_name}'."
+
+    def _handle_vault_read(self, args: Dict[str, Any]) -> str:
+        return self.engine.vault.read(
+            file_path=args.get("file"),
+            query=args.get("query"),
+            section=args.get("section"),
+        )
+
+    def _handle_vault_add(self, args: Dict[str, Any]) -> str:
+        file_path = str(args.get("file") or "profile.md").strip()
+        section = str(args.get("section") or "General").strip()
+        content = str(args.get("content") or "").strip()
+        key = args.get("key")
+        if not content:
+            return "Error: 'content' parameter is required for memory_add."
+        return self.engine.vault.add(file_path=file_path, section=section, content=content, key=key)
+
+    def _handle_vault_remove(self, args: Dict[str, Any]) -> str:
+        file_path = str(args.get("file") or "profile.md").strip()
+        section = str(args.get("section") or "General").strip()
+        key = str(args.get("key") or "").strip()
+        if not key:
+            return "Error: 'key' parameter is required for memory_remove."
+        return self.engine.vault.remove(file_path=file_path, section=section, key=key)
+
+    def _handle_vault_create(self, args: Dict[str, Any]) -> str:
+        file_path = str(args.get("path") or "").strip()
+        desc = str(args.get("description") or "").strip()
+        init_content = str(args.get("initial_content") or "")
+        if not file_path:
+            return "Error: 'path' parameter is required for memory_create."
+        return self.engine.vault.create(file_path=file_path, description=desc, initial_content=init_content)
+
+    def _handle_consult_memory(self, args: Dict[str, Any]) -> str:
+        query = str(args.get("query") or "").strip()
+        if not query:
+            return "Error: 'query' parameter is required for consult_memory."
+        return self.engine.vault.read(query=query)
 
     def _handle_update_profile(self, args: Dict[str, Any]) -> str:
         section = str(args.get("section", "")).strip()

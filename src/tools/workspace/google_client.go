@@ -150,10 +150,13 @@ func getPreferredAlias(path string) string {
 }
 
 func findAccountsMarkdownPath() string {
+	checkNames := []string{"profile.md", "accounts.md", "core_profile.md"}
 	if dir := os.Getenv("AI_ASSISTANT_MEMORY_DIR"); dir != "" {
-		p := filepath.Join(dir, "accounts.md")
-		if _, err := os.Stat(p); err == nil {
-			return p
+		for _, name := range checkNames {
+			p := filepath.Join(dir, name)
+			if _, err := os.Stat(p); err == nil {
+				return p
+			}
 		}
 	}
 
@@ -163,15 +166,19 @@ func findAccountsMarkdownPath() string {
 			var m map[string]interface{}
 			if json.Unmarshal(data, &m) == nil {
 				if memDir, ok := m["memory_dir"].(string); ok && memDir != "" {
-					p := filepath.Join(memDir, "accounts.md")
-					if _, err := os.Stat(p); err == nil {
-						return p
+					for _, name := range checkNames {
+						p := filepath.Join(memDir, name)
+						if _, err := os.Stat(p); err == nil {
+							return p
+						}
 					}
 				}
 				if wsDir, ok := m["workspace_dir"].(string); ok && wsDir != "" {
-					p := filepath.Join(wsDir, "Memory", "accounts.md")
-					if _, err := os.Stat(p); err == nil {
-						return p
+					for _, name := range checkNames {
+						p := filepath.Join(wsDir, "Memory", name)
+						if _, err := os.Stat(p); err == nil {
+							return p
+						}
 					}
 				}
 			}
@@ -179,13 +186,17 @@ func findAccountsMarkdownPath() string {
 	}
 
 	if home, err := os.UserHomeDir(); err == nil {
-		p := filepath.Join(home, ".config", "ai-assistant", "memory", "accounts.md")
-		if _, err := os.Stat(p); err == nil {
-			return p
+		for _, name := range checkNames {
+			p := filepath.Join(home, ".config", "ai-assistant", "memory", name)
+			if _, err := os.Stat(p); err == nil {
+				return p
+			}
 		}
 	}
 
 	for _, cand := range []string{
+		"workspace/Memory/profile.md",
+		"Memory/profile.md",
 		"workspace/Memory/accounts.md",
 		"Memory/accounts.md",
 		"config/accounts.md",
@@ -207,7 +218,7 @@ func parseAccountsMarkdown(path string) map[string]string {
 		return result
 	}
 
-	reBracket := regexp.MustCompile(`^\[([a-zA-Z0-9_\-\.]+)\]\s*([^\s\(]+)`)
+	reBracket := regexp.MustCompile(`^\[([a-zA-Z0-9_\-\.,\s]+)\]\s*([^\s\(]+)`)
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -216,10 +227,15 @@ func parseAccountsMarkdown(path string) map[string]string {
 		}
 		item := strings.TrimSpace(line[2:])
 		if m := reBracket.FindStringSubmatch(item); len(m) > 2 {
-			alias := strings.ToLower(strings.TrimSpace(m[1]))
 			email := strings.ToLower(strings.TrimSpace(m[2]))
 			if strings.Contains(email, "@") {
-				result[alias] = email
+				rawTags := strings.Split(m[1], ",")
+				for _, tag := range rawTags {
+					cleanTag := strings.ToLower(strings.TrimSpace(tag))
+					if cleanTag != "" {
+						result[cleanTag] = email
+					}
+				}
 			}
 		} else if strings.Contains(item, ":") {
 			parts := strings.SplitN(item, ":", 2)

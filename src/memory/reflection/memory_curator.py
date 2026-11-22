@@ -28,9 +28,9 @@ class MemoryReflectionAgent:
             try:
                 from src.agents.factory import load_system_config
                 cfg = load_system_config()
-                self._model_name = cfg.get("default_model", "google:gemini-3.5-flash")
+                self._model_name = cfg.get("default_model", "google:gemini-3.5-flash-lite")
             except Exception:
-                self._model_name = "google:gemini-3.5-flash"
+                self._model_name = "google:gemini-3.5-flash-lite"
 
     @property
     def model_client(self) -> Optional[BaseLLMClient]:

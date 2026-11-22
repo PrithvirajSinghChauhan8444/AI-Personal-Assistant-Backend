@@ -13,7 +13,7 @@
   ],
   "fallback_capability": "research",
   "model": {
-    "default": "google:gemini-3.5-flash",
+    "default": "google:gemini-3.5-flash-lite",
     "temperature": 0.0
   },
   "description": "Local Linux OS operations: file reading/writing/deletion, shell execution, process monitoring, git version control, and Hyprland window manager automation.",

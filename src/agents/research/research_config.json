@@ -10,7 +10,7 @@
   "fallback_capability": "system",
   "max_search_results": 5,
   "model": {
-    "default": "google:gemini-3.5-flash",
+    "default": "google:gemini-3.5-flash-lite",
     "temperature": 0.2
   },
   "description": "Deep research, web searching, summarizing articles/papers, fact-checking, and long-term memory retrieval.",

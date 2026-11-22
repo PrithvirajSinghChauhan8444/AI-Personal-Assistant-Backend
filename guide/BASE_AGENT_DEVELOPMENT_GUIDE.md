@@ -238,7 +238,7 @@ from src.agents.engine.dispatcher import ToolDispatcher
 from src.models.factory import ModelFactory
 
 # 1. Construct LLM client and optional shared ToolDispatcher
-model_client = ModelFactory.get_client("google:gemini-3.5-flash")
+model_client = ModelFactory.get_client("google:gemini-3.5-flash-lite")
 custom_dispatcher = ToolDispatcher(
     pipe_emitter=pipe_emitter,
     pipe_reader=pipe_reader,
@@ -489,7 +489,7 @@ Every agent declares its portable manifest in `src/agents/<name>/<name>_config.j
   "agent_aliases": ["research", "res", "search"],
   "fallback_capability": "system",
   "model": {
-    "default": "google:gemini-3.5-flash",
+    "default": "google:gemini-3.5-flash-lite",
     "temperature": 0.0
   },
   "description": "Deep web research, document analysis, citation verification.",
@@ -520,7 +520,7 @@ Every agent declares its portable manifest in `src/agents/<name>/<name>_config.j
 {
   "research": {
     "enabled": true,
-    "model": "google:gemini-3.5-flash",
+    "model": "google:gemini-3.5-flash-lite",
     "temperature": 0.0
   }
 }

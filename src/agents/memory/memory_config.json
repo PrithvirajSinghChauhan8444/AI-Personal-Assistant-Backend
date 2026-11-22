@@ -9,7 +9,7 @@
   ],
   "fallback_capability": "system",
   "model": {
-    "default": "google:gemini-3.5-flash",
+    "default": "google:gemini-3.5-flash-lite",
     "temperature": 0.0
   },
   "description": "Personal memory curation and recall: managing core user identity, preferences, rules, and searching/storing long-term episodic facts.",
@@ -17,6 +17,34 @@
     "Assign when the user asks to recall personal preferences, update user rules/profile, remember specific facts, or delete outdated memories."
   ],
   "tools": [
+    {
+      "name": "memory_read",
+      "description": "Reads or searches markdown files in the memory vault using line/header matching or full-text scan.",
+      "risk": "LOW",
+      "execution_domain": "python_local",
+      "required_capability": "memory"
+    },
+    {
+      "name": "memory_add",
+      "description": "Adds or updates an entry under a specific section in a vault markdown file, preserving formatting.",
+      "risk": "LOW",
+      "execution_domain": "python_local",
+      "required_capability": "memory"
+    },
+    {
+      "name": "memory_remove",
+      "description": "Removes an entry from a section in a vault markdown file.",
+      "risk": "MEDIUM",
+      "execution_domain": "python_local",
+      "required_capability": "memory"
+    },
+    {
+      "name": "memory_create",
+      "description": "Creates a new topic markdown file or subdirectory and registers its description in index.md.",
+      "risk": "LOW",
+      "execution_domain": "python_local",
+      "required_capability": "memory"
+    },
     {
       "name": "memory_update_profile",
       "description": "Appends, updates, or deletes structured markdown sections or key-value items in the user's core profile.",

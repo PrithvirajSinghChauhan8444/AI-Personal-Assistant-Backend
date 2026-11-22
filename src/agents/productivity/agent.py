@@ -37,12 +37,22 @@ class ProductivityAgent:
         max_iterations: int = 10,
     ) -> AgentTurnResult:
         """Runs an autonomous execution turn for the productivity worker."""
+        grounding_context = ""
+        if memory_engine and hasattr(memory_engine, "build_grounding_prompt"):
+            grounding_context = memory_engine.build_grounding_prompt()
+
+        full_system_prompt = (
+            f"{self.system_prompt}\n\n{grounding_context}".strip()
+            if grounding_context
+            else self.system_prompt
+        )
+
         ctx = AgentContext(
             session_id=session_id,
             turn_id=turn_id,
             agent_type=self.agent_type,
             user_prompt=prompt,
-            system_prompt=self.system_prompt,
+            system_prompt=full_system_prompt,
             conversation_history=history or [],
             available_tools=self.tools,
             max_iterations=max_iterations,

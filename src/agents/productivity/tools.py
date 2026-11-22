@@ -3,6 +3,7 @@
 from typing import List
 
 from src.agents.contracts import ToolDefinition
+from src.memory.tools.tool_definitions import CONSULT_MEMORY_TOOL
 
 PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
     # Authentication & Account Tools
@@ -15,7 +16,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "port": {"type": "integer", "description": "Local callback port (default: 9915)", "default": 9915},
             },
         },
@@ -31,7 +32,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "query": {"type": "string", "description": "Gmail query (e.g. 'is:unread', default: 'in:inbox')", "default": "in:inbox"},
                 "limit": {"type": "integer", "description": "Maximum emails to retrieve (default: 10)", "default": 10},
             },
@@ -46,7 +47,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "message_id": {"type": "string", "description": "Gmail message ID returned from gmail_list"},
             },
             "required": ["message_id"],
@@ -61,7 +62,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "limit": {"type": "integer", "description": "Maximum unread emails to retrieve (default: 5)", "default": 5},
             },
         },
@@ -75,7 +76,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "to": {"type": "string", "description": "Recipient email address"},
                 "subject": {"type": "string", "description": "Email subject line"},
                 "body": {"type": "string", "description": "Email message body"},
@@ -92,7 +93,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "message_id": {"type": "string", "description": "Original Gmail message ID to reply to"},
                 "body": {"type": "string", "description": "Reply email body content"},
             },
@@ -108,7 +109,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "to": {"type": "string", "description": "Recipient email address"},
                 "subject": {"type": "string", "description": "Email subject line"},
                 "body": {"type": "string", "description": "Email body content"},
@@ -127,7 +128,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "time_min": {"type": "string", "description": "RFC3339 timestamp start filter (default: start of today)"},
                 "time_max": {"type": "string", "description": "RFC3339 timestamp end filter (default: 7 days ahead)"},
                 "limit": {"type": "integer", "description": "Maximum events to return (default: 10)", "default": 10},
@@ -143,7 +144,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "summary": {"type": "string", "description": "Title or summary of the event"},
                 "start_time": {"type": "string", "description": "ISO/RFC3339 start timestamp (e.g. '2026-11-14T10:00:00Z')"},
                 "duration_hours": {"type": "number", "description": "Duration in hours (default: 1.0)", "default": 1.0},
@@ -162,7 +163,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "event_id": {"type": "string", "description": "Google Calendar event ID to modify"},
                 "summary": {"type": "string", "description": "Updated event summary/title"},
                 "start_time": {"type": "string", "description": "Updated start timestamp"},
@@ -182,7 +183,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "event_id": {"type": "string", "description": "Google Calendar event ID to delete"},
             },
             "required": ["event_id"],
@@ -199,7 +200,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "task_list_id": {"type": "string", "description": "Optional task list ID (defaults to '@default')"},
                 "limit": {"type": "integer", "description": "Maximum tasks to return (default: 10)", "default": 10},
             },
@@ -214,7 +215,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "task_list_id": {"type": "string", "description": "Optional task list ID (defaults to '@default')"},
                 "title": {"type": "string", "description": "Title of the task to add"},
                 "notes": {"type": "string", "description": "Optional notes or details"},
@@ -234,7 +235,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "limit": {"type": "integer", "description": "Maximum courses to retrieve (default: 20)", "default": 20},
             },
         },
@@ -248,7 +249,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "course_id": {"type": "string", "description": "Google Classroom course ID"},
                 "limit": {"type": "integer", "description": "Maximum assignments to return (default: 20)", "default": 20},
             },
@@ -264,7 +265,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "course_id": {"type": "string", "description": "Google Classroom course ID"},
                 "assignment_id": {"type": "string", "description": "Coursework assignment ID"},
             },
@@ -280,7 +281,7 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         parameters={
             "type": "object",
             "properties": {
-                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com', 'work@company.com'). Supply the full email address directly; do not use generic aliases or references."},
+                "account": {"type": "string", "description": "Complete email address of the account (e.g. 'user@example.com'). Choose the matching email from the connected accounts in the user profile context."},
                 "course_id": {"type": "string", "description": "Google Classroom course ID"},
                 "limit": {"type": "integer", "description": "Maximum announcements to retrieve (default: 20)", "default": 20},
             },
@@ -379,4 +380,5 @@ PRODUCTIVITY_TOOLS: List[ToolDefinition] = [
         prompt_usage_tip="Use to check existing diagram files or verify file creation.",
         parameters={"type": "object", "properties": {}},
     ),
+    CONSULT_MEMORY_TOOL,
 ]

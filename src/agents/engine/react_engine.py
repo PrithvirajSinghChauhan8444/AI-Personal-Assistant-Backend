@@ -211,36 +211,60 @@ class ReActEngine:
     ) -> tuple[str, List[ToolCallChunk]]:
         text_parts: List[str] = []
         tool_chunks: List[ToolCallChunk] = []
-
-        stream = self.model_client.stream_chat(
-            system_prompt=ctx.system_prompt,
-            messages=messages,
-            tools=tools,
-        )
-
         agent_name = ctx.agent_type.value if hasattr(ctx.agent_type, "value") else str(ctx.agent_type)
         worker_id = agent_name.lower()
-        async for chunk in stream:
-            if chunk.thought:
-                if self.pipe_emitter:
-                    await self.pipe_emitter.emit_thought(ctx.turn_id, agent_name, chunk.thought)
-                for obs in self._get_observers():
-                    try:
-                        obs.on_thought(worker_id, ctx.turn_id, chunk.thought)
-                    except Exception:
-                        pass
 
-            if chunk.text_delta:
-                text_parts.append(chunk.text_delta)
-                if worker_id in _active_workers:
-                    _active_workers[worker_id]["tokens_streamed"] += max(1, len(chunk.text_delta) // 4)
-                if self.pipe_emitter:
-                    await self.pipe_emitter.emit_token(ctx.turn_id, agent_name, chunk.text_delta)
+        for attempt in range(3):
+            text_parts.clear()
+            tool_chunks.clear()
+            try:
+                stream = self.model_client.stream_chat(
+                    system_prompt=ctx.system_prompt,
+                    messages=messages,
+                    tools=tools,
+                )
 
-            if chunk.tool_calls:
-                tool_chunks.extend(chunk.tool_calls)
+                async for chunk in stream:
+                    if chunk.thought:
+                        if self.pipe_emitter:
+                            await self.pipe_emitter.emit_thought(ctx.turn_id, agent_name, chunk.thought)
+                        for obs in self._get_observers():
+                            try:
+                                obs.on_thought(worker_id, ctx.turn_id, chunk.thought)
+                            except Exception:
+                                pass
 
-        return "".join(text_parts), tool_chunks
+                    if chunk.text_delta:
+                        text_parts.append(chunk.text_delta)
+                        if worker_id in _active_workers:
+                            _active_workers[worker_id]["tokens_streamed"] += max(1, len(chunk.text_delta) // 4)
+                        if self.pipe_emitter:
+                            await self.pipe_emitter.emit_token(ctx.turn_id, agent_name, chunk.text_delta)
+
+                    if chunk.tool_calls:
+                        tool_chunks.extend(chunk.tool_calls)
+
+                return "".join(text_parts), tool_chunks
+            except Exception as exc:
+                err_msg = str(exc).lower()
+                is_transient = (
+                    "503" in err_msg
+                    or "unavailable" in err_msg
+                    or "high demand" in err_msg
+                    or "429" in err_msg
+                    or "quota" in err_msg
+                    or "resource_exhausted" in err_msg
+                    or "500" in err_msg
+                    or "internal" in err_msg
+                    or "502" in err_msg
+                    or "504" in err_msg
+                    or "bad gateway" in err_msg
+                    or "gateway timeout" in err_msg
+                )
+                if is_transient and attempt < 2:
+                    await asyncio.sleep(1.0 * (attempt + 1))
+                    continue
+                raise
 
     def _parse_tool_intents(self, tool_chunks: List[ToolCallChunk]) -> List[ToolCallIntent]:
         intents: List[ToolCallIntent] = []

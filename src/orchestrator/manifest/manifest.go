@@ -173,7 +173,7 @@ func SyncControlRegistry(configPath, agentsDir string) error {
 	if _, exists := rawData["manager"]; !exists {
 		rawData["manager"] = map[string]interface{}{
 			"enabled":              true,
-			"model":                "google:gemini-3.5-flash",
+			"model":                "google:gemini-3.5-flash-lite",
 			"temperature":          0.1,
 			"max_parallel_workers": 4,
 			"auto_heal_deadlocks":  true,

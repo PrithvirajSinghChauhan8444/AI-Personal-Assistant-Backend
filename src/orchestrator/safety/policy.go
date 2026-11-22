@@ -194,6 +194,8 @@ func (g *Gatekeeper) registerDefaults() {
 		{"classroom_get_assignment", "classroom"},
 		{"classroom_list_announcements", "classroom"},
 		{"memory_search", "memory"},
+		{"memory_read", "memory"},
+		{"consult_memory", "memory"},
 	}
 	for _, t := range lowRiskTools {
 		g.RegisterPolicy(ToolPolicy{
@@ -214,6 +216,9 @@ func (g *Gatekeeper) registerDefaults() {
 		{"memory_store_fact", "memory"},
 		{"memory_update_profile", "memory"},
 		{"memory_update_account", "memory"},
+		{"memory_add", "memory"},
+		{"memory_create", "memory"},
+		{"memory_remove", "memory"},
 	}
 	for _, t := range mediumRiskTools {
 		g.RegisterPolicy(ToolPolicy{

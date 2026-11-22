@@ -144,7 +144,7 @@ async def main() -> None:
     """Runs the Memory Worker in standalone mode (single shot or interactive REPL)."""
     agents_cfg = load_agents_config()
     mem_cfg = agents_cfg.get("memory", {})
-    model_name = mem_cfg.get("model", "google:gemini-3.5-flash")
+    model_name = mem_cfg.get("model", "google:gemini-3.5-flash-lite")
     temperature = float(mem_cfg.get("temperature", 0.0))
 
     model_client = ModelFactory.get_client(model_id=model_name, temperature=temperature)

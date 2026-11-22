@@ -89,7 +89,10 @@ class MemoryEngine(MemoryEngineProtocol):
         self.config = load_memory_config()
         self.base_dir = resolve_memory_base_dir(base_dir)
 
-        profile_path = os.path.join(self.base_dir, "core_profile.md")
+        from src.memory.vault.vault_manager import VaultManager
+        self.vault = VaultManager(self.base_dir)
+
+        profile_path = str(self.vault.root_dir / "profile.md")
         accounts_path = os.path.join(self.base_dir, "accounts.md")
         db_path = os.path.join(self.base_dir, "storage", "memories.db")
         index_path = os.path.join(self.base_dir, "storage", "faiss_index.bin")
@@ -182,6 +185,11 @@ class MemoryEngine(MemoryEngineProtocol):
     def is_memory_tool(self, tool_name: str) -> bool:
         """Determines if tool name belongs to Layer 5 local memory tools."""
         return tool_name in (
+            "memory_read",
+            "memory_add",
+            "memory_remove",
+            "memory_create",
+            "consult_memory",
             "memory_update_profile",
             "memory_update_account",
             "memory_store_fact",
@@ -205,13 +213,13 @@ class MemoryEngine(MemoryEngineProtocol):
         )
 
     def build_grounding_prompt(self) -> str:
-        """Assembles User Profile and Connected Accounts into the agent grounding context."""
+        """Assembles User Profile and Rules into the agent grounding context."""
         parts = [
             "=== User Context and Memory Grounding ===",
             "",
-            self.profile.get_profile_markdown(),
+            self.vault.get_profile_markdown(),
             "",
-            self.accounts.get_accounts_summary(),
+            self.vault.get_rules_markdown(),
         ]
         return "\n".join(parts).strip()
 

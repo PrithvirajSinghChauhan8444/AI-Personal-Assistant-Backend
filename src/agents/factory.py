@@ -87,7 +87,7 @@ def _resolve_model_client(
 
     manifest = load_manifest(manifest_file) if manifest_file else None
 
-    default_model = manifest.model.default if manifest else "google:gemini-3.5-flash"
+    default_model = manifest.model.default if manifest else "google:gemini-3.5-flash-lite"
     default_temp = manifest.model.temperature if manifest else 0.0
 
     agent_cfg = (config or {}).get(agent_name, {})
